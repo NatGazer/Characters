@@ -345,7 +345,7 @@ def pauldron(B, side='L'):
     s = np.linspace(0, 1, nps)[:, None]
     PSI = s * psi_max[None, :]
     Wg = np.broadcast_to(w[None, :], PSI.shape)
-    rx, ry, rz = 0.118, 0.116, 0.080    # radii along e1 (front), e2 (lateral), pole
+    rx, ry, rz = 0.120, 0.126, 0.082    # radii along e1 (front), e2 (lateral), pole
     dirv = (np.sin(PSI) * np.cos(Wg))[..., None] * e1 * rx + (np.sin(PSI) * np.sin(Wg))[..., None] * e2 * ry \
         + np.cos(PSI)[..., None] * pole * rz
     flare = 1 + 0.10 * np.clip((PSI - 1.0) / 0.8, 0, 1)
