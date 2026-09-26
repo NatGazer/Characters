@@ -58,6 +58,8 @@ func _ready() -> void:
 	cam = Camera3D.new(); cam.fov = 55.0; cam.near = 0.05; spring.add_child(cam)
 	cam.position = Vector3(0.45, 0, 0)
 	cam.current = true
+	# animation advances in the physics step so root motion is consumed exactly once per step
+	rig.anim.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_PHYSICS
 	rig.anim.animation_finished.connect(_on_anim_finished)
 	rig.anim_event.connect(_on_anim_event)
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED

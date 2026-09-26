@@ -66,14 +66,14 @@ def mirror(p): return np.array([-p[0], p[1], p[2]])
 FACE_TARGETS = [
     ('eyebrows/eyebrows-trans-forward', 0.45), ('eyebrows/eyebrows-trans-down', 0.35), ('eyebrows/eyebrows-angle-down', 0.3),
     ('forehead/forehead-trans-backward', 0.08), ('forehead/forehead-temple-decr', 0.4),
-    ('nose/nose-trans-forward', 0.12), ('nose/nose-scale-vert-incr', 0.3), ('nose/nose-hump-incr', 0.08),
+    ('nose/nose-trans-forward', 0.12), ('nose/nose-scale-vert-incr', 0.3), ('nose/nose-hump-decr', 0.45),
     ('nose/nose-point-width-decr', 0.3), ('nose/nose-scale-depth-incr', 0.05), ('nose/nose-greek-decr', 0.2),
     ('chin/chin-prominent-incr', 0.45), ('chin/chin-width-incr', 0.35), ('chin/chin-bones-incr', 0.5), ('chin/chin-height-incr', 0.2),
     ('cheek/l-cheek-bones-incr', 0.55), ('cheek/r-cheek-bones-incr', 0.55),
     ('cheek/l-cheek-volume-decr', 0.5), ('cheek/r-cheek-volume-decr', 0.5),
     ('cheek/l-cheek-inner-decr', 0.4), ('cheek/r-cheek-inner-decr', 0.4),
     ('eyes/l-eye-push1-in', 0.35), ('eyes/r-eye-push1-in', 0.35), ('eyes/l-eye-bag-decr', 0.4), ('eyes/r-eye-bag-decr', 0.4),
-    ('head/head-square', 0.35), ('mouth/mouth-scale-horiz-incr', 0.15), ('neck/neck-scale-horiz-incr', 0.3),
+    ('head/head-square', 0.35), ('mouth/mouth-scale-horiz-incr', 0.15), ('neck/neck-scale-horiz-decr', 0.35), ('neck/neck-scale-depth-decr', 0.2),
 ]
 
 # athletic V-taper: narrower waist and hips, flatter stomach, lean chest

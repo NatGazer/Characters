@@ -69,7 +69,7 @@ func _ready() -> void:
 	EnvBuilder.build(self)
 	warrior = WARRIOR.instantiate()
 	add_child(warrior)
-	cam = Camera3D.new(); cam.fov = 38.0; cam.near = 0.05
+	cam = Camera3D.new(); cam.fov = 36.0; cam.near = 0.05
 	add_child(cam)
 	var ui := CanvasLayer.new(); add_child(ui)
 	label = Label.new()
@@ -128,15 +128,15 @@ func _process(delta: float) -> void:
 func _update_camera(delta: float) -> void:
 	var hips: Vector3 = warrior.bone_global("Hips").origin
 	var low: bool = hips.y < 0.7
-	var tgt := Vector3(hips.x, clampf(hips.y + 0.35, 0.5, 2.4), hips.z)
+	var tgt := Vector3(hips.x, clampf(hips.y - 0.02, 0.45, 2.4), hips.z)
 	cam_target = cam_target.lerp(tgt, 1.0 - exp(-4.0 * delta))
-	var want_dist := 3.2 if low else 4.4
+	var want_dist := 3.0 if low else 4.1
 	if dist_override > 0.0: want_dist = dist_override; cam_dist = dist_override
 	if height_override >= 0.0: tgt.y = height_override; cam_target = tgt
 	cam_dist = lerpf(cam_dist, want_dist, 1.0 - exp(-2.0 * delta))
 	if shot_orbit > -900.0: orbit = shot_orbit
 	elif not free_orbit: orbit += orbit_speed * delta
-	var pos := cam_target + Vector3(sin(orbit) * cam_dist, 0.35 + (0.4 if low else 0.1), cos(orbit) * cam_dist)
+	var pos := cam_target + Vector3(sin(orbit) * cam_dist, 0.25 + (0.4 if low else 0.0), cos(orbit) * cam_dist)
 	cam.global_position = pos
 	cam.look_at(cam_target, Vector3.UP)
 

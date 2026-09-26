@@ -7,6 +7,13 @@ third-person controller**.
 
 ![front / back / profile vs. reference](renders/compare_turnaround.jpg)
 
+In Godot 4.7 (combat stance, command gesture, mind blast, Jolt ragdoll death):
+
+![Godot stills](renders/godot_stills.jpg)
+
+**Video:** [`renders/videos/showreel.mp4`](renders/videos/showreel.mp4) is every clip recorded from the Godot showcase, with spring-bone cloth and hair, VFX and the ragdoll.
+Face close-ups vs. reference: [`renders/compare_face.jpg`](renders/compare_face.jpg).
+
 ## Folder layout
 
 ```

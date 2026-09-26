@@ -185,7 +185,7 @@ func _tune_materials() -> void:
 			elif "armor" in n:
 				m.emission_energy_multiplier = 1.4
 			elif "eye" in n:
-				m.emission_energy_multiplier = 1.1
+				m.emission_energy_multiplier = 0.55
 				m.clearcoat_enabled = true; m.clearcoat = 1.0; m.clearcoat_roughness = 0.02
 			mi.set_surface_override_material(s, m)
 

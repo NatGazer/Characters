@@ -15,7 +15,7 @@ static func build(parent: Node3D, quality_high := true) -> Dictionary:
 	var sky := Sky.new()
 	var sm := ProceduralSkyMaterial.new()
 	sm.sky_top_color = Color(0.10, 0.12, 0.19)
-	sm.sky_horizon_color = Color(0.62, 0.46, 0.36)
+	sm.sky_horizon_color = Color(0.55, 0.47, 0.43)
 	sm.ground_bottom_color = Color(0.02, 0.02, 0.025)
 	sm.ground_horizon_color = Color(0.35, 0.26, 0.22)
 	sm.sun_angle_max = 20.0
@@ -23,10 +23,10 @@ static func build(parent: Node3D, quality_high := true) -> Dictionary:
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 1.0
+	env.ambient_light_energy = 1.5
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_AGX
-	env.tonemap_exposure = 1.3
+	env.tonemap_exposure = 1.45
 	env.glow_enabled = true
 	env.glow_intensity = 0.55
 	env.glow_strength = 1.0
@@ -55,7 +55,7 @@ static func build(parent: Node3D, quality_high := true) -> Dictionary:
 	var key := DirectionalLight3D.new()
 	key.name = "Key"
 	key.light_color = Color(1.0, 0.86, 0.72)
-	key.light_energy = 3.2
+	key.light_energy = 4.2
 	key.shadow_enabled = true
 	key.shadow_blur = 1.5
 	key.directional_shadow_max_distance = 25.0
@@ -66,7 +66,7 @@ static func build(parent: Node3D, quality_high := true) -> Dictionary:
 	var rim := SpotLight3D.new()
 	rim.name = "Rim"
 	rim.light_color = Color(0.55, 0.70, 1.0)
-	rim.light_energy = 9.0
+	rim.light_energy = 16.0
 	rim.spot_range = 14.0; rim.spot_angle = 30.0
 	rim.position = Vector3(3.2, 3.6, -4.2)
 	parent.add_child(rim)
@@ -76,14 +76,14 @@ static func build(parent: Node3D, quality_high := true) -> Dictionary:
 	var fill := DirectionalLight3D.new()
 	fill.name = "Fill"
 	fill.light_color = Color(0.75, 0.82, 1.0)
-	fill.light_energy = 0.9
+	fill.light_energy = 1.6
 	fill.rotation_degrees = Vector3(-12, 160, 0)
 	parent.add_child(fill)
 	# golden kicker from the left-behind
 	var kick := SpotLight3D.new()
 	kick.name = "Kicker"
 	kick.light_color = Color(1.0, 0.62, 0.30)
-	kick.light_energy = 6.0
+	kick.light_energy = 9.0
 	kick.spot_range = 12.0; kick.spot_angle = 34.0
 	kick.position = Vector3(-3.8, 2.4, -2.6)
 	parent.add_child(kick)

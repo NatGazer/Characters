@@ -11,12 +11,12 @@ RUN="godot"
 RES=${RES:-1280x720}
 if [ $# -eq 0 ]; then
   eval $RUN --path . --rendering-driver vulkan --resolution $RES --fixed-fps 30 --write-movie /tmp/reel.avi res://scenes/showcase.tscn -- --auto >/dev/null 2>&1 || true
-  ffmpeg -y -loglevel error -i /tmp/reel.avi -c:v libx264 -pix_fmt yuv420p -crf 20 -preset slow "$OUT/showreel.mp4"
+  ffmpeg -y -loglevel error -i /tmp/reel.avi -c:v libx264 -pix_fmt yuv420p -crf 27 -preset slow -movflags +faststart "$OUT/showreel.mp4"
   exit 0
 fi
 for c in "$@"; do
   eval $RUN --path . --rendering-driver vulkan --resolution $RES --fixed-fps 30 --write-movie /tmp/clip_$c.avi res://scenes/showcase.tscn -- --auto --clip=$c >/dev/null 2>&1 || true
-  ffmpeg -y -loglevel error -i /tmp/clip_$c.avi -c:v libx264 -pix_fmt yuv420p -crf 21 -preset slow "$OUT/$c.mp4"
+  ffmpeg -y -loglevel error -i /tmp/clip_$c.avi -c:v libx264 -pix_fmt yuv420p -crf 27 -preset slow -movflags +faststart "$OUT/$c.mp4"
   rm -f /tmp/clip_$c.avi
   echo "recorded $c"
 done

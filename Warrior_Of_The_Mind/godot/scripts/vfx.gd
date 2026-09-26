@@ -31,8 +31,13 @@ static func _particles(amount: int, lifetime: float, c: Color, size: float, spre
 	pm.scale_curve = st
 	p.process_material = pm
 	var q := QuadMesh.new(); q.size = Vector2(size, size)
-	var qm := _glow_material(Color(1, 1, 1), 4.0, 1.0)
+	var qm := _glow_material(Color(1, 1, 1), 4.0, 0.999)
 	qm.vertex_color_use_as_albedo = true
+	var g := Gradient.new(); g.set_color(0, Color(1, 1, 1, 1)); g.set_color(1, Color(1, 1, 1, 0))
+	g.add_point(0.25, Color(1, 1, 1, 0.8))
+	var gt2 := GradientTexture2D.new(); gt2.gradient = g; gt2.fill = GradientTexture2D.FILL_RADIAL
+	gt2.fill_from = Vector2(0.5, 0.5); gt2.fill_to = Vector2(1.0, 0.5); gt2.width = 64; gt2.height = 64
+	qm.albedo_texture = gt2
 	qm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
 	q.material = qm
 	p.draw_pass_1 = q
@@ -85,9 +90,9 @@ static func spawn_blast(parent: Node, at: Vector3, forward: Vector3) -> void:
 	ring.look_at(at + forward, Vector3.UP)
 	ring.rotate_object_local(Vector3.RIGHT, PI / 2)
 	var tw := ring.create_tween().set_parallel(true)
-	tw.tween_property(ring, "scale", Vector3.ONE * 9.0, 0.6).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_EXPO)
-	tw.tween_property(ring, "global_position", at + forward.normalized() * 5.0, 0.6)
-	tw.tween_property(m, "albedo_color:a", 0.0, 0.6)
+	tw.tween_property(ring, "scale", Vector3.ONE * 5.0, 0.8).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(ring, "global_position", at + forward.normalized() * 2.5, 0.8).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(m, "albedo_color:a", 0.0, 0.8).set_ease(Tween.EASE_IN)
 	tw.chain().tween_callback(ring.queue_free)
 	flash(parent, at, 4.0, 0.3)
 	var sparks := _particles(260, 0.8, GOLD, 0.06, 40.0, Vector2(3.0, 9.0), Vector3(0, -4, 0))
