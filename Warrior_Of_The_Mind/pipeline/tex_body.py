@@ -94,6 +94,9 @@ def main(res=4096):
     skinlike = (col[:, 0] > col[:, 2] + 0.05) & (lum > 0.18) & (lum < 0.9)
     tone = np.median(col[(conf > 0.8) & skinlike & (q[:, 2] > -0.06) & (q[:, 2] < 0.02)], axis=0) if (conf > 0.8).any() else SKIN
     print('skin tone', tone)
+    # grey-white painted highlights under the jaw are not skin: drop them (filled from the skin tone)
+    t_lum = tone @ np.array([0.3, 0.59, 0.11])
+    conf = conf * ~((lum > 1.08 * t_lum) & (sat < 0.14) & (q[:, 2] < -0.04))
     npore = T.noise(Ps, 0.0012, 50, 2); nblot = T.noise(Ps, 0.03, 51, 3)
     fill = tone * (1 + 0.06 * nblot[:, None]) * np.array([1.0, 0.97, 0.95])
     # stubble zone (jaw/cheeks below the cheekbones, front half)
@@ -104,6 +107,11 @@ def main(res=4096):
     front = np.clip(np.cos(az), 0, 1) ** 1.5; back = np.clip(-np.cos(az), 0, 1); side = np.abs(np.sin(az))
     hairline = 0.034 * front - 0.014 * side - 0.095 * back
     scalp = T.smoothstep(hairline - 0.004, hairline + 0.012, q[:, 2])
+    # goatee / mustache shadow on the skin under the goatee cards (follows the sculpted chin via the landmarks)
+    L3f = os.path.join(W, 'face_landmarks3d.npy')
+    goat = np.zeros(len(Ps))
+    if os.path.exists(L3f):
+        goat = np.clip((H.beard_density(np.load(L3f))(Ps) - 0.5) / 0.4, 0, 1)
     # de-light: the reference is already lit (key from the upper left); remove the large-scale shading
     DELIGHT = 0.92
     col = col * DELIGHT; fill = fill * DELIGHT
@@ -111,6 +119,7 @@ def main(res=4096):
     hs = T.noise(np.c_[Ps[:, 0] * 8, Ps[:, 1], Ps[:, 2]], 0.004, 71, 3)       # combed strand streaks
     scalp_col = np.array([0.12, 0.075, 0.05]) * (0.8 + 0.5 * np.clip(hs, -1, 1)[:, None])
     base = base * (1 - scalp[:, None]) + scalp_col * scalp[:, None]
+    base = base * (1 - 0.8 * goat[:, None]) + (HAIRC * 1.5) * 0.8 * goat[:, None]
     # eye slits: neutralise projected iris colour on the lids (eyeballs carry the iris)
     L3f = os.path.join(W, 'face_landmarks3d.npy')
     eyes = list(np.load(L3f)[[468, 473]]) if os.path.exists(L3f) and len(np.load(L3f)) > 473 else [np.array([sx * 0.033, -0.083, 1.853]) for sx in (1, -1)]
@@ -122,11 +131,12 @@ def main(res=4096):
     lum_b = base @ np.array([0.3, 0.59, 0.11]); cap = (tone @ np.array([0.3, 0.59, 0.11])) * 1.12
     over = np.clip(lum_b / np.maximum(cap, 1e-3), 1, None)
     base = base / (1 + (over[:, None] - 1) * 0.85)
-    # lighter complexion: lift and slightly desaturate the skin (not the scalp / hairline, not the stubble)
+    # lighter complexion: lift and slightly desaturate the bright skin only, so dark stubble, goatee and
+    # brows keep their colour (by brightness, not by region: no seams). Scalp / hairline untouched.
     lum_s = base @ np.array([0.3, 0.59, 0.11])
     light = np.clip((lum_s[:, None] + (base - lum_s[:, None]) * SKIN_SAT) * SKIN_LIGHTEN, 0, 1)
-    keep = np.clip(scalp + 0.85 * beard, 0, 1)[:, None]
-    base = base * keep + light * (1 - keep)
+    amt = (T.smoothstep(0.14, 0.30, lum_s) * (1 - scalp))[:, None]
+    base = base * (1 - amt) + light * amt
     alb[isk] = np.clip(base * (1 + 0.04 * npore[:, None]), 0, 1)
     rough[isk] = 0.52 + 0.08 * npore - 0.1 * (q[:, 2] > 0.0) * (1 - scalp) + 0.25 * scalp
     height[isk] = 0.00004 * npore
