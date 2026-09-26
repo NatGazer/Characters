@@ -51,7 +51,7 @@ def build(save=True):
     cols = [body] + tor + [o for o in cl if o.name.startswith(('cape', 'stole'))]
     hob, X = hair.build_hair(B, cols)
     np.save(os.path.join(W, 'hair_strands.npy'), X)
-    hair.build_beard(B)
+    hair.build_beard(B); hair.build_goatee(B)
     if save:
         bpy.ops.wm.save_as_mainfile(filepath=os.path.join(W, 'model_raw.blend'))
     tris = sum(sum(len(p.vertices) - 2 for p in o.data.polygons) for o in bpy.data.objects if o.type == 'MESH')

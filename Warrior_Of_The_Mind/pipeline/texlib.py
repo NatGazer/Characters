@@ -208,7 +208,7 @@ def sample(img, xs, ys):
     return (img[y0, x0] * (1 - fx) * (1 - fy) + img[y0, x0 + 1] * fx * (1 - fy)
             + img[y0 + 1, x0] * (1 - fx) * fy + img[y0 + 1, x0 + 1] * fx * fy)
 
-def apply_projection(group, W, mask, ALB, ORM, EM, Hh, mat=None, trust=None, full=1.0):
+def apply_projection(group, W, mask, ALB, ORM, EM, Hh, mat=None, trust=None, full=1.0, fabric=False):
     """Blend the reference-projected colour (work/proj_<group>.npz) into the atlas maps in place.
     ALB (R,R,3|4), ORM (R,R,3), EM (R,R) scalar emission, Hh (R,R) height (m). trust: per material id
     multiplier (dict id->0..1). Returns the confidence map C."""
@@ -231,8 +231,12 @@ def apply_projection(group, W, mask, ALB, ORM, EM, Hh, mat=None, trust=None, ful
     glow = smoothstep(0.66, 0.93, lum) * np.clip((col[..., 0] - col[..., 2]) / 0.3, 0, 1)
     c3 = C[..., None]
     ALB[..., :3] = ALB[..., :3] * (1 - c3) + col * c3
-    ORM[..., 1] = ORM[..., 1] * (1 - C) + (0.52 - 0.28 * gold) * C
-    ORM[..., 2] = ORM[..., 2] * (1 - C) + (0.35 + 0.65 * gold) * C
+    if fabric:   # cloth: non-metallic wool/velvet, only the gold thread is (weakly) metallic
+        ORM[..., 1] = ORM[..., 1] * (1 - C) + (0.82 - 0.35 * gold) * C
+        ORM[..., 2] = ORM[..., 2] * (1 - C) + (0.45 * gold) * C
+    else:
+        ORM[..., 1] = ORM[..., 1] * (1 - C) + (0.52 - 0.28 * gold) * C
+        ORM[..., 2] = ORM[..., 2] * (1 - C) + (0.35 + 0.65 * gold) * C
     EM[:] = EM * (1 - C) + (glow * 1.4) * C
     hp = cv2.GaussianBlur(lum, (0, 0), 1.0) - cv2.GaussianBlur(lum, (0, 0), 6.0)
     Hh[:] = Hh * (1 - 0.5 * C) + (0.0005 * hp + 0.00025 * gold) * C

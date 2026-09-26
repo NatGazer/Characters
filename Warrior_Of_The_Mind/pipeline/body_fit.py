@@ -26,7 +26,7 @@ TGT = {
     'root':     (0.000,  0.035, 1.105),
 }
 HEAD_SCALE = 0.85
-GIRTH = {'uarm': 0.96, 'farm': 0.95, 'thigh': 0.93, 'shin': 0.92, 'hand': 1.10, 'foot': 0.96}
+GIRTH = {'uarm': 0.90, 'farm': 0.90, 'thigh': 0.88, 'shin': 0.88, 'hand': 1.08, 'foot': 0.95}
 
 SEG = {}  # MH bone -> segment name
 def seg_of(b):

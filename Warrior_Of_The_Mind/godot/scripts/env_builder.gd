@@ -61,6 +61,7 @@ static func build(parent: Node3D, quality_high := true) -> Dictionary:
 	key.directional_shadow_max_distance = 25.0
 	key.light_volumetric_fog_energy = 1.2
 	key.rotation_degrees = Vector3(-38, -35, 0)
+	key.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY   # no sun disc in the sky
 	parent.add_child(key)
 	# rim: cool, from behind-right
 	var rim := SpotLight3D.new()

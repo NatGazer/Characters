@@ -9,7 +9,7 @@ import uvlayout
 
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
 TEX = os.path.join(ROOT, 'textures')
-EMISSION_STRENGTH = {'M_Armor': 4.0, 'M_Cloth': 3.0, 'M_Body': 3.0, 'M_Eyes': 1.2, 'M_Hair': 0.0}
+EMISSION_STRENGTH = {'M_Armor': 4.0, 'M_Cloth': 3.0, 'M_Body': 3.0, 'M_Eyes': 0.6, 'M_Hair': 0.0}
 
 def img(name, colorspace='sRGB'):
     p = os.path.join(TEX, name)

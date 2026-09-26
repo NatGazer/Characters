@@ -61,7 +61,7 @@ Scale: metres, **1.94 m** tall (1.97 m with boots), facing **+Z** in Godot (glTF
 ## Model
 
 * **~221k triangles, 6 materials / draw calls** (Body, Armor, Cloth, Hair, Eyes, Sword).
-* **Body:** MakeHuman CC0 base mesh. It is re-proportioned to the skeleton measured on the reference turnaround (1.34 mm/px, joint by joint), with a young athletic build and a narrow waist. The face is fitted to 478 MediaPipe landmarks of the front reference (thin-plate-spline warp, symmetrised) and checked against the profile silhouettes.
+* **Body:** MakeHuman CC0 base mesh. It is re-proportioned to the skeleton measured on the reference turnaround (1.34 mm/px, joint by joint), with a young athletic build and a narrow waist. The head keeps its sculpted shape (character targets: strong brow, cheekbones and chin, straight nose). The painting is aligned to it by a 478-landmark 2D warp (`face_warp.py`) instead of deforming the head.
 * **Armor** (all procedural, measured on the references): gorget, cuirass, pauldrons with gothic points, medallions and articulated lames, vambraces with pointed elbows, wrist cuffs, articulated gauntlet plates, lion-head knee cops (relief from the painting), greaves, ankle lames, sabatons, belt with compass-star medallions, faulds, sheathed daggers, and a chain with an orb, ring and pendant.
 * **Cloth:** inner and outer robes with handkerchief hems, front and back tabards and side panels, red stoles, a three-tier split cape with diagonal torn hems, and red forearm wraps.
 * **Hair:** ~920 textured cards from simulated guide strands (gravity, collision with head, armor and cape), ringlet curls, face-framing strands. Card-based beard and stubble; golden glowing irises.
@@ -102,7 +102,7 @@ the MediaPipe face/pose models, and the CMU `.asf/.amc` files in `$CMU_DIR`.
 | Stage | Script |
 |---|---|
 | Reference analysis | `stage0_segment.py` (masks), `stage0_landmarks.py`, `upscale.py` (Real-ESRGAN 4×), `views.py` (camera calibration) |
-| Body and face | `mh.py`, `body_fit.py`, `face_fit.py` |
+| Body and face | `mh.py`, `body_fit.py`, `face_warp.py` (texture-side landmark warp; `face_fit.py` holds the landmark tools) |
 | Geometry | `kit.py` (radial-surface kit), `armor.py`, `cloth.py`, `hair.py`, `build.py` |
 | Texturing | `uvlayout.py`, `bake_maps.py` (texel-space G-buffer), `project_tex.py` (painting projection), `tex_armor.py`, `tex_cloth.py`, `tex_body.py`, `tex_hair_eyes.py`, `materials.py` |
 | Rig | `rig.py` (skeleton, dynamic chains, skin weights, sockets) |

@@ -42,7 +42,7 @@ def sample_roots(B, n, seed=0):
     area = 0.5 * np.linalg.norm(np.cross(P[:, 1] - P[:, 0], P[:, 2] - P[:, 0]), axis=1) \
         + 0.5 * np.linalg.norm(np.cross(P[:, 2] - P[:, 0], P[:, 3] - P[:, 0]), axis=1)
     c = P.mean(1) - HEAD_C
-    crown = 1 + 1.5 * np.exp(-(c[:, 0] / 0.025) ** 2) * (c[:, 2] > 0.04)
+    crown = 1 + 1.5 * np.exp(-(c[:, 0] / 0.025) ** 2) * (c[:, 2] > 0.04) + 1.5 * (c[:, 2] > 0.03) * (c[:, 1] < 0.03)
     wts = area * crown
     idx = rng.choice(len(F), n, p=wts / wts.sum())
     a, b = rng.uniform(size=(2, n))
@@ -72,15 +72,17 @@ def simulate(roots, nrm, lengths, stand, bvh, npts=24, iters=140, seed=0):
     # comb direction: away from a (slightly off-centre) part line, back and down
     part_x = 0.008
     sidev = np.sign(roots[:, 0] - part_x + 1e-4)
-    comb = unit(np.stack([sidev * 0.75, np.full(n, 0.95), np.full(n, -0.25)], 1))
+    comb = unit(np.stack([sidev * 0.22, np.full(n, 1.0), np.full(n, -0.12)], 1))      # swept back off the forehead
+    sides = np.abs(roots[:, 0]) > 0.05
+    comb[sides] = unit(np.stack([sidev[sides] * 0.25, np.full(sides.sum(), 1.0), np.full(sides.sum(), -0.55)], 1))   # behind the ears
     backish = roots[:, 1] > 0.02
-    comb[backish] = unit(np.stack([sidev[backish] * 0.25, np.full(backish.sum(), 0.5), np.full(backish.sum(), -1.0)], 1))
+    comb[backish] = unit(np.stack([sidev[backish] * 0.18, np.full(backish.sum(), 0.55), np.full(backish.sum(), -1.0)], 1))
     front_root = (roots[:, 1] < HEAD_C[1] - 0.05) & (roots[:, 2] > HEAD_C[2] + 0.02)
     rng2 = np.random.default_rng(seed + 5)
-    loose = front_root & (np.abs(roots[:, 0]) > 0.035) & (rng2.uniform(size=n) < 0.3)   # temple locks only
+    loose = front_root & (np.abs(roots[:, 0]) > 0.045) & (rng2.uniform(size=n) < 0.12)  # a few temple locks
     comb[loose] = unit(np.stack([sidev[loose] * 1.0, np.full(loose.sum(), -0.12), np.full(loose.sum(), -0.9)], 1))
     LOOSE_MASK[0] = loose
-    d0 = unit(nrm * 0.55 + comb * 0.75)
+    d0 = unit(nrm * 0.45 + comb * 0.85)
     seg = lengths / (npts - 1)
     X = roots[:, None, :] + d0[:, None, :] * (s[None, :, None] * lengths[:, None, None]) * 0.35
     X[:, :, 2] -= (s[None, :] ** 2) * lengths[:, None] * 0.5
@@ -110,7 +112,7 @@ def simulate(roots, nrm, lengths, stand, bvh, npts=24, iters=140, seed=0):
                         X[a, i] = p + hn * (off * (0.35 + 0.65 * min(i / 6, 1)) - d)
     return X
 
-def curl(X, rng, amp=0.0065, period=(0.075, 0.13)):
+def curl(X, rng, amp=0.0045, period=(0.09, 0.15)):
     n, m, _ = X.shape
     out = X.copy()
     for a in range(n):
@@ -153,9 +155,9 @@ def cards(S, widths, tiles, n_tiles, head_axis=True):
 def _loose_for(n, roots, nrm, seed):
     rng2 = np.random.default_rng(seed + 5)
     front_root = (roots[:, 1] < HEAD_C[1] - 0.05) & (roots[:, 2] > HEAD_C[2] + 0.02)
-    return front_root & (np.abs(roots[:, 0]) > 0.035) & (rng2.uniform(size=n) < 0.3)
+    return front_root & (np.abs(roots[:, 0]) > 0.045) & (rng2.uniform(size=n) < 0.12)
 
-def build_hair(B, collider_objs, n_main=700, n_fly=220, seed=4, n_tiles=8):
+def build_hair(B, collider_objs, n_main=950, n_fly=60, seed=4, n_tiles=8):
     rng = np.random.default_rng(seed)
     bvh, _ = collider(collider_objs)
     roots, nrm = sample_roots(B, n_main + n_fly, seed)
@@ -163,9 +165,9 @@ def build_hair(B, collider_objs, n_main=700, n_fly=220, seed=4, n_tiles=8):
     back = np.clip(q[:, 1] / 0.09, -1, 1)          # +1 back of head, -1 front
     # length: longest at the back (mid-back), shorter toward the face-framing front strands
     lengths = 0.40 + 0.22 * (back + 1) / 2 + rng.normal(0, 0.035, len(roots))
-    stand = rng.uniform(0.0, 0.035, len(roots)) ** 1.0            # layered volume
+    stand = rng.uniform(0.0, 0.016, len(roots)) ** 1.0            # layered volume (close to the head)
     crown = np.clip((q[:, 2] - 0.02) / 0.08, 0, 1)
-    stand += 0.018 * crown * rng.uniform(0.3, 1.0, len(roots))     # volume on top of the head (ref)
+    stand += 0.022 * crown * rng.uniform(0.4, 1.0, len(roots))     # volume on top of the head (ref)
     stand[:n_main] *= 0.8
     X = simulate(roots, nrm, lengths * np.where(_loose_for(len(roots), roots, nrm, seed), 0.55, 1.0), stand, bvh, seed=seed)
     X = curl(X, rng)
@@ -212,7 +214,7 @@ def beard_density(L):
         must = np.clip(1 - d_must / 0.0075, 0, 1) ** 0.7
         # goatee: from the lower lip down under the chin, ~4.5 cm wide
         d_goat = _seg_dist(P, llip + [0, 0, -0.004], chin + [0, 0.012, -0.012])
-        goat = np.clip(1 - d_goat / 0.022, 0, 1) ** 0.6
+        goat = np.clip(1 - d_goat / 0.028, 0, 1) ** 0.9
         # jaw stubble: below the cheekbone line, in front of the ears, down onto the upper neck
         y_face = P[:, 2] < (0.5 * (cheekL[2] + ulip[2]) - 0.004)
         front = P[:, 1] < (jawL[1] + 0.012)
@@ -253,6 +255,31 @@ def build_beard(B, n=2600, seed=11, n_tiles=8):
     V, F, UV = cards(S, widths, tiles, n_tiles, head_axis=False)
     UV[:, 1] = 1 - (1 - UV[:, 1]) * 0.25
     p = kit.Part('beard'); p.add(V, F, UV, mat='hair')
+    return p.build(smooth=True)
+
+def build_goatee(B, n=1200, seed=13, n_tiles=8):
+    """Dense, defined goatee and mustache (the reference's pointed chin beard): longer hairs combed
+    down and slightly converging to the chin point, mustache hairs down-and-out over the lip corners."""
+    L = np.load(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'work', 'face_landmarks3d.npy'))
+    base = beard_density(L)
+    chin_z = L[152][2]
+    f = lambda P: np.clip((base(P) - 0.55) / 0.45, 0, 1) * (np.atleast_2d(P)[:, 2] > chin_z - 0.006)
+    pts, nrm, dens = _surface_sample(B, f, n, seed)
+    rng = np.random.default_rng(seed)
+    chin = L[152] + np.array([0, -0.002, -0.004])
+    must = pts[:, 2] > L[0][2] - 0.006
+    down = np.array([0, 0, -1.0])
+    toward_chin = unit(chin - pts)
+    dirv = np.where(must[:, None], unit(down + np.sign(pts[:, 0])[:, None] * [0.35, 0, 0]), unit(down + 0.35 * toward_chin))
+    dirv = unit(dirv - (dirv * nrm).sum(1, keepdims=True) * nrm)          # lie along the skin
+    length = np.where(must, rng.uniform(0.004, 0.007, n), rng.uniform(0.005, 0.009, n))
+    m = 4; S = np.zeros((n, m, 3))
+    for i in range(m):
+        t = i / (m - 1)
+        S[:, i] = pts + nrm * (0.0005 + 0.0010 * np.sin(np.pi * t * 0.8)) + dirv * (length * t)[:, None]
+    V, F, UV = cards(S, rng.uniform(0.003, 0.0042, n), rng.integers(0, n_tiles - 2, n), n_tiles, head_axis=False)
+    UV[:, 1] = 1 - (1 - UV[:, 1]) * 0.3
+    p = kit.Part('beard_goatee'); p.add(V, F, UV, mat='hair')
     return p.build(smooth=True)
 
 def build_brows(B, n=520, seed=12, n_tiles=8):

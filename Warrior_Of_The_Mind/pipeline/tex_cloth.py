@@ -119,7 +119,7 @@ def main():
             alpha[s] = a_
         alb[s] = base * (1 - g[:, None]) + GOLDT * g[:, None]
         rough[s] = (0.78 - 0.18 * damask) * (1 - g) + 0.42 * g
-        metal[s] = 0.55 * g
+        metal[s] = 0.35 * g
         height[s] = 0.00025 * damask + 0.00035 * g + 0.0001 * nz[s]
         emis[s] = 0.10 * g
     # ------------------------------------------------------------ dark robes
@@ -143,7 +143,7 @@ def main():
         gflecks = (T.noise(Pm[s], 0.003, 9, 1) > 0.75) * (de > 0.06) * 0.3
         g = np.clip(lines + xs + dots + stars + gflecks * 0.5, 0, 1)
         alb[s] = base * (1 - g[:, None]) + GOLDT * 0.95 * g[:, None]
-        rough[s] = 0.82 * (1 - g) + 0.45 * g; metal[s] = 0.55 * g
+        rough[s] = 0.85 * (1 - g) + 0.5 * g; metal[s] = 0.35 * g
         height[s] = 0.0006 * puff - 0.0003 * quilt + 0.00035 * g
         ao[s] = 1 - 0.3 * quilt
         emis[s] = 0.03 * g + 0.25 * stars
@@ -174,7 +174,7 @@ def main():
         diag = T.line_mask(np.minimum(np.abs(cx - f * p * 0.8), np.abs(cx + f * p * 0.8)), 0.0006, texel) * inner * (np.abs(cx) < wdt / 2 - 0.02)
         g = np.clip(border + loz * 0.9 + centre + nodes + diag * 0.8, 0, 1)
         alb[s] = base * (1 - g[:, None]) + GOLDT * g[:, None]
-        rough[s] = 0.8 * (1 - g) + 0.42 * g; metal[s] = 0.6 * g
+        rough[s] = 0.82 * (1 - g) + 0.5 * g; metal[s] = 0.35 * g
         height[s] = 0.0004 * g + 0.0001 * nz[s]
         glow = nodes * (T.pair_hash(np.floor(k), oid) < 0.6)
         emis[s] = 0.08 * g + 1.1 * glow
@@ -183,7 +183,7 @@ def main():
         out = np.zeros((R * R, ch), np.float32); out[idx] = vv.reshape(n, ch); return out.reshape(R, R, ch)
     ALB = img(np.c_[alb, alpha], 4); ORM = img(np.c_[ao, rough, metal], 3)
     H = img(height, 1)[..., 0]; EM = img(emis, 1)[..., 0]
-    T.apply_projection('cloth', W, mask, ALB, ORM, EM, H)
+    T.apply_projection('cloth', W, mask, ALB, ORM, EM, H, fabric=True)
     NRM = T.height_to_normal(H, mask, texel, 1.0, island=obj)
     EMC = np.clip(EM[..., None] * EMIT, 0, 1)
     ALB[..., :3] = T.dilate(ALB[..., :3], mask); ALB[..., 3] = np.where(mask, ALB[..., 3], 0)

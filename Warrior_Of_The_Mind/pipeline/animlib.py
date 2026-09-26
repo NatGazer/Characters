@@ -66,6 +66,10 @@ def from_mocap(rig, clip, frames=None, fps=FPS, root_motion=True):
     Rh = G['Hips'] @ np.linalg.inv(rig.rest['Hips'][:3, :3])[None]      # hips rotation relative to rest
     f = Rh @ np.array([0, -1.0, 0])
     yaw = np.unwrap(np.arctan2(f[:, 0], -f[:, 1]))                      # 0 = facing -Y; +yaw turns toward +X
+    up = (Rh @ np.array([0, 0, 1.0]))[:, 2]
+    good = up > 0.8                      # heading is only meaningful while the torso is upright
+    if good.any() and not good.all():
+        yaw = np.interp(np.arange(nF), np.where(good)[0], yaw[good])
     yaw = yaw - yaw[0]
     if root_motion:
         root_xy = hips[:, :2] - hips[0, :2]

@@ -17,6 +17,29 @@ W = os.path.join(HERE, 'work'); OUT = os.path.join(ROOT, 'textures')
 GOLD = np.array([0.86, 0.58, 0.26]); DARK = np.array([0.10, 0.092, 0.085]); EMIT = np.array([1.0, 0.64, 0.26])
 SKIN = np.array([0.72, 0.50, 0.40]); HAIRC = np.array([0.10, 0.065, 0.045])
 
+def load_warps():
+    """2D thin-plate warps model-image -> painting per view (face_warp.py), fading to the median
+    offset away from the face."""
+    from scipy.interpolate import RBFInterpolator
+    p = os.path.join(W, 'face_warp.npz')
+    if not os.path.exists(p): return None
+    d = np.load(p); out = {}
+    for v in ('front', 'left', 'right'):
+        if v + '_model' not in d: continue
+        Mv, Rv = d[v + '_model'], d[v + '_ref']
+        rbf = RBFInterpolator(Mv, Rv - Mv, kernel='thin_plate_spline', smoothing=2.0, degree=1, neighbors=80)
+        med = np.median(Rv - Mv, axis=0); c = Mv.mean(0); rad = np.linalg.norm(Mv - c, axis=1).max()
+        def f(uv, rbf=rbf, med=med, c=c, rad=rad):
+            dd = np.linalg.norm(uv - c, axis=1)
+            w = np.clip(1 - (dd - rad) / (0.6 * rad), 0, 1)[:, None]
+            out_ = np.empty_like(uv)
+            for i in range(0, len(uv), 200000):
+                sl = slice(i, i + 200000)
+                out_[sl] = uv[sl] + w[sl] * rbf(uv[sl]) + (1 - w[sl]) * med
+            return out_
+        out[v] = f
+    return out
+
 def delight_refs(sigma_mm=11.0, strength=0.75):
     """Remove large-scale lighting from the (upscaled) references on the skin: divide by the
     normalised-convolution low-pass of skin luminance, keep pores / brows / beard / lips."""
@@ -56,11 +79,12 @@ def main(res=4096):
     ao = np.ones(n, np.float32)
     isk = M == mats.index('skin'); ius = M == mats.index('undersuit'); ig = M == mats.index('gauntlet')
     # ---------------------------------------------------------------- skin
-    off = json.load(open(os.path.join(W, 'face_align.json')))
+    off = json.load(open(os.path.join(W, 'face_align.json'))) if os.path.exists(os.path.join(W, 'face_align.json')) else {}
     delight_refs()
+    warps = load_warps()
     bvh = project.scene_bvh(exclude=('hair', 'eyes'))
     Ps, Ns = Pm[isk], Nm[isk]
-    col, wsum = project.project(Ps, Ns, bvh, ('front', 'left', 'right'), offsets=off, power=4.0, suffix='_delit')
+    col, wsum = project.project(Ps, Ns, bvh, ('front', 'left', 'right'), offsets=off, power=4.0, suffix='_delit', warps=warps)
     q = Ps - H.HEAD_C
     scalp = H.scalp_mask_points(Ps) if hasattr(H, 'scalp_mask_points') else None
     conf = np.clip(wsum / 0.25, 0, 1)
@@ -87,7 +111,8 @@ def main(res=4096):
     scalp_col = np.array([0.12, 0.075, 0.05]) * (0.8 + 0.5 * np.clip(hs, -1, 1)[:, None])
     base = base * (1 - scalp[:, None]) + scalp_col * scalp[:, None]
     # eye slits: neutralise projected iris colour on the lids (eyeballs carry the iris)
-    eyes = [np.array([sx * 0.033, -0.083, 1.853]) for sx in (1, -1)]
+    L3f = os.path.join(W, 'face_landmarks3d.npy')
+    eyes = list(np.load(L3f)[[468, 473]]) if os.path.exists(L3f) and len(np.load(L3f)) > 473 else [np.array([sx * 0.033, -0.083, 1.853]) for sx in (1, -1)]
     de = np.min([np.linalg.norm(Ps - e, axis=1) for e in eyes], axis=0)
     lid = 1 - T.smoothstep(0.010, 0.016, de)
     darkened = np.minimum(base, fill * 0.55)

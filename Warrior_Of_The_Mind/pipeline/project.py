@@ -30,7 +30,7 @@ def visible(bvh, P, N, look, eps=0.0015):
         out[i] = h[0] is None
     return out
 
-def project(P, N, bvh, view_list=('front', 'left', 'right', 'back'), offsets=None, power=3.0, stride=1, suffix=''):
+def project(P, N, bvh, view_list=('front', 'left', 'right', 'back'), offsets=None, power=3.0, stride=1, suffix='', warps=None):
     """Returns colour (n,3) float RGB 0..1 and total weight (n,). offsets: {view: (du, dv) ref px}."""
     offsets = offsets or {}
     n = len(P)
@@ -44,6 +44,8 @@ def project(P, N, bvh, view_list=('front', 'left', 'right', 'back'), offsets=Non
         cand = cand[vis]
         uv, _ = views.project(v, P[cand])
         du, dv = offsets.get(v, (0.0, 0.0))
+        if warps and v in warps:
+            uv = warps[v](uv); du = dv = 0.0
         img = (views.ref_image(v, up=True) if not suffix else cv2.imread(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'work', 'up4', views.VIEWS[v][0] + suffix + '.png')))[..., ::-1].astype(np.float32) / 255
         c = T.sample(img, (uv[:, 0] + du) * 4, (uv[:, 1] + dv) * 4)
         w = np.clip(cosv[cand], 0, 1) ** power
