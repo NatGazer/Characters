@@ -52,6 +52,10 @@ def stance_offset(P, off):
 def folded_wings(P):
     for s in SIDES: P['wfold_' + s] = (0.0, 0.0, 0.0)
 
+def bursts(t, spans, ramp=0.06):
+    """envelope that is 1 inside each (start, end) span and 0 elsewhere (shake -> stop -> shake)"""
+    return max(pulse(t, a, a + ramp, b - 1.5 * ramp, b) for a, b in spans)
+
 def elytra_shiver(P, t, amp, freq=11.0, seed=3, D=None):
     if D: freq = max(1, round(freq * D)) / D
     for s in SIDES:
@@ -111,6 +115,8 @@ def walk(t):
     return P
 
 # ================================================================== RUN (tripod, loop)
+RUN_LOOP = 2.16   # 3 strides
+
 def run(t):
     T = 0.72
     P = neutral()
@@ -125,7 +131,9 @@ def run(t):
         k = 0 if s == 'L' else 1.3
         P['ant_' + s] = (12 + 5 * math.sin(2 * c + k), 22 + 5 * math.sin(c + k), 0)
         P['club_' + s] = (6 * math.sin(2 * c + k + 1), 8, 0)
-    elytra_shiver(P, t, 0.9, 13, D=T)
+    env = bursts(t, ((0.15, 0.50), (1.20, 1.50)))          # shake, stop, shake, stop
+    elytra_shiver(P, t, 1.5 * env, 13, D=RUN_LOOP)
+    for s in SIDES: P['ely_' + s] = 0.025 * env
     return P
 
 # ================================================================== FLEE (panicked tripod run, loop)
@@ -145,8 +153,9 @@ def flee(t):
         k = 0 if s == 'L' else 1.3
         P['ant_' + s] = (-25 + 6 * math.sin(3 * c + k), -30 + 5 * math.sin(c + k), 0)   # pinned back & down
         P['club_' + s] = (-15, -10, 0)
-        P['ely_' + s] = 0.06 + 0.035 * (0.5 + 0.5 * math.sin(8 * c + (0 if s == 'L' else 0.7)))  # panicky flutter
-    elytra_shiver(P, t, 2.2, 16, D=L)
+        env = bursts(t, ((0.10, 0.55), (1.05, 1.40), (1.70, 2.02)))
+        P['ely_' + s] = 0.045 + env * 0.035 * (0.5 + 0.5 * math.sin(8 * c + (0 if s == 'L' else 0.7)))  # panicky flutter bursts
+    elytra_shiver(P, t, 2.2 * bursts(t, ((0.10, 0.55), (1.05, 1.40), (1.70, 2.02))), 16, D=L)
     return P
 
 # ================================================================== ATTACK
@@ -295,11 +304,11 @@ def cower_layers(P, t, w, T=2.0):
         P['club_' + s] = vadd(P['club_' + s], (-20 * w, -10 * w, 0))
     stance_offset(P, {'front': (-0.10 * w, 0.10 * w, 0), 'mid': (-0.12 * w, 0.0, 0), 'hind': (-0.08 * w, -0.08 * w, 0)})
     # trembling (fast, small, rigid) + stridulation squeak (abdomen pumping)
-    tr = w * 1.35
+    tr = w * 0.55
     P['body_r'] = vadd(P['body_r'], (tr * 0.9 * lnoise(t * 13, 1, 61, 3), tr * 1.2 * lnoise(t * 11, 1, 62, 3), tr * 1.1 * lnoise(t * 12, 1, 63, 3)))
     P['pron_r'] = vadd(P['pron_r'], (tr * 1.3 * lnoise(t * 14, 1, 64, 3), tr * 1.2 * lnoise(t * 12, 1, 65, 3), 0))
-    P['abd_r'] = vadd(P['abd_r'], (w * 4.5 * math.sin(2 * math.pi * 6.5 * t), 0, 0))
-    elytra_shiver(P, t, 1.6 * w, 17, D=T)
+    P['abd_r'] = vadd(P['abd_r'], (w * 2.5 * math.sin(2 * math.pi * 6.5 * t), 0, 0))
+    elytra_shiver(P, t, 0.6 * w, 17, D=T)
 
 RETREAT = 0.22
 
@@ -321,7 +330,7 @@ def frightened(t):
     # elytra flare-and-snap at the flinch (defensive)
     for s in SIDES:
         P['ely_' + s] = 0.12 * pulse(t, 0.05, 0.1, 0.16, 0.3) + 0.04 * w
-    P['body_r'] = vadd(P['body_r'], (2.5 * damped(t, 0.12, 10, 5), 0, 3 * damped(t, 0.12, 12, 5)))
+    P['body_r'] = vadd(P['body_r'], (1.5 * damped(t, 0.12, 10, 6), 0, 1.5 * damped(t, 0.12, 12, 6)))
     # legs step back while retreating (staggered)
     for i, (l, s) in enumerate([('front', 'L'), ('mid', 'R'), ('hind', 'L'), ('front', 'R'), ('mid', 'L'), ('hind', 'R')]):
         t0 = 0.45 + 0.13 * i
@@ -345,7 +354,7 @@ def scared(t):
     for l in LEGS:
         for s in SIDES: P[f'foot_{l}_{s}'] = P[f'foot_{l}_{s}'] + Vector((0, RETREAT, 0))
     for s in SIDES:
-        P['ely_' + s] = 0.04 + 0.02 * math.sin(2 * math.pi * 6.5 * t / 1.0 + (0 if s == 'L' else 0.5))
+        P['ely_' + s] = 0.04 + 0.008 * math.sin(2 * math.pi * 6.5 * t / 1.0 + (0 if s == 'L' else 0.5))
         a = P['ant_' + s]; P['ant_' + s] = (a[0] + 6 * damped(t, 0.38, 6, 6), a[1], a[2])
     return P
 
@@ -489,7 +498,7 @@ CLIPS = [
     # name, fn, duration, loop
     ('idle', idle, 8.0, True),
     ('walk', walk, 1.6, True),
-    ('run', run, 0.72, True),
+    ('run', run, RUN_LOOP, True),
     ('attack', attack, 3.8, False),
     ('attack_enter', attack_enter, 0.9, False),
     ('attack_ready', attack_ready, 2.0, True),

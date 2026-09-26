@@ -43,15 +43,15 @@ MP4 per clip in `renders/videos/`. Hi-res stills: `renders/hero_*.jpg`.
 |---|---|---|---|
 | `idle` | 8.0 s | loop | Breathing (abdomen pumping), weight shifts, insect-like look-arounds with holds, exploring antennae with twitches, a mid-leg shuffle, a front-leg tap, and an elytra settle-flick with shudder |
 | `walk` | 1.6 s | loop | Metachronal wave gait (hind→mid→front per side). Body bob, roll and yaw sway, counter-rotating pronotum, lagging abdomen, antennae sampling |
-| `run` | 0.72 s | loop | Alternating tripod gait, forward lean, stronger sway, elytra jitter |
+| `run` | 2.16 s | loop | Alternating tripod gait (3 strides per loop), forward lean, stronger sway, elytra shake in short bursts (shake, stop, shake) |
 | `attack` | 3.8 s | once | Complete attack from the stance: alert, **rears up with horn raised**, elytra snap open, hindwings spread, then **tilts forward**, lunges with the horn scooping low, **pries/flips the horn up**, shakes its head, and returns to the stance |
 | `attack_enter` | 0.9 s | once | Stance → combat-ready |
 | `attack_ready` | 2.0 s | loop | **Combat-ready threat display**: body tilted forward, elytra open, hindwings raised and buzzing, horn feints, tracking sway, restless front feet, stridulation pumping |
 | `attack_strike` | 1.9 s | once | Strike from the ready pose back to the ready pose (coil, lunge, pry-flip, head shake) |
 | `attack_exit` | 0.9 s | once | Combat-ready → stance (wings fold, elytra close with a snap) |
 | `frightened` | 2.6 s | once | Startle flinch, elytra flare-and-snap, head retracts, antennae pinned back, trembling retreat with nervous glances. Ends in the `scared_loop` pose |
-| `scared_loop` | 2.0 s | loop | Cowering, fast trembling, squeaking (abdomen stridulation), quick glances |
-| `flee` | 2.24 s | loop | Panicked tripod run: low and leaning, erratic yaw, head down, antennae pinned, fluttering elytra |
+| `scared_loop` | 2.0 s | loop | Cowering, subtle trembling, squeaking (abdomen stridulation), quick glances |
+| `flee` | 2.24 s | loop | Panicked tripod run: low and leaning, erratic yaw, head down, antennae pinned, elytra flutter in uneven bursts |
 | `takeoff` | 3.4 s | once | Warm-up pumping, elytra open, hindwings unfold (root → fold → tip), wing beat ramps up, push-off, climbs to flight pose. Ends in `fly` |
 | `fly` | 1.0 s | loop | 4 Hz wing beat (figure-of-eight tip path, feathering, passive flex), elytra held up and vibrating, body pitched 34°, legs dangling. Body is **1.6 m above the root** |
 | `land` | 3.2 s | once | Descends from `fly`, legs reach down, touchdown compression, wings fold, elytra close with a snap, settle wiggle |
