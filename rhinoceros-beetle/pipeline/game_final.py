@@ -1,4 +1,4 @@
-import bpy
+import bpy, os
 W='./work/'
 OUT='../'
 bpy.ops.wm.open_mainfile(filepath=W+'game_stage1.blend')
@@ -7,7 +7,7 @@ for n in ('Beetle',):
 for m in list(bpy.data.materials): bpy.data.materials.remove(m)
 for im in list(bpy.data.images): bpy.data.images.remove(im)
 def img(fn,noncolor=False):
-    im=bpy.data.images.load(OUT+'textures/game/'+fn); im.reload()
+    im=bpy.data.images.load(os.path.abspath(OUT+'textures/game/'+fn)); im.reload()
     if noncolor: im.colorspace_settings.name='Non-Color'
     return im
 ao=bpy.data.objects['BeetleRig']
@@ -25,5 +25,9 @@ for name,mat in (('Beetle_Game_Body',m),('Beetle_Game_Wings',mw)):
     o=bpy.data.objects[name]; print(name,'invalid fixed:',o.data.validate(verbose=False)); o.data.materials.clear(); o.data.materials.append(mat)
     for md in list(o.modifiers): o.modifiers.remove(md)
     md=o.modifiers.new('Armature','ARMATURE'); md.object=ao; o.parent=ao
-bpy.ops.wm.save_as_mainfile(filepath=OUT+'rhinoceros_beetle_game.blend',relative_remap=True)
+bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(OUT+'rhinoceros_beetle_game.blend'),relative_remap=True)
+# store texture paths relative to the .blend so the file is portable
+for im in bpy.data.images:
+    if im.filepath: im.filepath = bpy.path.relpath(bpy.path.abspath(im.filepath))
+bpy.ops.wm.save_mainfile()
 print('saved game blend')

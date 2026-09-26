@@ -11,9 +11,9 @@ import numpy as np, os
 import gl, geo, icp, nonrigid as nr
 from scipy.spatial import cKDTree
 from legs_def import LEGS
-REPO = os.environ.get('BEETLE_REPO', '../..')
-MAIN = REPO + '/cc0-74mm-rhinoceros-beetle-t-dichotom/source/QS1296-W05-1all-7.gltf'
-WING = REPO + '/wings/source/QS1462-W24-1-1_alpha.gltf'
+CREATURE = os.environ.get('CREATURE_DIR', '..')   # this creature's folder
+MAIN = CREATURE + '/source/wings-closed/source/QS1296-W05-1all-7.gltf'
+WING = CREATURE + '/source/wings-open/source/QS1462-W24-1-1_alpha.gltf'
 os.makedirs('work', exist_ok=True)
 
 # ---- weld

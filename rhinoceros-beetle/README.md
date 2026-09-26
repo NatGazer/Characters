@@ -5,13 +5,26 @@ the two photogrammetry scans in this repository:
 
 | Source | Used for |
 |---|---|
-| `cc0-74mm-rhinoceros-beetle-t-dichotom` (wings hidden) | **Base model**: head and horn, pronotum and thoracic horn, legs, underside |
-| `wings` (wings open) | **Hindwings**, **elytra** (with their real underside) and the **dorsal abdomen** that is exposed when the elytra open |
+| `source/wings-closed/` (wings hidden) | **Base model**: head and horn, pronotum and thoracic horn, legs, underside |
+| `source/wings-open/` (wings open) | **Hindwings**, **elytra** (with their real underside) and the **dorsal abdomen** that is exposed when the elytra open |
 
 ![showcase](renders/showcase.jpg)
 
 **Previews:** [`renders/videos/showreel.mp4`](renders/videos/showreel.mp4) (all behaviours, Cycles with motion blur) and one
 MP4 per clip in `renders/videos/`. Hi-res stills: `renders/hero_*.jpg`.
+
+## Folder layout
+
+```
+rhinoceros-beetle/
+├── source/wings-closed/   raw photogrammetry scan, elytra closed (base model)
+├── source/wings-open/     raw photogrammetry scan, elytra + hindwings open
+├── rhinoceros_beetle.glb / .blend           full-resolution rigged + animated model
+├── rhinoceros_beetle_game.glb / .blend      game-optimised model
+├── textures/              textures used by the .blend files (textures/game/ for the game version)
+├── renders/               showcase stills + videos/
+└── pipeline/              scripts that rebuild everything above from source/
+```
 
 ## Files
 
@@ -105,7 +118,7 @@ The `.blend` files contain the original control rig: `foot_ik.*` controls, `pole
 
 ## Pipeline (reproducible)
 
-`pipeline/run_all.sh` rebuilds everything from the two raw scans (Python 3.11 + `bpy==5.0.1`, numpy, scipy, pillow, mapbox-earcut):
+`pipeline/run_all.sh` rebuilds everything in this folder from the two raw scans in `source/` (Python 3.11 + `bpy==5.0.1`, numpy, scipy, pillow, mapbox-earcut):
 
 1. **Scan analysis:** weld the UV-split vertices, compute geodesic distance fields from the claws, and find leg joints from centerline ring radius and bend.
 2. **Segmentation** of the single fused scan into 40 rigid parts:

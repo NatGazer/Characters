@@ -1,5 +1,5 @@
 #!/bin/bash
-# Rebuilds everything in animated/ from the two raw scans in the repo.
+# Rebuilds everything in rhinoceros-beetle/ from the two raw scans in rhinoceros-beetle/source/.
 # Requirements: python3.11 with  bpy==5.0.1 numpy scipy pillow mapbox-earcut  (pip install ...)
 # Headless Blender rendering/baking needs Mesa EGL (libegl1 libgl1-mesa-dri) for Workbench; Cycles runs on CPU.
 set -e

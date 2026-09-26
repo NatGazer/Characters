@@ -5,7 +5,7 @@ S=0.06; J=json.load(open('work/joints.json')); GZ=J['ground_z']; XSHIFT=2.0
 def T(p): p=np.asarray(p,float); return S*np.stack([-p[...,1],p[...,0]-XSHIFT,p[...,2]-GZ],-1)
 names=json.load(open('work/names.json'))
 # ---------------- main mesh
-Mm,_,_=gl.load("../../cc0-74mm-rhinoceros-beetle-t-dichotom/source/QS1296-W05-1all-7.gltf")
+Mm,_,_=gl.load("../source/wings-closed/source/QS1296-W05-1all-7.gltf")
 m=Mm[('QS1296-W01-1-1-updated',0)]; MP=m['P']*1000; MUV=m['UV']; MF=m['F']
 W0=np.load('work/main_weld.npz'); WP=W0['P']; WF=W0['F']
 fl=np.load('work/flab_clean.npy').copy()
@@ -22,7 +22,7 @@ def bone_of(nm):
     return f'{leg}_{seg}.{side}'
 BONES_PART=[bone_of(n) for n in names]
 # ---------------- wing model body
-Wm,_,_=gl.load("../../wings/source/QS1462-W24-1-1_alpha.gltf")
+Wm,_,_=gl.load("../source/wings-open/source/QS1462-W24-1-1_alpha.gltf")
 wb=Wm[('body',0)]; WBUV=wb['UV']; WBF=wb['F']
 Wb=np.load('work/wb_weld.npz'); WBP=Wb['P']; WBFw=Wb['F']; winv=Wb['inv']
 efl=np.load('work/wb_elytra_flab.npy')
