@@ -26,7 +26,7 @@ TGT = {
     'root':     (0.000,  0.035, 1.105),
 }
 HEAD_SCALE = 0.85
-GIRTH = {'uarm': 0.90, 'farm': 0.90, 'thigh': 0.88, 'shin': 0.88, 'hand': 1.08, 'foot': 0.95}
+GIRTH = {'uarm': 0.96, 'farm': 0.95, 'thigh': 0.95, 'shin': 0.94, 'hand': 1.08, 'foot': 0.95}
 
 SEG = {}  # MH bone -> segment name
 def seg_of(b):
@@ -73,14 +73,18 @@ FACE_TARGETS = [
     ('cheek/l-cheek-volume-decr', 0.5), ('cheek/r-cheek-volume-decr', 0.5),
     ('cheek/l-cheek-inner-decr', 0.4), ('cheek/r-cheek-inner-decr', 0.4),
     ('eyes/l-eye-push1-in', 0.35), ('eyes/r-eye-push1-in', 0.35), ('eyes/l-eye-bag-decr', 0.4), ('eyes/r-eye-bag-decr', 0.4),
-    ('head/head-square', 0.35), ('mouth/mouth-scale-horiz-incr', 0.15), ('neck/neck-scale-horiz-decr', 0.35), ('neck/neck-scale-depth-decr', 0.2),
+    ('head/head-square', 0.35), ('mouth/mouth-scale-horiz-incr', 0.15),
 ]
 
-# athletic V-taper: narrower waist and hips, flatter stomach, lean chest
+# strong athletic V-taper: full chest, lats, shoulders and arms, strong neck; narrow waist and hips, flat stomach
 BODY_TARGETS = [
-    ('measure/measure-waist-circ-decr', 0.6), ('measure/measure-hips-circ-decr', 0.35),
-    ('stomach/stomach-pregnant-decr', 0.5), ('measure/measure-bust-circ-decr', 0.15),
-    ('measure/measure-upperarm-circ-decr', 0.25), ('measure/measure-thigh-circ-decr', 0.3),
+    ('measure/measure-waist-circ-decr', 0.45), ('measure/measure-hips-circ-decr', 0.3),
+    ('stomach/stomach-pregnant-decr', 0.5), ('measure/measure-bust-circ-incr', 0.25),
+    ('torso/torso-muscle-pectoral-incr', 0.5), ('torso/torso-muscle-dorsi-incr', 0.55),
+    ('measure/measure-upperarm-circ-incr', 0.1), ('measure/measure-neck-circ-incr', 0.3),
+    ('armslegs/l-upperarm-muscle-incr', 0.35), ('armslegs/r-upperarm-muscle-incr', 0.35),
+    ('armslegs/l-upperarm-shoulder-muscle-incr', 0.5), ('armslegs/r-upperarm-shoulder-muscle-incr', 0.5),
+    ('armslegs/l-lowerarm-muscle-incr', 0.4), ('armslegs/r-lowerarm-muscle-incr', 0.4),
     ('head/head-age-decr', 0.35),
 ]
 

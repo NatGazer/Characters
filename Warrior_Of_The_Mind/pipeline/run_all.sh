@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 python3 stage0_segment.py          # masks of the references
 python3 upscale.py                 # 4x Real-ESRGAN upscales (cached)
 python3 body_fit.py                # MakeHuman body fitted to the measured skeleton
-cp work/body.npz work/body_base.npz   # chin_sculpt.py (in run_model.sh) starts from this
+python3 keep_head.py               # approved head onto the refitted body -> body_base.npz
 python3 face_warp.py              # painting -> head landmark warp (head geometry kept)
 ./run_model.sh                     # geometry, uv, texel maps, textures, rig
 python3 anims.py                   # all animation clips

@@ -69,9 +69,9 @@ LOOSE_FRAC = 0.0          # fraction of front-temple roots that become loose fac
 
 def keep_behind(P):
     z = P[..., 2]
-    ymin = np.where(z < 1.87, -0.02 + 0.07 * np.clip((1.87 - z) / 0.14, 0, 1), -1.0)
+    ymin = np.interp(z, [1.73, 1.87, 1.90, 1.93], [0.05, -0.02, -0.06, -1.0])   # behind the ears; nothing on the forehead
     P = P.copy(); P[..., 1] = np.maximum(P[..., 1], ymin)
-    xmax = np.interp(z, [1.40, 1.55, 1.72, 1.84, 1.90], [0.13, 0.11, 0.055, 0.085, 1.0])   # gathered behind the neck
+    xmax = np.interp(z, [1.40, 1.55, 1.72, 1.84, 1.90], [0.16, 0.14, 0.080, 0.105, 1.0])   # gathered behind the neck
     P[..., 0] = np.clip(P[..., 0], -xmax, xmax)
     return P
 
@@ -125,7 +125,7 @@ def simulate(roots, nrm, lengths, stand, bvh, npts=24, iters=140, seed=0):
                         X[a, i] = p + hn * (off * (0.35 + 0.65 * min(i / 6, 1)) - d)
     return X
 
-def curl(X, rng, amp=0.0045, period=(0.09, 0.15)):
+def curl(X, rng, amp=0.010, period=(0.10, 0.16)):
     n, m, _ = X.shape
     out = X.copy()
     for a in range(n):
@@ -170,7 +170,7 @@ def _loose_for(n, roots, nrm, seed):
     front_root = (roots[:, 1] < HEAD_C[1] - 0.05) & (roots[:, 2] > HEAD_C[2] + 0.02)
     return front_root & (np.abs(roots[:, 0]) > 0.045) & (rng2.uniform(size=n) < LOOSE_FRAC)
 
-def build_hair(B, collider_objs, n_main=950, n_fly=60, seed=4, n_tiles=8):
+def build_hair(B, collider_objs, n_main=1150, n_fly=0, seed=4, n_tiles=8):
     rng = np.random.default_rng(seed)
     bvh, _ = collider(collider_objs)
     roots, nrm = sample_roots(B, n_main + n_fly, seed)
@@ -178,10 +178,9 @@ def build_hair(B, collider_objs, n_main=950, n_fly=60, seed=4, n_tiles=8):
     back = np.clip(q[:, 1] / 0.09, -1, 1)          # +1 back of head, -1 front
     # length: longest at the back (mid-back), shorter toward the face-framing front strands
     lengths = 0.40 + 0.22 * (back + 1) / 2 + rng.normal(0, 0.035, len(roots))
-    stand = rng.uniform(0.0, 0.016, len(roots)) ** 1.0            # layered volume (close to the head)
+    stand = rng.uniform(0.005, 0.026, len(roots))                  # layered volume: a full, thick mane
     crown = np.clip((q[:, 2] - 0.02) / 0.08, 0, 1)
-    stand += 0.022 * crown * rng.uniform(0.4, 1.0, len(roots))     # volume on top of the head (ref)
-    stand[:n_main] *= 0.8
+    stand += 0.028 * crown * rng.uniform(0.5, 1.0, len(roots))     # volume on top of the head (ref)
     X = simulate(roots, nrm, lengths * np.where(_loose_for(len(roots), roots, nrm, seed), 0.55, 1.0), stand, bvh, seed=seed)
     X = curl(X, rng)
     widths = np.r_[rng.uniform(0.016, 0.026, n_main), rng.uniform(0.006, 0.010, n_fly)]

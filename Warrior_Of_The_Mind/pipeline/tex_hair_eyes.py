@@ -29,7 +29,7 @@ def hair_atlas(tiles=8, tw=256, th=2048, ss=2, seed=3):
         tile_col = np.zeros((H, Wt, 3), np.float32); tile_cov = np.zeros((H, Wt), np.float32)
         for c in range(n_clumps):
             cx = (c + 0.5) / n_clumps * Wt + rng.normal(0, 0.06) * Wt
-            per = rng.uniform(0.08, 0.12) * H * (1.4 if fly else 1.0)          # loose waves, not crimps
+            per = rng.uniform(0.05, 0.08) * H * (1.4 if fly else 1.0)          # tight curls (reference ringlets)
             amp = rng.uniform(0.05, 0.09) * Wt / (n_clumps / 3.0)
             ph = rng.uniform(0, 2 * np.pi)
             length = rng.uniform(0.75, 1.0)

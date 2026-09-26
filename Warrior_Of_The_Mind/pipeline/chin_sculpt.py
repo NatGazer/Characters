@@ -1,9 +1,9 @@
 """Stronger chin on the chosen head (reference: a prominent, squared chin under the goatee).
 
-Reads work/body_base.npz (the approved head, a copy of body_fit.py's body.npz) and writes work/body.npz
+Reads work/body_base.npz (keep_head.py: refitted body with the approved head) and writes work/body.npz
 with the chin pushed forward and slightly down by a smooth local displacement. The lips, jaw corners
 and neck are untouched. Idempotent: always starts from body_base.npz.
-Run after body_fit.py (copy its body.npz to body_base.npz) and before face_warp.py.
+Run after body_fit.py and keep_head.py, before face_warp.py.
 """
 import os
 import numpy as np

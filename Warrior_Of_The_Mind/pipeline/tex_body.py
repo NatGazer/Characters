@@ -16,6 +16,7 @@ HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
 W = os.path.join(HERE, 'work'); OUT = os.path.join(ROOT, 'textures')
 GOLD = np.array([0.86, 0.58, 0.26]); DARK = np.array([0.10, 0.092, 0.085]); EMIT = np.array([1.0, 0.64, 0.26])
 SKIN = np.array([0.72, 0.50, 0.40]); HAIRC = np.array([0.10, 0.065, 0.045])
+SKIN_LIGHTEN, SKIN_SAT = 1.28, 0.82    # lighter complexion than the painting (user direction)
 
 def load_warps():
     """2D thin-plate warps model-image -> painting per view (face_warp.py), fading to the median
@@ -121,6 +122,10 @@ def main(res=4096):
     lum_b = base @ np.array([0.3, 0.59, 0.11]); cap = (tone @ np.array([0.3, 0.59, 0.11])) * 1.12
     over = np.clip(lum_b / np.maximum(cap, 1e-3), 1, None)
     base = base / (1 + (over[:, None] - 1) * 0.85)
+    # lighter complexion: lift and slightly desaturate the skin (not the scalp / hairline)
+    lum_s = base @ np.array([0.3, 0.59, 0.11])
+    light = np.clip((lum_s[:, None] + (base - lum_s[:, None]) * SKIN_SAT) * SKIN_LIGHTEN, 0, 1)
+    base = base * scalp[:, None] + light * (1 - scalp[:, None])
     alb[isk] = np.clip(base * (1 + 0.04 * npore[:, None]), 0, 1)
     rough[isk] = 0.52 + 0.08 * npore - 0.1 * (q[:, 2] > 0.0) * (1 - scalp) + 0.25 * scalp
     height[isk] = 0.00004 * npore
