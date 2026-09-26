@@ -10,6 +10,9 @@ the two photogrammetry scans in this repository:
 
 ![showcase](renders/showcase.jpg)
 
+**Previews:** [`renders/videos/showreel.mp4`](renders/videos/showreel.mp4) (all behaviours, Cycles with motion blur) and one
+MP4 per clip in `renders/videos/`. Hi-res stills: `renders/hero_*.jpg`.
+
 ## Files
 
 | File | What it is |
@@ -18,7 +21,7 @@ the two photogrammetry scans in this repository:
 | `rhinoceros_beetle_game.glb` | **Game-optimised version** (~52k triangles, 1 opaque atlas + 1 wing atlas, baked normal map), same skeleton and animations |
 | `rhinoceros_beetle.blend` / `rhinoceros_beetle_game.blend` | Blender 5.0 source files with the full control rig (leg IK, poles, foot controls) and all actions |
 | `textures/` | Scan textures (full-res) and `textures/game/` (baked albedo 4096, normal 2048, wing RGBA 2048) |
-| `renders/` | Showreel video and stills of every behaviour |
+| `renders/` | Showreel + per-clip videos (`videos/`) and hi-res stills |
 | `pipeline/` | The complete, scripted pipeline that produced everything (see below) |
 
 ## Scale and orientation
