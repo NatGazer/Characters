@@ -2,6 +2,7 @@
 # Rebuild geometry -> uv layout -> texel maps -> textures
 set -e
 cd "$(dirname "$0")"
+python3 chin_sculpt.py
 python3 face_warp.py
 python3 build.py
 python3 uvlayout.py

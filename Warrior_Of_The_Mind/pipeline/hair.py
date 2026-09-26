@@ -65,6 +65,16 @@ def collider(objs):
     V = np.vstack(Vs)
     return BVHTree.FromPolygons([Vector(v) for v in V], Fs), V
 
+LOOSE_FRAC = 0.0          # fraction of front-temple roots that become loose face-framing locks (none: all hair back)
+
+def keep_behind(P):
+    z = P[..., 2]
+    ymin = np.where(z < 1.87, -0.02 + 0.07 * np.clip((1.87 - z) / 0.14, 0, 1), -1.0)
+    P = P.copy(); P[..., 1] = np.maximum(P[..., 1], ymin)
+    xmax = np.interp(z, [1.40, 1.55, 1.72, 1.84, 1.90], [0.13, 0.11, 0.055, 0.085, 1.0])   # gathered behind the neck
+    P[..., 0] = np.clip(P[..., 0], -xmax, xmax)
+    return P
+
 def simulate(roots, nrm, lengths, stand, bvh, npts=24, iters=140, seed=0):
     rng = np.random.default_rng(seed)
     n = len(roots)
@@ -72,14 +82,14 @@ def simulate(roots, nrm, lengths, stand, bvh, npts=24, iters=140, seed=0):
     # comb direction: away from a (slightly off-centre) part line, back and down
     part_x = 0.008
     sidev = np.sign(roots[:, 0] - part_x + 1e-4)
-    comb = unit(np.stack([sidev * 0.22, np.full(n, 1.0), np.full(n, -0.12)], 1))      # swept back off the forehead
+    comb = unit(np.stack([sidev * 0.12, np.full(n, 1.0), np.full(n, -0.10)], 1))      # swept straight back off the forehead
     sides = np.abs(roots[:, 0]) > 0.05
-    comb[sides] = unit(np.stack([sidev[sides] * 0.25, np.full(sides.sum(), 1.0), np.full(sides.sum(), -0.55)], 1))   # behind the ears
+    comb[sides] = unit(np.stack([sidev[sides] * 0.10, np.full(sides.sum(), 1.0), np.full(sides.sum(), -0.35)], 1))   # back over the ears
     backish = roots[:, 1] > 0.02
     comb[backish] = unit(np.stack([sidev[backish] * 0.18, np.full(backish.sum(), 0.55), np.full(backish.sum(), -1.0)], 1))
     front_root = (roots[:, 1] < HEAD_C[1] - 0.05) & (roots[:, 2] > HEAD_C[2] + 0.02)
     rng2 = np.random.default_rng(seed + 5)
-    loose = front_root & (np.abs(roots[:, 0]) > 0.045) & (rng2.uniform(size=n) < 0.12)  # a few temple locks
+    loose = front_root & (np.abs(roots[:, 0]) > 0.045) & (rng2.uniform(size=n) < LOOSE_FRAC)
     comb[loose] = unit(np.stack([sidev[loose] * 1.0, np.full(loose.sum(), -0.12), np.full(loose.sum(), -0.9)], 1))
     LOOSE_MASK[0] = loose
     d0 = unit(nrm * 0.45 + comb * 0.85)
@@ -98,6 +108,9 @@ def simulate(roots, nrm, lengths, stand, bvh, npts=24, iters=140, seed=0):
         for i in range(1, npts):
             d = X[:, i] - X[:, i - 1]
             X[:, i] = X[:, i - 1] + unit(d) * seg[:, None]
+        # all hair falls behind the head: below the temples no strand may come forward of the ears,
+        # and lower down it stays on the back (lower face and jaw left uncovered, nothing over the shoulders)
+        X[:, 3:] = keep_behind(X[:, 3:])
         # collisions (every other iteration for speed)
         if it % 2 == 0 or it > iters - 10:
             for a in range(n):
@@ -155,7 +168,7 @@ def cards(S, widths, tiles, n_tiles, head_axis=True):
 def _loose_for(n, roots, nrm, seed):
     rng2 = np.random.default_rng(seed + 5)
     front_root = (roots[:, 1] < HEAD_C[1] - 0.05) & (roots[:, 2] > HEAD_C[2] + 0.02)
-    return front_root & (np.abs(roots[:, 0]) > 0.045) & (rng2.uniform(size=n) < 0.12)
+    return front_root & (np.abs(roots[:, 0]) > 0.045) & (rng2.uniform(size=n) < LOOSE_FRAC)
 
 def build_hair(B, collider_objs, n_main=950, n_fly=60, seed=4, n_tiles=8):
     rng = np.random.default_rng(seed)
@@ -172,6 +185,7 @@ def build_hair(B, collider_objs, n_main=950, n_fly=60, seed=4, n_tiles=8):
     X = simulate(roots, nrm, lengths * np.where(_loose_for(len(roots), roots, nrm, seed), 0.55, 1.0), stand, bvh, seed=seed)
     X = curl(X, rng)
     widths = np.r_[rng.uniform(0.016, 0.026, n_main), rng.uniform(0.006, 0.010, n_fly)]
+    widths *= 1.0 + 0.45 * np.clip(-q[:, 1] / 0.08, 0, 1)          # wider cards at the hairline: no scalp showing
     tiles = np.r_[rng.integers(0, n_tiles - 2, n_main), rng.integers(n_tiles - 2, n_tiles, n_fly)]
     V, F, UV = cards(X, widths, tiles, n_tiles)
     p = kit.Part('hair'); p.add(V, F, UV, mat='hair')
