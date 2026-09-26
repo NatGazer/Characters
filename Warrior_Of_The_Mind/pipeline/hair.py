@@ -180,7 +180,7 @@ def build_hair(B, collider_objs, n_main=1150, n_fly=0, seed=4, n_tiles=8):
     lengths = 0.40 + 0.22 * (back + 1) / 2 + rng.normal(0, 0.035, len(roots))
     stand = rng.uniform(0.005, 0.026, len(roots))                  # layered volume: a full, thick mane
     crown = np.clip((q[:, 2] - 0.02) / 0.08, 0, 1)
-    stand += 0.028 * crown * rng.uniform(0.5, 1.0, len(roots))     # volume on top of the head (ref)
+    stand += 0.016 * crown * rng.uniform(0.5, 1.0, len(roots))     # volume on top of the head (ref)
     X = simulate(roots, nrm, lengths * np.where(_loose_for(len(roots), roots, nrm, seed), 0.55, 1.0), stand, bvh, seed=seed)
     X = curl(X, rng)
     widths = np.r_[rng.uniform(0.016, 0.026, n_main), rng.uniform(0.006, 0.010, n_fly)]
