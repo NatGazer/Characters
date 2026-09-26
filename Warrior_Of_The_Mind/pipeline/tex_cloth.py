@@ -105,7 +105,7 @@ def main():
             bstar = star8(bx, dh - 0.073, 0.022, 0.012) * band
             arcs = T.line_mask(np.abs(np.sqrt(bx ** 2 + (dh - 0.073) ** 2) - 0.028), 0.0006, texel) * band * (dh > 0.052) * 0.7
             g = np.maximum.reduce([g, np.clip(lines, 0, 1), bstar, arcs * 0.9])
-            a_, fringe = lace(s, d_hem, u, 0.075, seed=1)
+            a_, fringe = lace(s, d_hem, u, 0.045, seed=1)
             alpha[s] = a_
             base = base * (1 - 0.15 * fringe[:, None])
         elif key == 'cloth_red_stole':

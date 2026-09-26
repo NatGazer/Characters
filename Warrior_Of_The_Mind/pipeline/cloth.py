@@ -25,8 +25,8 @@ def interp_z(z, zs, vals):
     return np.interp(z, zs[o], vals[o])
 
 ROBE_Z = [1.285, 1.10, 0.90, 0.55, 0.25, 0.0]
-ROBE_A = [0.155, 0.180, 0.220, 0.300, 0.370, 0.400]
-ROBE_B = [0.125, 0.140, 0.175, 0.215, 0.245, 0.265]
+ROBE_A = [0.150, 0.168, 0.195, 0.240, 0.275, 0.290]   # straight surcoat, little flare
+ROBE_B = [0.120, 0.132, 0.152, 0.182, 0.202, 0.212]
 
 class Folds:
     """Vertical cloth folds: r += sum_k A(z) * w_k * sin(n_k*theta + phase_k(z))."""
@@ -70,21 +70,21 @@ def robe_layer(name, th0, th1, z_top, hem_fn, off=0.0, folds=None, nth=120, nt=3
 def robes():
     parts = []
     # inner robe: long, open at the front-right (the armoured right leg shows through)
-    f1 = Folds(n=30, seed=3, amp=0.032, z_top=1.28, z_bot=0.15)
-    gap0, gap1 = -0.72, -0.04                          # opening, theta range (front-right)
+    f1 = Folds(n=14, seed=3, amp=0.026, z_top=1.28, z_bot=0.15)       # few, heavy folds
+    gap0, gap1 = -0.66, 0.34                           # split front: both armoured legs show when walking
     th0, th1 = gap1, gap0 + 2 * np.pi
     def hem1(th):
-        return hem_points(th, 0.26, 0.13, 17, phase=0.3, seed=5) - 0.03 * np.cos(th)
+        return hem_points(th, 0.30, 0.09, 9, phase=0.3, seed=5, sharp=1.1) - 0.02 * np.cos(th)
     def curl1(TH, T):  # open edges roll outward a little, more toward the hem
         e = np.minimum(np.abs(TH - th0), np.abs(TH - th1))
         return 0.02 * np.exp(-e / 0.06) * np.clip((1.0 - T) / 0.8, 0, 1)
     p, _ = robe_layer('robe_inner', th0, th1, 1.29, hem1, off=0.0, folds=f1, curl=curl1)
     parts.append(p)
     # outer robe: higher hem with large handkerchief points, open at the front
-    f2 = Folds(n=22, seed=11, amp=0.036, z_top=1.28, z_bot=0.35)
+    f2 = Folds(n=12, seed=11, amp=0.030, z_top=1.28, z_bot=0.35)
     th0, th1 = 0.34, 2 * np.pi - 0.34
     def hem2(th):
-        return hem_points(th, 0.52, 0.22, 11, phase=0.9, seed=9, sharp=1.2) - 0.06 * np.cos(th)
+        return hem_points(th, 0.52, 0.15, 7, phase=0.9, seed=9, sharp=1.1) - 0.04 * np.cos(th)
     def curl2(TH, T):
         e = np.minimum(np.abs(TH - th0), np.abs(TH - th1))
         return 0.03 * np.exp(-e / 0.08) * np.clip((1.1 - T) / 0.8, 0, 1)
