@@ -6,6 +6,7 @@ its raw scans, the finished models, textures, preview renders and the pipeline t
 | Creature | Folder | Contents |
 |---|---|---|
 | Giant rhinoceros beetle (*Trypoxylus dichotomus*) | [`rhinoceros-beetle/`](rhinoceros-beetle/) | Full-res and game GLB, 47-bone rig, 14 animations (idle, walk, run, attack, frightened, flee, takeoff, fly, land…) |
+| Warrior of the Mind (hero character) | [`Warrior_Of_The_Mind/`](Warrior_Of_The_Mind/) | Built from 6 reference paintings: 221k-tri model, humanoid rig + 51 spring-bone chains, 40 animations (mocap + keyframed), Godot 4.7 project with Jolt ragdoll, cloth/hair physics, showcase and playable controller |
 
 ![rhinoceros beetle](rhinoceros-beetle/renders/showcase.jpg)
 
