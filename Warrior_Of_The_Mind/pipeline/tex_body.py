@@ -28,7 +28,7 @@ def load_warps():
     for v in ('front', 'left', 'right'):
         if v + '_model' not in d: continue
         Mv, Rv = d[v + '_model'], d[v + '_ref']
-        rbf = RBFInterpolator(Mv, Rv - Mv, kernel='thin_plate_spline', smoothing=2.0, degree=1, neighbors=80)
+        rbf = RBFInterpolator(Mv, Rv - Mv, kernel='thin_plate_spline', smoothing=2.0, degree=1)   # all landmarks: a local neighbour set leaves seams
         med = np.median(Rv - Mv, axis=0); c = Mv.mean(0); rad = np.linalg.norm(Mv - c, axis=1).max()
         def f(uv, rbf=rbf, med=med, c=c, rad=rad):
             dd = np.linalg.norm(uv - c, axis=1)
@@ -61,6 +61,60 @@ def delight_refs(sigma_mm=11.0, strength=0.75):
         out = np.clip(img * gain[..., None], 0, 1)
         cv2.imwrite(os.path.join(W, 'up4', views.VIEWS[v][0] + '_delit.png'), (out * 255).astype(np.uint8))
 
+# face-landmark groups (MediaPipe indices, radius in mm) kept untouched when the painted strands are removed
+PROTECT_PTS = {
+    'brows': ([70, 63, 105, 66, 107, 336, 296, 334, 293, 300, 46, 53, 52, 65, 55, 276, 283, 282, 295, 285], 4.5),
+    'eyes': ([33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246,
+              362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398], 4.0),
+    'nose': ([1, 2, 4, 5, 98, 327, 94, 19, 48, 278, 64, 294, 129, 358], 3.0),
+}
+# lower face (moustache, lips, goatee, jaw stubble): the polygon under the nose along the jaw
+# central face (brows, eyes, sockets, nose): its natural shading must not be repainted
+CENTRAL_FACE = [70, 63, 105, 66, 107, 336, 296, 334, 293, 300, 46, 276, 33, 263, 130, 359, 226, 446, 98, 327, 2, 129, 358]
+LOWER_FACE = [234, 93, 132, 58, 172, 136, 150, 149, 176, 148, 152, 377, 400, 378, 379, 365, 397, 288, 361, 323, 454,
+              366, 401, 435, 358, 327, 2, 98, 129, 215, 177, 137]
+
+def clean_refs(kernel=61, thr=0.035):
+    """The paintings have locks of hair falling across the face; the model's hair is swept back, so those
+    painted strands would read as dirt on the skin. Thin dark lines (black-hat of luminance) on the face are
+    repainted from the surrounding skin (inpainting) in the de-lit references, except on the brows, eyes,
+    nose and the whole bearded lower face (from the painting's own landmarks).
+    Writes work/up4/<name>_clean.png (projected instead of _delit)."""
+    import face_fit as FF
+    for v in ('front', 'left', 'right'):
+        name = views.VIEWS[v][0]
+        img = cv2.imread(os.path.join(W, 'up4', name + '_delit.png'))
+        R = FF.ref_lm(v)
+        if R is None:
+            cv2.imwrite(os.path.join(W, 'up4', name + '_clean.png'), img); continue
+        pts = R[:, :2] * 4.0                                   # reference px -> 4x upscaled px
+        c0 = pts.min(0) - (pts.max(0) - pts.min(0)) * 0.45; c1 = pts.max(0) + (pts.max(0) - pts.min(0)) * 0.45
+        x0, y0 = np.maximum(c0.astype(int), 0); x1, y1 = np.minimum(c1.astype(int), [img.shape[1], img.shape[0]])
+        crop = img[y0:y1, x0:x1]
+        lum = crop[..., ::-1].astype(np.float32) / 255 @ np.array([0.3, 0.59, 0.11], np.float32)
+        bh = cv2.morphologyEx(lum, cv2.MORPH_BLACKHAT, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel, kernel)))
+        m = (bh > thr).astype(np.uint8)
+        prot = np.zeros_like(m)
+        P = pts - [x0, y0]
+        for ids, r in PROTECT_PTS.values():
+            for (u, w) in P[ids]:
+                cv2.circle(prot, (int(u), int(w)), int(r / 1000 / (views.S / 4)), 1, -1)
+        cv2.fillPoly(prot, [P[LOWER_FACE].astype(np.int32)], 1)
+        cv2.fillPoly(prot, [cv2.convexHull(P[CENTRAL_FACE].astype(np.int32))], 1)
+        prot = cv2.dilate(prot, np.ones((13, 13), np.uint8))
+        m = cv2.dilate(m * (1 - prot), np.ones((9, 9), np.uint8))
+        # only on the face and forehead skin (not the painted hair around it)
+        hull = cv2.convexHull(P.astype(np.float32))[:, 0]; hc = hull.mean(0)
+        face = np.zeros_like(m); cv2.fillPoly(face, [((hull - hc) * [1.12, 1.06] + hc).astype(np.int32)], 1)
+        m *= face
+        m[int(P[2, 1]):] = 0                                   # nothing below the nose: the stubble stays as painted
+        for e in (234, 454):                                   # ears
+            cv2.circle(m, (int(P[e, 0]), int(P[e, 1])), 60, 0, -1)
+        out = img.copy()
+        out[y0:y1, x0:x1] = cv2.inpaint(crop, m, 9, cv2.INPAINT_TELEA)
+        cv2.imwrite(os.path.join(W, 'up4', name + '_clean.png'), out)
+        print(f'{v}: painted strands repainted on {int(m.sum())} px')
+
 def main(res=4096):
     import bake_maps
     bpy.ops.wm.open_mainfile(filepath=os.path.join(W, 'model_uv.blend'))
@@ -82,10 +136,11 @@ def main(res=4096):
     # ---------------------------------------------------------------- skin
     off = json.load(open(os.path.join(W, 'face_align.json'))) if os.path.exists(os.path.join(W, 'face_align.json')) else {}
     delight_refs()
+    clean_refs()
     warps = load_warps()
     bvh = project.scene_bvh(exclude=('hair', 'eyes'))
     Ps, Ns = Pm[isk], Nm[isk]
-    col, wsum = project.project(Ps, Ns, bvh, ('front', 'left', 'right'), offsets=off, power=4.0, suffix='_delit', warps=warps)
+    col, wsum = project.project(Ps, Ns, bvh, ('front', 'left', 'right'), offsets=off, power=4.0, suffix='_clean', warps=warps)
     q = Ps - H.HEAD_C
     scalp = H.scalp_mask_points(Ps) if hasattr(H, 'scalp_mask_points') else None
     conf = np.clip(wsum / 0.25, 0, 1)
@@ -97,23 +152,11 @@ def main(res=4096):
     # grey-white painted highlights under the jaw are not skin: drop them (filled from the skin tone)
     t_lum = tone @ np.array([0.3, 0.59, 0.11])
     conf = conf * ~((lum > 1.08 * t_lum) & (sat < 0.14) & (q[:, 2] < -0.04))
-    # the painting has locks falling across the face; the hair is swept back now, so dark painted strands
-    # on bare facial skin are dropped (brows, eyes, nostrils, lips and the beard zone are protected)
-    L3p = os.path.join(W, 'face_landmarks3d.npy')
-    if os.path.exists(L3p):
-        L3 = np.nan_to_num(np.load(L3p))
-        keep_idx = [70, 63, 105, 66, 107, 336, 296, 334, 293, 300, 46, 53, 52, 65, 55, 276, 283, 282, 295, 285,
-                    33, 133, 159, 145, 362, 263, 386, 374, 468, 473, 1, 2, 4, 98, 327, 13, 14, 61, 291, 0, 17]
-        from scipy.spatial import cKDTree
-        dprot, _ = cKDTree(L3[keep_idx]).query(Ps)
-        protect = (dprot < 0.013) | (H.beard_density(L3)(Ps) > 0.15)
-        face = (q[:, 1] < -0.03) & (q[:, 2] > -0.09) & (q[:, 2] < H.HAIRLINE_FRONT - 0.01)
-        conf = conf * ~((lum < 0.62 * t_lum) & face & ~protect)
     npore = T.noise(Ps, 0.0012, 50, 2); nblot = T.noise(Ps, 0.03, 51, 3)
     fill = tone * (1 + 0.06 * nblot[:, None]) * np.array([1.0, 0.97, 0.95])
     # stubble zone (jaw/cheeks below the cheekbones, front half)
     az = np.arctan2(q[:, 0], -q[:, 1])
-    beard = ((q[:, 2] < -0.035) & (q[:, 2] > -0.13) & (np.abs(az) < 1.9)).astype(np.float32)
+    beard = (T.smoothstep(-0.02, -0.05, q[:, 2]) * T.smoothstep(-0.14, -0.12, q[:, 2]) * (np.abs(az) < 1.9)).astype(np.float32)
     fill = fill * (1 - 0.35 * beard[:, None]) + HAIRC * 0.35 * beard[:, None]
     # scalp: hairline region -> dark hair roots
     front = np.clip(np.cos(az), 0, 1) ** 1.5; back = np.clip(-np.cos(az), 0, 1); side = np.abs(np.sin(az))
