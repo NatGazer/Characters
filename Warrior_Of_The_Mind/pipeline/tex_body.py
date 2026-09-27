@@ -97,6 +97,18 @@ def main(res=4096):
     # grey-white painted highlights under the jaw are not skin: drop them (filled from the skin tone)
     t_lum = tone @ np.array([0.3, 0.59, 0.11])
     conf = conf * ~((lum > 1.08 * t_lum) & (sat < 0.14) & (q[:, 2] < -0.04))
+    # the painting has locks falling across the face; the hair is swept back now, so dark painted strands
+    # on bare facial skin are dropped (brows, eyes, nostrils, lips and the beard zone are protected)
+    L3p = os.path.join(W, 'face_landmarks3d.npy')
+    if os.path.exists(L3p):
+        L3 = np.nan_to_num(np.load(L3p))
+        keep_idx = [70, 63, 105, 66, 107, 336, 296, 334, 293, 300, 46, 53, 52, 65, 55, 276, 283, 282, 295, 285,
+                    33, 133, 159, 145, 362, 263, 386, 374, 468, 473, 1, 2, 4, 98, 327, 13, 14, 61, 291, 0, 17]
+        from scipy.spatial import cKDTree
+        dprot, _ = cKDTree(L3[keep_idx]).query(Ps)
+        protect = (dprot < 0.013) | (H.beard_density(L3)(Ps) > 0.15)
+        face = (q[:, 1] < -0.03) & (q[:, 2] > -0.09) & (q[:, 2] < H.HAIRLINE_FRONT - 0.01)
+        conf = conf * ~((lum < 0.62 * t_lum) & face & ~protect)
     npore = T.noise(Ps, 0.0012, 50, 2); nblot = T.noise(Ps, 0.03, 51, 3)
     fill = tone * (1 + 0.06 * nblot[:, None]) * np.array([1.0, 0.97, 0.95])
     # stubble zone (jaw/cheeks below the cheekbones, front half)
@@ -105,7 +117,7 @@ def main(res=4096):
     fill = fill * (1 - 0.35 * beard[:, None]) + HAIRC * 0.35 * beard[:, None]
     # scalp: hairline region -> dark hair roots
     front = np.clip(np.cos(az), 0, 1) ** 1.5; back = np.clip(-np.cos(az), 0, 1); side = np.abs(np.sin(az))
-    hairline = 0.034 * front - 0.014 * side - 0.095 * back
+    hairline = H.HAIRLINE_FRONT * front - 0.014 * side - 0.095 * back
     scalp = T.smoothstep(hairline - 0.004, hairline + 0.012, q[:, 2])
     # goatee / mustache shadow on the skin under the goatee cards (follows the sculpted chin via the landmarks)
     L3f = os.path.join(W, 'face_landmarks3d.npy')

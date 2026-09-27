@@ -19,6 +19,7 @@ from kit import unit
 
 HEAD_C = np.array([0.0, 0.0, 1.875])
 LOOSE_MASK = [None]
+HAIRLINE_FRONT = 0.023   # front hairline height above HEAD_C (m); low enough that the forehead is not bare
 
 def scalp_mask(B):
     V = B.V
@@ -28,7 +29,7 @@ def scalp_mask(B):
     front = np.clip(np.cos(az), 0, 1) ** 1.5
     back = np.clip(-np.cos(az), 0, 1)
     side = np.abs(np.sin(az))
-    hairline = 0.034 * front - 0.014 * side - 0.095 * back
+    hairline = HAIRLINE_FRONT * front - 0.014 * side - 0.095 * back
     # keep the ears and the face out
     m = head & (q[:, 2] > hairline)
     ear = (np.abs(q[:, 0]) > 0.062) & (q[:, 2] < 0.015) & (q[:, 2] > -0.045) & (np.abs(q[:, 1]) < 0.035)
@@ -43,7 +44,8 @@ def sample_roots(B, n, seed=0):
         + 0.5 * np.linalg.norm(np.cross(P[:, 2] - P[:, 0], P[:, 3] - P[:, 0]), axis=1)
     c = P.mean(1) - HEAD_C
     crown = 1 + 1.5 * np.exp(-(c[:, 0] / 0.025) ** 2) * (c[:, 2] > 0.04) + 1.5 * (c[:, 2] > 0.03) * (c[:, 1] < 0.03)
-    wts = area * crown
+    fr = (c[:, 1] < -0.035) & (c[:, 2] > HAIRLINE_FRONT - 0.03)
+    wts = area * (crown + 2.0 * fr)                    # dense front hairline
     idx = rng.choice(len(F), n, p=wts / wts.sum())
     a, b = rng.uniform(size=(2, n))
     Q = P[idx]
@@ -71,7 +73,7 @@ def keep_behind(P):
     z = P[..., 2]
     ymin = np.interp(z, [1.73, 1.87, 1.90, 1.93], [0.05, -0.02, -0.06, -1.0])   # behind the ears; nothing on the forehead
     P = P.copy(); P[..., 1] = np.maximum(P[..., 1], ymin)
-    xmax = np.interp(z, [1.40, 1.55, 1.72, 1.84, 1.90], [0.16, 0.14, 0.080, 0.105, 1.0])   # gathered behind the neck
+    xmax = np.interp(z, [1.40, 1.55, 1.72, 1.84, 1.88, 1.93], [0.16, 0.14, 0.080, 0.090, 0.100, 1.0])   # gathered behind the neck
     P[..., 0] = np.clip(P[..., 0], -xmax, xmax)
     return P
 
@@ -92,7 +94,8 @@ def simulate(roots, nrm, lengths, stand, bvh, npts=24, iters=140, seed=0):
     loose = front_root & (np.abs(roots[:, 0]) > 0.045) & (rng2.uniform(size=n) < LOOSE_FRAC)
     comb[loose] = unit(np.stack([sidev[loose] * 1.0, np.full(loose.sum(), -0.12), np.full(loose.sum(), -0.9)], 1))
     LOOSE_MASK[0] = loose
-    d0 = unit(nrm * 0.45 + comb * 0.85)
+    frontness = np.clip((-(roots[:, 1] - HEAD_C[1]) - 0.03) / 0.05, 0, 1)
+    d0 = unit(nrm * (0.45 + 0.30 * frontness)[:, None] + comb * 0.85)   # front hair lifts off the forehead, then back
     seg = lengths / (npts - 1)
     X = roots[:, None, :] + d0[:, None, :] * (s[None, :, None] * lengths[:, None, None]) * 0.35
     X[:, :, 2] -= (s[None, :] ** 2) * lengths[:, None] * 0.5
@@ -181,6 +184,7 @@ def build_hair(B, collider_objs, n_main=1150, n_fly=0, seed=4, n_tiles=8):
     stand = rng.uniform(0.005, 0.026, len(roots))                  # layered volume: a full, thick mane
     crown = np.clip((q[:, 2] - 0.02) / 0.08, 0, 1)
     stand += 0.016 * crown * rng.uniform(0.5, 1.0, len(roots))     # volume on top of the head (ref)
+    stand += 0.006 * np.clip((-q[:, 1] - 0.03) / 0.05, 0, 1) * rng.uniform(0.5, 1.0, len(roots))   # lift at the front
     X = simulate(roots, nrm, lengths * np.where(_loose_for(len(roots), roots, nrm, seed), 0.55, 1.0), stand, bvh, seed=seed)
     X = curl(X, rng)
     widths = np.r_[rng.uniform(0.016, 0.026, n_main), rng.uniform(0.006, 0.010, n_fly)]
