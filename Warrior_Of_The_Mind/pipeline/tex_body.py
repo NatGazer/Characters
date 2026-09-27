@@ -69,8 +69,8 @@ PROTECT_PTS = {
     'nose': ([1, 2, 4, 5, 98, 327, 94, 19, 48, 278, 64, 294, 129, 358], 3.0),
 }
 # lower face (moustache, lips, goatee, jaw stubble): the polygon under the nose along the jaw
-# central face (brows, eyes, sockets, nose): its natural shading must not be repainted
-CENTRAL_FACE = [70, 63, 105, 66, 107, 336, 296, 334, 293, 300, 46, 276, 33, 263, 130, 359, 226, 446, 98, 327, 2, 129, 358]
+# brows, eyes and nose bridge (front view): their natural shading must not be repainted; the cheeks are not included
+CENTRAL_FACE = [70, 63, 105, 66, 107, 336, 296, 334, 293, 300, 46, 276, 33, 263, 130, 359, 6, 197, 195, 5, 4, 1]
 LOWER_FACE = [234, 93, 132, 58, 172, 136, 150, 149, 176, 148, 152, 377, 400, 378, 379, 365, 397, 288, 361, 323, 454,
               366, 401, 435, 358, 327, 2, 98, 129, 215, 177, 137]
 
@@ -100,7 +100,8 @@ def clean_refs(kernel=61, thr=0.035):
             for (u, w) in P[ids]:
                 cv2.circle(prot, (int(u), int(w)), int(r / 1000 / (views.S / 4)), 1, -1)
         cv2.fillPoly(prot, [P[LOWER_FACE].astype(np.int32)], 1)
-        cv2.fillPoly(prot, [cv2.convexHull(P[CENTRAL_FACE].astype(np.int32))], 1)
+        if v == 'front':                                       # (in profile the hull would cover the whole cheek)
+            cv2.fillPoly(prot, [cv2.convexHull(P[CENTRAL_FACE].astype(np.int32))], 1)
         prot = cv2.dilate(prot, np.ones((13, 13), np.uint8))
         m = cv2.dilate(m * (1 - prot), np.ones((9, 9), np.uint8))
         # only on the face and forehead skin (not the painted hair around it)
@@ -109,7 +110,7 @@ def clean_refs(kernel=61, thr=0.035):
         m *= face
         m[int(P[2, 1]):] = 0                                   # nothing below the nose: the stubble stays as painted
         for e in (234, 454):                                   # ears
-            cv2.circle(m, (int(P[e, 0]), int(P[e, 1])), 60, 0, -1)
+            cv2.circle(m, (int(P[e, 0]), int(P[e, 1])), 30, 0, -1)
         out = img.copy()
         out[y0:y1, x0:x1] = cv2.inpaint(crop, m, 9, cv2.INPAINT_TELEA)
         cv2.imwrite(os.path.join(W, 'up4', name + '_clean.png'), out)
@@ -193,6 +194,19 @@ def main(res=4096):
     amt = (T.smoothstep(0.14, 0.30, lum_s) * (1 - scalp))[:, None]
     base = base * (1 - amt) + light * amt
     alb[isk] = np.clip(base * (1 + 0.04 * npore[:, None]), 0, 1)
+    # bare facial skin that must stay clean (for the blob clean-up in texture space below)
+    clean_face = np.zeros(n, bool)
+    L3p = os.path.join(W, 'face_landmarks3d.npy')
+    if os.path.exists(L3p):
+        from scipy.spatial import cKDTree
+        L3 = np.nan_to_num(np.load(L3p))
+        prot = H.beard_density(L3)(Ps) > 0.12
+        for ids, r in (([70, 63, 105, 66, 107, 336, 296, 334, 293, 300, 46, 53, 52, 65, 55, 276, 283, 282, 295, 285], 0.009),
+                       (PROTECT_PTS['eyes'][0] + [468, 473], 0.006), ([1, 2, 4, 98, 327, 94, 19, 64, 294, 48, 278], 0.006),
+                       ([13, 14, 61, 291, 0, 17, 37, 267, 84, 314, 78, 308], 0.008)):
+            prot |= cKDTree(L3[ids]).query(Ps)[0] < r
+        ear = (np.abs(q[:, 0]) > 0.058) & (np.abs(q[:, 1]) < 0.04)
+        clean_face[np.where(isk)[0]] = (q[:, 1] < -0.01) & (q[:, 2] > -0.10) & (scalp < 0.05) & ~ear & ~prot
     rough[isk] = 0.52 + 0.08 * npore - 0.1 * (q[:, 2] > 0.0) * (1 - scalp) + 0.25 * scalp
     height[isk] = 0.00004 * npore
     sss[isk] = 1.0 * (1 - scalp)
@@ -234,6 +248,18 @@ def main(res=4096):
     def img(vv, ch):
         out = np.zeros((R * R, ch), np.float32); out[idx] = vv.reshape(n, ch); return out.reshape(R, R, ch)
     ALB = img(alb, 3); ORM = img(np.c_[ao, rough, metal], 3); Hh = img(height, 1)[..., 0]
+    # remaining dark blobs on bare facial skin (painted hair seen from views the face warp cannot align):
+    # black-hat of luminance in texture space, inpainted from the surrounding skin
+    CF = img(clean_face.astype(np.float32), 1)[..., 0] > 0.5
+    if CF.any():
+        lumA = ALB @ np.array([0.3, 0.59, 0.11], np.float32)
+        kpx = int(0.012 / texel) | 1
+        bh = cv2.morphologyEx(lumA, cv2.MORPH_BLACKHAT, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kpx, kpx)))
+        blob = ((bh > 0.035) & CF).astype(np.uint8)
+        blob = cv2.dilate(blob, np.ones((5, 5), np.uint8)) & CF.astype(np.uint8)
+        a8 = (np.clip(ALB, 0, 1) * 255).astype(np.uint8)
+        ALB = np.where(blob[..., None] > 0, cv2.inpaint(a8, blob, 7, cv2.INPAINT_TELEA).astype(np.float32) / 255, ALB)
+        print('face blobs cleaned on', int(blob.sum()), 'texels')
     EMC = np.clip(img(emis, 1) * EMIT, 0, 1); SSS = img(sss, 1)[..., 0]
     NRM = T.height_to_normal(Hh, mask, texel, 1.0)
     ALB = T.dilate(ALB, mask); ORM = T.dilate(ORM, mask); NRM = T.dilate(NRM, mask); EMC = T.dilate(EMC, mask)
