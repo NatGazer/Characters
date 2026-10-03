@@ -1,0 +1,41 @@
+name: Build Consistency APK
+on:
+  push:
+    paths:
+      - 'Consistency/**'
+      - '.github/workflows/consistency-apk.yml'
+      - '!Consistency/apk/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Consistency
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+      - run: chmod +x gradlew && ./gradlew --no-daemon assembleRelease
+      - name: Verify APK (min SDK 24 / Android 7.0, signatures)
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          APK=app/build/outputs/apk/release/app-release.apk
+          "$BT/aapt2" dump badging "$APK" | grep -E "^package|sdkVersion"
+          "$BT/apksigner" verify --min-sdk-version 24 --verbose "$APK" | head -5
+          mkdir -p apk && cp "$APK" apk/Consistency-android7.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Consistency-apk
+          path: Consistency/apk/Consistency-android7.apk
+      - name: Commit APK to branch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -f apk/Consistency-android7.apk
+          git diff --cached --quiet || { git commit -m "Build Consistency APK [skip ci]" && git push; }

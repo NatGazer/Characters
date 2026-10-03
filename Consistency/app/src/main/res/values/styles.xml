@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="accent">#FFF2A93B</color>
+    <color name="ic_bg">#FF16181D</color>
+    <style name="AppTheme" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@drawable/bg</item>
+        <item name="android:statusBarColor">#FF15171C</item>
+        <item name="android:navigationBarColor">#FF0A0B0D</item>
+        <item name="android:colorAccent">@color/accent</item>
+    </style>
+    <style name="Btn">
+        <item name="android:gravity">center</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.18</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:elevation">6dp</item>
+    </style>
+</resources>

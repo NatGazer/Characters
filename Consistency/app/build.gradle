@@ -1,0 +1,41 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'app.consistency'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'app.consistency'
+        minSdk 24          // Android 7.0 Nougat
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+    }
+
+    signingConfigs {
+        // Fixed key committed with the project so every build can update the previous install.
+        release {
+            storeFile file('consistency.jks')
+            storePassword 'consistency'
+            keyAlias 'consistency'
+            keyPassword 'consistency'
+            enableV1Signing true   // JAR signature, for older Android 7 package installers
+            enableV2Signing true   // APK Signature Scheme v2 (Android 7.0+)
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+// No dependencies. Framework only.
