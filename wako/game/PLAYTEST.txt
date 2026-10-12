@@ -1,0 +1,53 @@
+Double-click Play_Island_Workshop.cmd to start at the real Island workshop.
+This session has active enemies, normal damage and finite physical parts.
+Its saves use the launcher's existing separate manual-play data folder.
+F5 saves a quicksave; F9 restores it, including after relaunching.
+
+Try this route:
+1. Open Build with Ctrl+B. On Start, choose the two-piece powered lamp
+   or the starter rover. Read its required stock and crew status.
+2. Close Build and watch the Wako fetch actual stock on their heads,
+   fit tools with their feet, and assemble the selected plan.
+3. Reopen Build to select an unfinished or finished assembly. Try the
+   snapped customisation preview and its rotate/invalid-placement hints.
+4. Enter an installed helm through its displayed prompt. Drive, change
+   camera view and brake. The contextual shortcut panel shows current
+   bindings; H opens it. Controls can be rebound in Settings.
+5. Hold Tab for the tool wheel. Equip a gun before opening Build > Guns.
+   Lend it to an idle nearby Wako, close Build to watch it defend with a
+   clear shot within 25 m, then take the same gun back before asking it
+   to Follow. Installed gun sockets use real control points.
+6. Open the map with M. Explore machine territories, defeat guards and
+   use the captive's rescue prompt. Aim at a recruited Wako and use
+   Ctrl+F for Follow/Stay; Ctrl+H returns it to useful work.
+7. Study a defeated machine, then recover its physical stock. Bring it
+   back to the workshop and select useful work. Save and load along the
+   way to check that recruited helpers, plans and finite parts persist.
+8. In Build, select a machine and choose Dismantle selected. Review its
+   installed parts before confirming recovery; watch the crew's status.
+
+Coastal camps now show earned discovery and rescue guidance on approach.
+For manual salvage, equip Grabber from Tab and hold left click on a part.
+Use the displayed Salvage / inspect action to detach donor stock, then grab
+the loose body again. Keep holding it and walk clear of the wreck before
+dropping it, so the Wako has room to launch and pick it up on its head.
+Open Build and Resume work if the crew is paused. The Wako carries this
+same battery to the depot; its condition and charge survive F5/F9 and
+the final stored save. The game explains that held parts must be dropped.
+Approach idle Wako to see their eye-led greeting; useful work interrupts it.
+The gallery includes bare and back-mallet greetings and actual fitting sound.
+Delivery from distant camps, full dismantling and the complete
+player/Wako/mounted-gun sequence are still being finished.
+Current media labels distinguish Island gameplay from focused checks.
+
+Use F12 at the moment a problem occurs. It captures the game state and
+screenshots in .claude/feedback/inbox so the problem can be reproduced.
+
+Open FeatureGallery/OpenGallery.cmd (or the Desktop Gameplay Gallery
+shortcut) for named pictures and autoplay videos, newest first. Choose
+Pictures or Videos to filter. Its report button saves a gallery report
+to the same inbox; an in-game F12 report includes more live-game detail.
+
+Play_Workshop.cmd opens the focused yard for inspecting mechanics.
+The ten art references are on the Desktop in
+Rauls Mod Ancient Technology References.

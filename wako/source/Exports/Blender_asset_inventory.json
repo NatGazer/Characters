@@ -1,0 +1,480 @@
+{
+  "source": "D:\\Everything\\GODOT Projects\\RaulsMod\\LogicObjects\\Wako\\Wako.blend",
+  "blender": "4.5.4 LTS",
+  "objects": [
+    {
+      "name": "wako_art",
+      "type": "ARMATURE",
+      "dimensions": [
+        0.4740000069141388,
+        0.19000008702278137,
+        1.6143214702606201
+      ],
+      "location": [
+        0.0,
+        0.0,
+        1.0739187002182007
+      ],
+      "bones": [
+        {
+          "name": "Bone",
+          "parent": null,
+          "head": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "tail": [
+            -8.708279430891253e-09,
+            0.0,
+            0.5844027400016785
+          ],
+          "deform": true
+        },
+        {
+          "name": "Bone.001",
+          "parent": "Bone",
+          "head": [
+            -0.2370000034570694,
+            0.0,
+            -0.1599999964237213
+          ],
+          "tail": [
+            -0.2370000034570694,
+            0.0,
+            -0.5699999928474426
+          ],
+          "deform": true
+        },
+        {
+          "name": "Bone.003",
+          "parent": "Bone.001",
+          "head": [
+            -0.2370000034570694,
+            0.0,
+            -0.5699999928474426
+          ],
+          "tail": [
+            -0.2370000034570694,
+            0.0,
+            -0.968999981880188
+          ],
+          "deform": true
+        },
+        {
+          "name": "Bone.005",
+          "parent": "Bone.003",
+          "head": [
+            -0.2370000034570694,
+            0.0,
+            -0.968999981880188
+          ],
+          "tail": [
+            -0.2370000034570694,
+            0.0,
+            -1.059000015258789
+          ],
+          "deform": true
+        },
+        {
+          "name": "toe.L",
+          "parent": "Bone.005",
+          "head": [
+            -0.2370000034570694,
+            -0.05999999865889549,
+            -1.024999976158142
+          ],
+          "tail": [
+            -0.2370000034570694,
+            -0.1899999976158142,
+            -1.024999976158142
+          ],
+          "deform": true
+        },
+        {
+          "name": "Bone.002",
+          "parent": "Bone",
+          "head": [
+            0.2370000034570694,
+            0.0,
+            -0.1599999964237213
+          ],
+          "tail": [
+            0.2370000034570694,
+            0.0,
+            -0.5699999928474426
+          ],
+          "deform": true
+        },
+        {
+          "name": "Bone.004",
+          "parent": "Bone.002",
+          "head": [
+            0.2370000034570694,
+            0.0,
+            -0.5699999928474426
+          ],
+          "tail": [
+            0.2370000034570694,
+            0.0,
+            -0.968999981880188
+          ],
+          "deform": true
+        },
+        {
+          "name": "Bone.006",
+          "parent": "Bone.004",
+          "head": [
+            0.2370000034570694,
+            0.0,
+            -0.968999981880188
+          ],
+          "tail": [
+            0.2370000034570694,
+            0.0,
+            -1.059000015258789
+          ],
+          "deform": true
+        },
+        {
+          "name": "toe.R",
+          "parent": "Bone.006",
+          "head": [
+            0.2370000034570694,
+            -0.05999999865889549,
+            -1.024999976158142
+          ],
+          "tail": [
+            0.2370000034570694,
+            -0.1899999976158142,
+            -1.024999976158142
+          ],
+          "deform": true
+        }
+      ]
+    },
+    {
+      "name": "wakoMesh",
+      "type": "MESH",
+      "dimensions": [
+        0.8485527634620667,
+        0.3984863758087158,
+        1.3896031379699707
+      ],
+      "location": [
+        0.0,
+        -1.469387989061488e-08,
+        0.7021947503089905
+      ],
+      "vertices": 557,
+      "polygons": 744,
+      "triangles": 1110,
+      "uv_layers": [
+        "UVMap"
+      ],
+      "vertex_groups": [
+        "Bone",
+        "Bone.001",
+        "Bone.003",
+        "Bone.005",
+        "toe.L",
+        "Bone.002",
+        "Bone.004",
+        "Bone.006",
+        "toe.R"
+      ],
+      "modifiers": [
+        {
+          "name": "Armature",
+          "type": "ARMATURE"
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "name": "wk_assemble_L",
+      "frame_range": [
+        0.0,
+        63.0
+      ],
+      "duration_at_scene_fps": 2.1
+    },
+    {
+      "name": "wk_assemble_R",
+      "frame_range": [
+        0.0,
+        63.0
+      ],
+      "duration_at_scene_fps": 2.1
+    },
+    {
+      "name": "wk_brace_L",
+      "frame_range": [
+        0.0,
+        54.0
+      ],
+      "duration_at_scene_fps": 1.8
+    },
+    {
+      "name": "wk_brace_R",
+      "frame_range": [
+        0.0,
+        54.0
+      ],
+      "duration_at_scene_fps": 1.8
+    },
+    {
+      "name": "wk_carry",
+      "frame_range": [
+        0.0,
+        27.0
+      ],
+      "duration_at_scene_fps": 0.9
+    },
+    {
+      "name": "wk_danger",
+      "frame_range": [
+        0.0,
+        33.0
+      ],
+      "duration_at_scene_fps": 1.1
+    },
+    {
+      "name": "wk_idle",
+      "frame_range": [
+        0.0,
+        48.0
+      ],
+      "duration_at_scene_fps": 1.6
+    },
+    {
+      "name": "wk_inspect_L",
+      "frame_range": [
+        0.0,
+        57.0
+      ],
+      "duration_at_scene_fps": 1.9
+    },
+    {
+      "name": "wk_inspect_R",
+      "frame_range": [
+        0.0,
+        57.0
+      ],
+      "duration_at_scene_fps": 1.9
+    },
+    {
+      "name": "wk_interrupted_L",
+      "frame_range": [
+        0.0,
+        27.0
+      ],
+      "duration_at_scene_fps": 0.9
+    },
+    {
+      "name": "wk_interrupted_R",
+      "frame_range": [
+        0.0,
+        27.0
+      ],
+      "duration_at_scene_fps": 0.9
+    },
+    {
+      "name": "wk_maintenance_L",
+      "frame_range": [
+        0.0,
+        63.0
+      ],
+      "duration_at_scene_fps": 2.1
+    },
+    {
+      "name": "wk_maintenance_R",
+      "frame_range": [
+        0.0,
+        63.0
+      ],
+      "duration_at_scene_fps": 2.1
+    },
+    {
+      "name": "wk_operate_L",
+      "frame_range": [
+        0.0,
+        45.0
+      ],
+      "duration_at_scene_fps": 1.5
+    },
+    {
+      "name": "wk_operate_R",
+      "frame_range": [
+        0.0,
+        45.0
+      ],
+      "duration_at_scene_fps": 1.5
+    },
+    {
+      "name": "wk_pickup_L",
+      "frame_range": [
+        0.0,
+        46.0
+      ],
+      "duration_at_scene_fps": 1.5333333333333334
+    },
+    {
+      "name": "wk_pickup_R",
+      "frame_range": [
+        0.0,
+        46.0
+      ],
+      "duration_at_scene_fps": 1.5333333333333334
+    },
+    {
+      "name": "wk_place_L",
+      "frame_range": [
+        0.0,
+        45.0
+      ],
+      "duration_at_scene_fps": 1.5
+    },
+    {
+      "name": "wk_place_R",
+      "frame_range": [
+        0.0,
+        45.0
+      ],
+      "duration_at_scene_fps": 1.5
+    },
+    {
+      "name": "wk_pull_L",
+      "frame_range": [
+        0.0,
+        51.0
+      ],
+      "duration_at_scene_fps": 1.7
+    },
+    {
+      "name": "wk_pull_R",
+      "frame_range": [
+        0.0,
+        51.0
+      ],
+      "duration_at_scene_fps": 1.7
+    },
+    {
+      "name": "wk_push_L",
+      "frame_range": [
+        0.0,
+        51.0
+      ],
+      "duration_at_scene_fps": 1.7
+    },
+    {
+      "name": "wk_push_R",
+      "frame_range": [
+        0.0,
+        51.0
+      ],
+      "duration_at_scene_fps": 1.7
+    },
+    {
+      "name": "wk_repair_L",
+      "frame_range": [
+        0.0,
+        64.0
+      ],
+      "duration_at_scene_fps": 2.1333333333333333
+    },
+    {
+      "name": "wk_repair_R",
+      "frame_range": [
+        0.0,
+        64.0
+      ],
+      "duration_at_scene_fps": 2.1333333333333333
+    },
+    {
+      "name": "wk_run",
+      "frame_range": [
+        0.0,
+        18.0
+      ],
+      "duration_at_scene_fps": 0.6
+    },
+    {
+      "name": "wk_step_L",
+      "frame_range": [
+        0.0,
+        30.0
+      ],
+      "duration_at_scene_fps": 1.0
+    },
+    {
+      "name": "wk_step_R",
+      "frame_range": [
+        0.0,
+        30.0
+      ],
+      "duration_at_scene_fps": 1.0
+    },
+    {
+      "name": "wk_tool_change_L",
+      "frame_range": [
+        0.0,
+        50.0
+      ],
+      "duration_at_scene_fps": 1.6666666666666667
+    },
+    {
+      "name": "wk_tool_change_R",
+      "frame_range": [
+        0.0,
+        50.0
+      ],
+      "duration_at_scene_fps": 1.6666666666666667
+    },
+    {
+      "name": "wk_unbend_L",
+      "frame_range": [
+        0.0,
+        70.0
+      ],
+      "duration_at_scene_fps": 2.3333333333333335
+    },
+    {
+      "name": "wk_unbend_R",
+      "frame_range": [
+        0.0,
+        70.0
+      ],
+      "duration_at_scene_fps": 2.3333333333333335
+    },
+    {
+      "name": "wk_walkcycle",
+      "frame_range": [
+        0.0,
+        24.0
+      ],
+      "duration_at_scene_fps": 0.8
+    }
+  ],
+  "textures": [
+    {
+      "name": "Player.png",
+      "filepath": "D:\\Everything\\GODOT Projects\\RaulsMod\\LogicObjects\\Wako\\textures\\Player.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "packed": false
+    },
+    {
+      "name": "Render Result",
+      "filepath": "",
+      "size": [
+        0,
+        0
+      ],
+      "packed": false
+    }
+  ]
+}

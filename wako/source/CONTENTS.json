@@ -1,0 +1,1148 @@
+{
+  "project": "RaulsMod",
+  "source_commit": "831dc576caf48bae6134b9b0f311247075dca350",
+  "snapshot": "current worktree, including current uncommitted relevant source",
+  "not_full_runnable_project": true,
+  "files": [
+    {
+      "path": ".claude/scripts/run_all.sh",
+      "bytes": 594,
+      "sha256": "0825b7ab05e857d0a442e104cff0f943665e657293c84b5a8927d8e5a8d81429"
+    },
+    {
+      "path": ".claude/scripts/run_scene.sh",
+      "bytes": 1658,
+      "sha256": "b1eeeac758c41d5336d9fa5f2093a56f88eb8c8613b6e19785825423406034e6"
+    },
+    {
+      "path": ".claude/tests/contraptions/integration.gd",
+      "bytes": 10426,
+      "sha256": "e0f863a65a8c9e31084ccf43a7d39fa2588d6b9be5b4866907733cd9e7cd5fb1"
+    },
+    {
+      "path": ".claude/tests/contraptions/integration.tscn",
+      "bytes": 203,
+      "sha256": "accfd0827442909da9ef7fae0fbae8b8f8f2283502dffaa85a42fdf90c8def74"
+    },
+    {
+      "path": ".claude/tests/contraptions/mobile_tools.gd",
+      "bytes": 20651,
+      "sha256": "9f9213e7038e6120c30ef4af4fc0120a99e4fce667d46493ceb5ad12e44a0030"
+    },
+    {
+      "path": ".claude/tests/contraptions/mobile_tools.tscn",
+      "bytes": 199,
+      "sha256": "8c3c09426db568547a13ad9f61174be082853717711eb956042affcb21bfeb59"
+    },
+    {
+      "path": ".claude/tests/contraptions/tools.gd",
+      "bytes": 31960,
+      "sha256": "efe44530ee2815a1d1e3c630687a129a65b318060aaaa46b0a2836f4c5b4ee1e"
+    },
+    {
+      "path": ".claude/tests/contraptions/tools.tscn",
+      "bytes": 191,
+      "sha256": "92babc2b9e78af71af5fc06dd453cb9525887a8307f3fad9a2a5138472700b91"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_asset.gd",
+      "bytes": 7014,
+      "sha256": "a3a1fc0c3b94683990a54672bbeea6215af876621383a9f12c77f0afaa0a7a1a"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_asset.tscn",
+      "bytes": 202,
+      "sha256": "dff90ac4f3c2ee96ce4e099529714b7d1121ad5a7b25d70332b7233fb0b0b761"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_balance.gd",
+      "bytes": 20604,
+      "sha256": "bbb94f7f7eef9d3515f1b404c786a7711f7b0a222c43f66176c1fbc43a11cf5e"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_balance.tscn",
+      "bytes": 193,
+      "sha256": "6df8e08a4aa9a0616be7d3d71e85cd7bf75d5f9bcff14180f94963093167d083"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_cooperative_carry.gd",
+      "bytes": 13219,
+      "sha256": "1bcefbe42953d7f0e7b8e82f9c366284a6ab05c038644a4c4b4cd98e93f37e8a"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_cooperative_carry.tscn",
+      "bytes": 210,
+      "sha256": "dfa08a04bfd7b1d962778320d0a8d02f20a70f28cc080515b400f40ca0705712"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_cooperative_yard.gd",
+      "bytes": 2065,
+      "sha256": "97a006709c747f03758e4c4aa509d9ae2be6c3c994437d835131b93fd06eacd2"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_cooperative_yard.tscn",
+      "bytes": 210,
+      "sha256": "e35df345203814f39d259379e3f4e0d37da972725df57fc49c0c03da49567b51"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_expression.gd",
+      "bytes": 4118,
+      "sha256": "7ba10cd86baa2c92e29c64e840ace9b713b2b624abbb7c82100adf08bf5a7efc"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_expression.tscn",
+      "bytes": 208,
+      "sha256": "8eecbebde71417d16c6ce40e3182b3601ea70906705bdcc41c5980472984bbca"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_gait.gd",
+      "bytes": 9302,
+      "sha256": "fa49da58b0e90a4b4949d573e9bb9e8e480d281edf6cbb8b79dd259981639801"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_gait.tscn",
+      "bytes": 187,
+      "sha256": "15252e84fc9263971b46f2aa98c0878236711ad45efdea8540b03818314a7427"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_guarded_rollback.gd",
+      "bytes": 10370,
+      "sha256": "d5c68a8f69aa2765407cd17f51781e11217ae7ec59fc41c568d39657973a9427"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_guarded_rollback.tscn",
+      "bytes": 210,
+      "sha256": "6039fe8338eabb54a5786e0b35ac09d89ffb237af9889b6a2e82932fd2e37b14"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_head_presentation.gd",
+      "bytes": 5650,
+      "sha256": "3bf965c1f61ff62158f59ac3461308a46a0986ffb97cf564661c9ddd26f52d06"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_head_presentation.tscn",
+      "bytes": 212,
+      "sha256": "90596a74a3efb338c535a8996f512d3668827566f115338323d18a25ea464861"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_material_lease_cancel.gd",
+      "bytes": 26226,
+      "sha256": "685865b8555dfdb13d8f2014b46d4c0942eb0a2f057e414aaab82802cf329800"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_material_lease_cancel.tscn",
+      "bytes": 219,
+      "sha256": "faec090b752649a56477b62a10d44f3e0bfda8d358af7d769eba487233142068"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_material_lease_render.gd",
+      "bytes": 3370,
+      "sha256": "9a85a87f65a2f442a2e423c3077347b9f951589f76e5494a3001048d610cfa28"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_material_lease_render.tscn",
+      "bytes": 219,
+      "sha256": "caebb4fec4b0ef9c42c38acebc5755f9b20a4fd2af6c0136d7cf980a146c7f6f"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_material_setback.gd",
+      "bytes": 12023,
+      "sha256": "25c66b309b1a54792ac34877f9a44f7461803d26a1b285d2d86dfc47937f91eb"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_material_setback_stroke.gd",
+      "bytes": 16063,
+      "sha256": "3d6e6a49a8879db6f29e9b46670d78eef0cdae9c1a01d4c00658e4863a63131c"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_material_setback_stroke.tscn",
+      "bytes": 229,
+      "sha256": "bc0cbff77f5ff4bda5dee5d315f122d21eefbbd29dc623034f1f1e5a518ffb9f"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_native_carry.gd",
+      "bytes": 13829,
+      "sha256": "44c76a34e0c31a6e8bab0671b60b781710ac13260677139e02870949dd1b27ac"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_native_carry.tscn",
+      "bytes": 200,
+      "sha256": "afd03c79f84bb4b19d6fa4325276eb3764e092766a4c147d5be75e28cdcba174"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_native_handoff.gd",
+      "bytes": 6926,
+      "sha256": "4a9cecfde1b205ed32f35e9f3c41157caf46cf695c4c4f9fe154ec79cbf70607"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_native_handoff.tscn",
+      "bytes": 204,
+      "sha256": "89236dd9c59a5774a3de51f5a6c75bcd44fe7ce0a11198584af39f2b99dcccf8"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_native_handoff_observer.gd",
+      "bytes": 139,
+      "sha256": "1a01fa8780cfa1b1ed4f19d4617a3b285b1d913eef13a9be009ea8cd5acc4b90"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_physics.gd",
+      "bytes": 22147,
+      "sha256": "8caf0fb8302cfb1a4ab64efef09d7dead00c301fcc914349a79ab914c53a5ac2"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_physics.tscn",
+      "bytes": 193,
+      "sha256": "14203c8d56a5347ce17fac9927a6605ab8b95a4783276e9c7026ef1d2b345813"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_pickup.gd",
+      "bytes": 12828,
+      "sha256": "4f7f71b332e7e577c56b5487a8d0da4fcfa07ef19cb5f1ae1b8f10d9564d24a5"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_pickup.tscn",
+      "bytes": 189,
+      "sha256": "81b93879775ef4b0884798b1e3ab801c239cb77ace5b2ec1d9b5b341c894209d"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_pickup_load.gd",
+      "bytes": 2524,
+      "sha256": "baa2c6440d1b9bd5656c87ce7df0b6537d0e735657895eda472e2dc59124164b"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_pickup_load.tscn",
+      "bytes": 192,
+      "sha256": "84af83ee3493a3907a93968386807e7dfa479bc8f76fe0cd4991afc3888408ca"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_recoil.gd",
+      "bytes": 15083,
+      "sha256": "bb90f47c4e4fc5970da48f9e425f48101c632de8bd6309944102329cd7c42c38"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_recoil.tscn",
+      "bytes": 191,
+      "sha256": "65526730a34c94f5666c97d27b99a5fb58076b68aa281e9fa4e21fea4bbdc423"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_recoil_worker.gd",
+      "bytes": 336,
+      "sha256": "afb3b1bedc122e3b16be519d4c74cd8f77b4175dff459274478f324246df2c8d"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_repair.gd",
+      "bytes": 5622,
+      "sha256": "59e9d2efc2499b25613fc2ffa170c329486c415cbb1930a8abc4acc695f81aa9"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_repair.tscn",
+      "bytes": 191,
+      "sha256": "5cccd4fef80881f9c92f36742a1f06cd058c0a3afdda49320254b078ce9a1e84"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_steps.gd",
+      "bytes": 6996,
+      "sha256": "dff9da85f90526e4b72e3298c7eb195e28c451dc2e88d0e0747dd3d6c2012c99"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_steps.tscn",
+      "bytes": 189,
+      "sha256": "481cec617fbf655542d19b18e2bbfd9e66adfda3af9e5a5eb39fb2d2a89c28ba"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_support.gd",
+      "bytes": 5779,
+      "sha256": "7de9c8cbf799f73131d5e4836d506105e450de520ae948506defdd75b352822d"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_support.tscn",
+      "bytes": 193,
+      "sha256": "0e2d20acae2468ffb847135b8c6c469b7262e827bb3823f96198f9645172f902"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_threat.gd",
+      "bytes": 9218,
+      "sha256": "cc3187057c0282189ce6d4c5f9ad2715f774626b74c3e189644cdbe6c63a3a7f"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_threat.tscn",
+      "bytes": 191,
+      "sha256": "8e7e404ed2f80b7930abfeb45ffd905e6db2e07df063c2e809e7ec8458440739"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_tool_return.gd",
+      "bytes": 10703,
+      "sha256": "2034703c7ca5bbd40ce2559822cf13f3040bdd7f00a43012bbdbc3f845742af5"
+    },
+    {
+      "path": ".claude/tests/contraptions/wako_tool_return.tscn",
+      "bytes": 200,
+      "sha256": "55bc24cd10bfa4ec4129d670ef5d26abf2ae6aaca72e1c5495ccc431c2df1203"
+    },
+    {
+      "path": ".claude/tests/jitter/README.md",
+      "bytes": 3932,
+      "sha256": "c2a00b2427f5a53059ab446ee1e6fdb9e5ad9bb38ecfb262edf27a9b5c57983b"
+    },
+    {
+      "path": "CLAUDE.md",
+      "bytes": 4966,
+      "sha256": "d56bb0c398d44cc646e3e90c4a9add5264b114637760a5c9d2a078934e0a0a23"
+    },
+    {
+      "path": "Components/Avatar/ragdoll/avatar_ragdoll.gd",
+      "bytes": 85096,
+      "sha256": "8e1ff184c457e339c81858382cc2a4ac1727ff794e6b7cf55c33d5ae72aec6bc"
+    },
+    {
+      "path": "Components/Avatar/ragdoll/avatar_ragdoll.gd.uid",
+      "bytes": 20,
+      "sha256": "0f4a3db94ecb6a6cef5e2e23843573602c17a716edec12196579d97458dc2e59"
+    },
+    {
+      "path": "Components/Avatar/ragdoll/ragdoll_clip.gd",
+      "bytes": 3172,
+      "sha256": "ff8b5af95a91724d85fbbca731c9ea9cc95de77d5fe6d4fe51512ecb99d94ff2"
+    },
+    {
+      "path": "Components/Avatar/ragdoll/ragdoll_clip.gd.uid",
+      "bytes": 19,
+      "sha256": "eb9c176def6b905ffa09c74f0b917ec46dd71f24d7ad85d7b8654d47b73c888d"
+    },
+    {
+      "path": "Components/Avatar/ragdoll/ragdoll_match.gd",
+      "bytes": 19231,
+      "sha256": "c8e767ea97efa48ad49abd7db61a032ac71280d3086be7740aa1d6fe8a24cf2d"
+    },
+    {
+      "path": "Components/Avatar/ragdoll/ragdoll_match.gd.uid",
+      "bytes": 20,
+      "sha256": "34a113437c87cae27ef6b8be9eb97861e5b8d3cd8d6799fc06f29cb5ad3088ed"
+    },
+    {
+      "path": "Components/Avatar/ragdoll/ragdoll_pose.gd",
+      "bytes": 705,
+      "sha256": "cdf93a5aecb29ba5d2f6abc5ef761be7b0204a5993a9f3997abaca7a7d8b8659"
+    },
+    {
+      "path": "Components/Avatar/ragdoll/ragdoll_pose.gd.uid",
+      "bytes": 19,
+      "sha256": "de2baa0a01d958973610cb820c9070b7856d8f034267865a6e3d8e5e71a2b750"
+    },
+    {
+      "path": "Components/Avatar/ragdoll/ragdoll_rig.gd",
+      "bytes": 32205,
+      "sha256": "9c349e232c24514cb5bf736b18077b688f804231556002712591b5bef390f69c"
+    },
+    {
+      "path": "Components/Avatar/ragdoll/ragdoll_rig.gd.uid",
+      "bytes": 20,
+      "sha256": "99a81f5222ee8d966519c40210663bb112042bce306b75989078d3ee63e31d73"
+    },
+    {
+      "path": "Components/Avatar/ragdoll/ragdoll_settings.gd",
+      "bytes": 2270,
+      "sha256": "d88ca52615cf1a2c664ad8471c82fae3216c096d3b883e5215dc6f9b1d796a48"
+    },
+    {
+      "path": "Components/Avatar/ragdoll/ragdoll_settings.gd.uid",
+      "bytes": 20,
+      "sha256": "894cdd734145fbecd778824f047a000a1c9d2eef6fec6c731d359c7c6ff9fb1e"
+    },
+    {
+      "path": "Components/Contraptions/beam_material_preparation.gd",
+      "bytes": 21802,
+      "sha256": "87c1aad4890127e8a85c4fb318990648f1983e52394fe6f321d726f62cbbccc2"
+    },
+    {
+      "path": "Components/Contraptions/construction_ui.gd",
+      "bytes": 94693,
+      "sha256": "d8b3b68bd86d72a34b541e0a6c77af79fa0dca52fc673e6745e3c3eebce21031"
+    },
+    {
+      "path": "Components/Contraptions/contraption_part.gd",
+      "bytes": 85559,
+      "sha256": "b9653c5f91ceb416ac16bf356dc3bdb58d0039c80f0e34d85ee52c5ccd6028cf"
+    },
+    {
+      "path": "Components/Contraptions/contraption_yard.gd",
+      "bytes": 147542,
+      "sha256": "bd7a7a6ffc6511802b17340d9bbfb92a26ecf046047c32939c1333477e4ad541"
+    },
+    {
+      "path": "Components/Contraptions/gun_control_point.gd",
+      "bytes": 4600,
+      "sha256": "e73a1f63684f491255ae0dd2c706353d4489d9f39ab409feae53cb1e533c68a7"
+    },
+    {
+      "path": "Components/Contraptions/gun_ground_item.gd",
+      "bytes": 4129,
+      "sha256": "ada54148b7dd85d846fc2ca2f744f2f91203f9f6e0162ae4583c8b898e75a21e"
+    },
+    {
+      "path": "Components/Contraptions/native_worksite_plan.gd",
+      "bytes": 4093,
+      "sha256": "e3bc9350ddf97b984c0e275965780350f9f2ab2e709866e22117f147f4fbc572"
+    },
+    {
+      "path": "Components/Contraptions/part_catalog.gd",
+      "bytes": 26413,
+      "sha256": "80fe8e0c43f18bcdbdb72d0515d3596841c04d3c95cafe9626013118442bbd09"
+    },
+    {
+      "path": "Components/Contraptions/ramp_work_anchor.gd",
+      "bytes": 839,
+      "sha256": "f18607655c2eace7335eceefd013bde78e6a86edaef7732023c2050a31b0b9cf"
+    },
+    {
+      "path": "Components/Contraptions/rolling_balance.gd",
+      "bytes": 2171,
+      "sha256": "7fbe5cb748e6be1707b12247cc7773d8350f19995112708cb11243471683dbc3"
+    },
+    {
+      "path": "Components/Contraptions/work_coordinator.gd",
+      "bytes": 151639,
+      "sha256": "e5df1199e166e25d9d3ed7be88de1a68a4dc7e57f7bca4b309ddac35efd8ce43"
+    },
+    {
+      "path": "Components/Contraptions/worker_access.gd",
+      "bytes": 29018,
+      "sha256": "82653745a9b4ff582155224c58443eafe3459ddb2a2a1e1ea97829057d13d0af"
+    },
+    {
+      "path": "Components/Contraptions/worker_crew_travel.gd",
+      "bytes": 2503,
+      "sha256": "bb5bbd2a6d4c1eb1d1593c6aeb76732d48b7397081ffe7ec264387f4517aa572"
+    },
+    {
+      "path": "Components/Contraptions/worker_field_worksite.gd",
+      "bytes": 4454,
+      "sha256": "477bfd17f092cfa019c4c4c10c8478436bb5a72e648a3365003c2fd4d3964663"
+    },
+    {
+      "path": "Components/Contraptions/worker_native_tool_release.gd",
+      "bytes": 11962,
+      "sha256": "65d4224893be9aa35940d8ef9a100ff78396a4e9dc779018ccd85e33f8e3de81"
+    },
+    {
+      "path": "Components/Contraptions/worker_ramp_egress.gd",
+      "bytes": 13453,
+      "sha256": "c5e0a042579f9966c70adaf38e9a665ddde3595969c62a75b91a6b46d9b0cc58"
+    },
+    {
+      "path": "Components/Contraptions/worker_storage_access.gd",
+      "bytes": 13784,
+      "sha256": "84f4da76bd3d8795b3f8daf3f64b6acbbdd81f2afbe6e5c44fbb3071798be7dc"
+    },
+    {
+      "path": "Components/Contraptions/worker_tool_access.gd",
+      "bytes": 7840,
+      "sha256": "369d1ba9caae46dbf250b745d2fe71ea2afe931599ae27461832a880ec98ace5"
+    },
+    {
+      "path": "Components/Contraptions/worker_tool_model.gd",
+      "bytes": 3240,
+      "sha256": "c057a1c8258f91ed845084c0ca5d6132c450927efa00db409d4dd10cb5c1a62c"
+    },
+    {
+      "path": "Components/Contraptions/worker_unloading_hold.gd",
+      "bytes": 2247,
+      "sha256": "92d7767492136a43c20b31bf9f8490345b1ebdb729edbd4c224a0a0dcb1a00b8"
+    },
+    {
+      "path": "Components/HandTools/Weapon/gun_binding.gd",
+      "bytes": 2720,
+      "sha256": "eb83e00509d4f0bd1d8e41da761837dc7b4379779af59dbf9bfd882e29e29c8f"
+    },
+    {
+      "path": "Components/HandTools/Weapon/gun_binding.gd.uid",
+      "bytes": 20,
+      "sha256": "401e9efa76494a62fd59f4954973a4fc861d7bcd17ca3e0b34caf8c98b94f3e0"
+    },
+    {
+      "path": "Components/HandTools/Weapon/gun_physics.gd",
+      "bytes": 11062,
+      "sha256": "1736f18ec9fee6e85d35c332065740d83015b6582cda6d4f0c25337bb2d23b15"
+    },
+    {
+      "path": "Components/HandTools/Weapon/gun_physics.gd.uid",
+      "bytes": 20,
+      "sha256": "c73b97f2192746321620e15abc9dd5df30fc3f1326e6e4b0ce49bb760e0e7667"
+    },
+    {
+      "path": "Components/HandTools/Weapon/gun_state.gd",
+      "bytes": 3579,
+      "sha256": "33a236191ed1c46413bca73404210db4e0ad976fef40247c6bbeaddae38dcf1d"
+    },
+    {
+      "path": "Components/HandTools/Weapon/gun_state.gd.uid",
+      "bytes": 19,
+      "sha256": "080b7735753337fc88aa16999af241af0d2399ec8ce13948ddaa269fb8aedb3c"
+    },
+    {
+      "path": "Components/HandTools/Weapon/weapon.gd",
+      "bytes": 24367,
+      "sha256": "deee6a4b993d577379d5238dec9c8fb99f7196c5aa535a17b35894d9954b70e2"
+    },
+    {
+      "path": "Components/HandTools/Weapon/weapon.gd.uid",
+      "bytes": 21,
+      "sha256": "659534c00210bbc6de900a6e7559abea1a43640f97bee3441bc75137f0ff02bf"
+    },
+    {
+      "path": "Components/PlayerPlugins/footsteps/audio/footstep_grass_000.ogg",
+      "bytes": 8290,
+      "sha256": "9d49497777405d78d7cf7f2888e28277f3a23192300cfd1d79d54876b20f479f"
+    },
+    {
+      "path": "Components/PlayerPlugins/footsteps/audio/impactMetal_light_000.ogg",
+      "bytes": 7651,
+      "sha256": "33b5e6e37c6e9d54e07bf5a89b12c76e879f40c1ea83cdd82714df1d6f9fec6d"
+    },
+    {
+      "path": "Components/PlayerPlugins/footsteps/audio/impactMetal_light_001.ogg",
+      "bytes": 6967,
+      "sha256": "fba69c467ddd85da7b1d82e259f936b876d9ba6a3d6f1b24bdd10468e46bfe08"
+    },
+    {
+      "path": "Components/PlayerPlugins/footsteps/audio/impactMetal_light_002.ogg",
+      "bytes": 6804,
+      "sha256": "25a96f90a9a1f88a531e824e126f0519504625e5635e65a72e4f31611428db29"
+    },
+    {
+      "path": "Components/Water/audio/swim_audio.gd",
+      "bytes": 6658,
+      "sha256": "14a66e826706278646344d387888a4f2b71adc7047c7ec41623e111d59ccc6aa"
+    },
+    {
+      "path": "Components/Water/audio/swim_audio.gd.uid",
+      "bytes": 20,
+      "sha256": "ad0e5f33c6686b9cd5a231bff9f82b0421e446b0d083677995ff13b0997a5814"
+    },
+    {
+      "path": "Components/Water/audio/water_audio_bank.gd",
+      "bytes": 5560,
+      "sha256": "e04fc591f6abe5cf591cf74d14069d3d1287272b31f713def7a89133ba61d2ec"
+    },
+    {
+      "path": "Components/Water/audio/water_audio_bank.gd.uid",
+      "bytes": 20,
+      "sha256": "53d7c043379bee03a05ea2032f659ffae99f68cf1c33650697104930af9bbfd6"
+    },
+    {
+      "path": "Components/Water/audio/water_audio_slices.gd",
+      "bytes": 2983,
+      "sha256": "e70d305b5dfde9e07103156895c112e919e1503f5e792fe67643fecfee585b0a"
+    },
+    {
+      "path": "Components/Water/audio/water_audio_slices.gd.uid",
+      "bytes": 21,
+      "sha256": "5174a7741790b09971fff3af9bf93d6d152fcc098d2b6216426c5c33ba47b539"
+    },
+    {
+      "path": "Components/Water/audio/water_sound.gd",
+      "bytes": 18513,
+      "sha256": "8fad9900d8737c717ba635e2279766ed0618f297ee3b799539806b4a20574272"
+    },
+    {
+      "path": "Components/Water/audio/water_sound.gd.uid",
+      "bytes": 21,
+      "sha256": "689cc08c796dc0f3337f9a2153651d0bdbab86ef399876fcb7e7b0987134e62a"
+    },
+    {
+      "path": "Components/Water/buoyancy.gd",
+      "bytes": 8362,
+      "sha256": "77d5cebdfbf911b7ee06f888fcec5479abc7ca63963a0ca3c986de35017b9ceb"
+    },
+    {
+      "path": "Components/Water/buoyancy.gd.uid",
+      "bytes": 21,
+      "sha256": "d8c42fa6682d2da067c6628753b42c8d79649e54ab24efb4a989541ff1435ea8"
+    },
+    {
+      "path": "Components/Water/player_swim.gd",
+      "bytes": 9344,
+      "sha256": "59822f9741b5c323017a25b201217c320acc465028fec8a507beb47366379daf"
+    },
+    {
+      "path": "Components/Water/player_swim.gd.uid",
+      "bytes": 21,
+      "sha256": "ea4c2981466ff39ff2caa97ca3178328e8478d5192ac09920b6cd8c9f8bd04b1"
+    },
+    {
+      "path": "Components/Water/shaders/water_body.gdshader",
+      "bytes": 23489,
+      "sha256": "d2d72eb822bbca12bce25b7a18c2e105e8d5130f34e530777bc41db741b99c88"
+    },
+    {
+      "path": "Components/Water/shaders/water_body.gdshader.uid",
+      "bytes": 21,
+      "sha256": "5ae2839411be66ef6dd1fefaacc8cdcdd13433cb9f60196b0d67a1cf55cae107"
+    },
+    {
+      "path": "Components/Water/shaders/water_droplets.gdshader",
+      "bytes": 1977,
+      "sha256": "e0e5b1b4f751d13bdb2c41ef1782fcc9a3a1c23d0ef1e1c43524291ccdb5222c"
+    },
+    {
+      "path": "Components/Water/shaders/water_droplets.gdshader.uid",
+      "bytes": 21,
+      "sha256": "03ec7442ead0c046497c013ab95f84f555fa0dff7390ff1e364c56bc58ecd355"
+    },
+    {
+      "path": "Components/Water/shaders/water_mist.gdshader",
+      "bytes": 2829,
+      "sha256": "8534784e81c1d8e9acf836a90f41947fc4a3d194645fd659ebe0d6c1b3f83325"
+    },
+    {
+      "path": "Components/Water/shaders/water_mist.gdshader.uid",
+      "bytes": 21,
+      "sha256": "82153ef3bdabaf25cc39c58d821e412cdbb2524833e0e9cdf60f6777fdc7a5f9"
+    },
+    {
+      "path": "Components/Water/shaders/waterfall.gdshader",
+      "bytes": 9186,
+      "sha256": "12778a84ee6eaba625fdce37a5c72de6e1704507b3dd6e6ed9c5ea70a46fcc0f"
+    },
+    {
+      "path": "Components/Water/shaders/waterfall.gdshader.uid",
+      "bytes": 20,
+      "sha256": "2d665ecdce9481a1389eda84a7393cdbdc209ddb59df90cfb9c45c32de4554ff"
+    },
+    {
+      "path": "Components/Water/shaders/waterfall_churn.gdshader",
+      "bytes": 4537,
+      "sha256": "257f4fbc585306e515ac632d1c41296b482cb0fa5befdfa2b70c60f70e9706c0"
+    },
+    {
+      "path": "Components/Water/shaders/waterfall_churn.gdshader.uid",
+      "bytes": 20,
+      "sha256": "ae7c1088a3274f2b5dd828712d42321cedaa7614f9032d34e3e359cfd44117d5"
+    },
+    {
+      "path": "Components/Water/water.gd",
+      "bytes": 8307,
+      "sha256": "9ef34904a5a5e11f658292027e7f37029d82b628ec11b5588d553a70fff97446"
+    },
+    {
+      "path": "Components/Water/water.gd.uid",
+      "bytes": 21,
+      "sha256": "e1171c64050184d62d2d7c8d518ef4922d885d2dda04a81a0ebf4457a7d02f6b"
+    },
+    {
+      "path": "Components/Water/water_blast.gd",
+      "bytes": 9334,
+      "sha256": "3d5e42e89ae709f69e55a203294476b0fc8a8f04b071faff09962614a7d9f11d"
+    },
+    {
+      "path": "Components/Water/water_blast.gd.uid",
+      "bytes": 19,
+      "sha256": "443531fc627ec6a9da15d0cadc4eb5064bb96152c5c178b9ba8e7f7dd9cc0972"
+    },
+    {
+      "path": "Components/Water/water_body.gd",
+      "bytes": 68002,
+      "sha256": "78389ec52354fd2cabc5ee807a5149369ef4b70e11c45961777df07fda8af27d"
+    },
+    {
+      "path": "Components/Water/water_body.gd.uid",
+      "bytes": 21,
+      "sha256": "3c23392f3f59d8fd272ae0dedfb690ee5b4ad01d4a25afe14e2fab583e2f45e8"
+    },
+    {
+      "path": "Components/Water/water_splash.gd",
+      "bytes": 4786,
+      "sha256": "ee7cc7d7b9ddb3ed4095b7dbdae7039f67d4a4bbc54a4cec360c6c472e2c9fc0"
+    },
+    {
+      "path": "Components/Water/water_splash.gd.uid",
+      "bytes": 21,
+      "sha256": "5de92e8cb51988cfe78afefd8ad5fe49aac6cc3131de1942ea33ef9d0fd671e7"
+    },
+    {
+      "path": "Components/Water/waterfall.gd",
+      "bytes": 30449,
+      "sha256": "d89d1f23b2fce6780818b065cd20666f0cbea67f19a0bfc921ec338c50024bae"
+    },
+    {
+      "path": "Components/Water/waterfall.gd.uid",
+      "bytes": 21,
+      "sha256": "4526034eaef95ee4d0ec83411522b70bbc3d38779a906da13e99bea720ada225"
+    },
+    {
+      "path": "Exports/Authored_imported.tres",
+      "bytes": 948990,
+      "sha256": "549ab4abcb189ad5556e376f7c0ee65ac3466b13f0aaa85a57db7be33914408b"
+    },
+    {
+      "path": "Exports/Blender_asset_inventory.json",
+      "bytes": 9616,
+      "sha256": "5ad40ba66fddb478aa09e454a5867ff77fde5b0a9ae063de1255b95d14366a14"
+    },
+    {
+      "path": "Exports/GLB_asset_checks.json",
+      "bytes": 212,
+      "sha256": "904c1e9d66e1c6e68d9542a2818f9665f0fd39195511eebecf10ef8d827b6a2a"
+    },
+    {
+      "path": "Exports/Godot_runtime_inventory.json",
+      "bytes": 12266,
+      "sha256": "131c77043ec65798337995dd1a0d1373369f173b92c1e9b42b53bf3f48b20e49"
+    },
+    {
+      "path": "Exports/Runtime_head_pickup.tres",
+      "bytes": 63079,
+      "sha256": "51412e1ab35f39ff1a51cc196a6c54e5356f5db837471f07388dd07decb4b609"
+    },
+    {
+      "path": "Exports/Runtime_recoil.tres",
+      "bytes": 149331,
+      "sha256": "f2ef1198cb7b868802b12df3f569db577bff9c8ce33cde2616fd04b9d2e70e57"
+    },
+    {
+      "path": "Exports/Runtime_work.tres",
+      "bytes": 933734,
+      "sha256": "dcf2357d734499abcbe7eec5bdb0154efcd90fbefb8bdbc09fa9bc0c10bb50f4"
+    },
+    {
+      "path": "Exports/Tool_assembly_tool.glb",
+      "bytes": 4213468,
+      "sha256": "4f8ba5ae281deb7e31036f7d3d022a9bcb8111cd5252ac55e2896b3c38346ed2"
+    },
+    {
+      "path": "Exports/Tool_salvage_tool.glb",
+      "bytes": 141400,
+      "sha256": "f8972d2175ccbb9cf2fb1f02fab78735778b0b0be803a6486406bae39da211e1"
+    },
+    {
+      "path": "Exports/Wako_backpack_current.glb",
+      "bytes": 1098964,
+      "sha256": "7fc8d2ac37ee064ce7428bc9e1d5e69f779c25192c0eba95d64a578c7af835b7"
+    },
+    {
+      "path": "Exports/Wako_rigged_current.glb",
+      "bytes": 511660,
+      "sha256": "6cb2a7f5c44db39a0d6462ca910ef765b4a3999f7f9e8e9b52c3dcc7d72a47d1"
+    },
+    {
+      "path": "LogicObjects/Wako/Wako.blend",
+      "bytes": 5877732,
+      "sha256": "71c30b69ed158515d645bd9e011ce9e6a884a093819ee82ce22c6c23209135dc"
+    },
+    {
+      "path": "LogicObjects/Wako/Wako.blend.import",
+      "bytes": 349144,
+      "sha256": "d8a9f68248137947ced513afff949b60036e1e65f55e4554ec8a91a92a15b0b5"
+    },
+    {
+      "path": "LogicObjects/Wako/Wako.tscn",
+      "bytes": 995,
+      "sha256": "bfacb75c55445ae27f128883b1e0bb5f1c2db662f87f13b8c81380947a91bea2"
+    },
+    {
+      "path": "LogicObjects/Wako/snow_eye.gdshader",
+      "bytes": 411,
+      "sha256": "4d97def0b04684efd02d4ed3355939063c556bfa64c2ba9090dcec06b9004751"
+    },
+    {
+      "path": "LogicObjects/Wako/snow_eye.gdshader.uid",
+      "bytes": 20,
+      "sha256": "c14ba35e7ba7766e7c710c760620607b6c704dfed8a37a10c720f8c022e353d0"
+    },
+    {
+      "path": "LogicObjects/Wako/snow_skin.gdshader",
+      "bytes": 121,
+      "sha256": "44d2a53e6dbe11bed6c51b4400bcec8c98fc618f948a87f3d372cd9e321f2643"
+    },
+    {
+      "path": "LogicObjects/Wako/snow_skin.gdshader.uid",
+      "bytes": 20,
+      "sha256": "02bab5de445a31c1a42d79b3e33a81b2231d8414c2242d767a515a4216f0b75a"
+    },
+    {
+      "path": "LogicObjects/Wako/snow_skin_surface.gdshaderinc",
+      "bytes": 10342,
+      "sha256": "8f7cd0c0fdecc77d722d2c268839bf5ab00e36cbc448b9dad5910c1ed18ec90f"
+    },
+    {
+      "path": "LogicObjects/Wako/snow_skin_surface.gdshaderinc.uid",
+      "bytes": 20,
+      "sha256": "1b486d7864a3649e24822ea85366f06411e6343bbfbf0195ff19552e04faab43"
+    },
+    {
+      "path": "LogicObjects/Wako/textures/Player.png",
+      "bytes": 75387,
+      "sha256": "e64618c84cb36dc4228d7b2e98c205e5c3ec2a58f31b0390b822ec36f7823ac7"
+    },
+    {
+      "path": "LogicObjects/Wako/textures/Player.png.import",
+      "bytes": 996,
+      "sha256": "6cdd493db0b4acc0db93ebaf0e237fd73146c6754584cbe93ba73ffd27ab843f"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_back_holder_geometry.gd",
+      "bytes": 7413,
+      "sha256": "ebc267af589483d49db748f919d0e96dd71c0dcac7c4fea0f5aeb52287c673e5"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_back_holder_geometry.gd.uid",
+      "bytes": 19,
+      "sha256": "36dd456101f99425246a300d819e9504b82353d49e5d5ba3ad6b509895a1eef1"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_back_holder_visual.gd",
+      "bytes": 13125,
+      "sha256": "4585dbcfa647adf0258dc229879e800a90abbabeb8a29a1ae90f4328b185e36d"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_back_holder_visual.gd.uid",
+      "bytes": 20,
+      "sha256": "632b252daa1a257accbdd21123bebd1a7a525511444ae005da69e895deeb9fbb"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_back_tool.gd",
+      "bytes": 121575,
+      "sha256": "a8c554d35cf0c888bf71e986b2291f1b020b6dbd96e4b25f8e846a13a08d9287"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_back_tool.gd.uid",
+      "bytes": 20,
+      "sha256": "1abb86f082cd75b17886a23394130f35590d5b8973eebc07e2af4a3a0aa4603d"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_guarded_rollback.gd",
+      "bytes": 15055,
+      "sha256": "6960be5ecf7be3da154c921c818287a04195caf4bdb7ba34f4d589fb24a421d0"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_guarded_rollback.gd.uid",
+      "bytes": 20,
+      "sha256": "6fffb0eacdb0748209c6f0af32d965d636930d38a2e464ef090ecca16a3ea68e"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_head_holder_clearance.gd",
+      "bytes": 9416,
+      "sha256": "70dbd2fffb93aa9923e653d703eafc4597ebb941f05a8a99f63685f0b6863b16"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_head_holder_clearance.gd.uid",
+      "bytes": 20,
+      "sha256": "f16483f5315474f0490e4055efbbd06c940e80934c7c986970c96f5ee674f281"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_head_leap.gd",
+      "bytes": 100627,
+      "sha256": "a35f0d9e64a2da3dc8e326c2ff7baa3e288a9e7db121f1369db8a2c3b0eb23d8"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_head_leap.gd.uid",
+      "bytes": 20,
+      "sha256": "2109a1877aa53e8e0700870ab33373e0355fd75d9dbdda443172fd6ddc4f2cff"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_head_pickup.gd",
+      "bytes": 4457,
+      "sha256": "afdcf7895d7066c832026e0d63cb3a70659c051cb2e44322903d3586ecd736f5"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_head_pickup.gd.uid",
+      "bytes": 20,
+      "sha256": "b1445942c3e804313e086a2398db0b451953a9485d0a3264e5d24ad3d7881ebb"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_helper.gd",
+      "bytes": 94475,
+      "sha256": "63b0ec70e4e74a89fee6ae47495525c7d0d128c199e5382ad8e57a5567d40b54"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_helper.gd.uid",
+      "bytes": 20,
+      "sha256": "9076978bca5fd4039d4b86b4f4c85922e7bce876fb0d928774f1e7029dd7391d"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_idle_play.gd",
+      "bytes": 61905,
+      "sha256": "164162d95deac3752049f0cc9da0a80d7cdd3adda279bfbfccb55a328bea4e28"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_idle_play.gd.uid",
+      "bytes": 20,
+      "sha256": "3a8d32d34dc14840fb498005f9c841c2369b7dbcefc593274552fd1b92dab6ce"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_idle_play_pose.gd",
+      "bytes": 11168,
+      "sha256": "37b7b81dcd4de7b861c4b1b670e46dcc405769d72f9fea248b74558fb934af97"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_idle_play_pose.gd.uid",
+      "bytes": 20,
+      "sha256": "6ac10afa1215ff6938d8f27b858041ff314eaf61cf508f7399d75e71c04bc912"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_native_pose.gd",
+      "bytes": 5398,
+      "sha256": "72868a7a8e5c9bbab01c21b63b41bd3667f2ced3f176f761a429b64de284df57"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_native_pose.gd.uid",
+      "bytes": 20,
+      "sha256": "50e61ecef7d35dc1ee6f1e62507d083cbf8ddb7307d431e44b8223e0f4a7df4c"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_paired_balance.gd",
+      "bytes": 17331,
+      "sha256": "b255c01853d1caf4a73fd50c51f973a4afd3dc2b299a2ce0b64ced8428c34081"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_paired_balance.gd.uid",
+      "bytes": 20,
+      "sha256": "7bbf14345d4c3d0579eac0477ed12ad2588f7e36efc896ffe61c7f1de7544fd9"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_paired_balance_pose.gd",
+      "bytes": 27889,
+      "sha256": "037d40400598e1896e93352723a95546129a7def8d6cb82b334c1a9091eea76e"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_paired_balance_pose.gd.uid",
+      "bytes": 20,
+      "sha256": "c2e3062f2de55d2cd1d505a659e66501fbe95d8e27dedefff071653cc61a6074"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_paired_foot_pose.gd",
+      "bytes": 23625,
+      "sha256": "78278bc812fcff188050ab1dfc8161ae6fef5912ea77b95a9fc695e2a43699ae"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_paired_foot_pose.gd.uid",
+      "bytes": 20,
+      "sha256": "4205d1f8758e4b3d206a1a6fa93516499dfbded70bf5e31c267690f849433df9"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_personality.gd",
+      "bytes": 27822,
+      "sha256": "dbc5eeebb3ca1ef6e10ed9cd560eb3203d5378c34b8f615dabc022f9aea39841"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_personality.gd.uid",
+      "bytes": 19,
+      "sha256": "23a6a3ddd6e1f41f85002fc35956e63d2468bdccd4a9225756a5d34f72a5d362"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_personality_voice.gd",
+      "bytes": 4114,
+      "sha256": "afd390e2986db79cf84aac7374d5a31352fe61bfa47579b055a382bde0cf55b4"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_personality_voice.gd.uid",
+      "bytes": 20,
+      "sha256": "8da0322b36b3ea77f3e3c654f75708bce4809354d612330b95cf7dc8129ac832"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_pickup.gd",
+      "bytes": 12127,
+      "sha256": "231016fc10849951e9eb3966378a999c1e7ca2811ac6313a8c48523d76057029"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_pickup.gd.uid",
+      "bytes": 19,
+      "sha256": "1432c71fb0d971f1e109daafad4e4f42c7fafa66493efa79aa59970a2e5d64e5"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_portable_gun.gd",
+      "bytes": 31142,
+      "sha256": "ca139ea18f0d71e8f1f7fbe3c70946e632c1afccb865ea12a24c3af1bc0cad68"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_portable_gun.gd.uid",
+      "bytes": 20,
+      "sha256": "e593ba0826b8bde6171714cc98b8bb9ab132ab49febeb6949eee855537755718"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_pose.gd",
+      "bytes": 160556,
+      "sha256": "631458275c1bd8996c4ce4ab370092138e10180e3d414ea5d1415894bc06b05b"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_pose.gd.uid",
+      "bytes": 20,
+      "sha256": "f9b449f25245a466d871095df16ed4a6a2e97ba87c44474800f7445f4b2b26ea"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_ragdoll.gd",
+      "bytes": 27180,
+      "sha256": "a3cefeb81f372997dcf2e71757a122d606edde930fc5a7955fc82831bdb91518"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_ragdoll.gd.uid",
+      "bytes": 20,
+      "sha256": "d28dfc50e4eab52a82249c4d990ba8bab25bc450a6afc3fbd44418f227b08002"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_recoil.gd",
+      "bytes": 4798,
+      "sha256": "0db6a2b46f92353f3517cb6c712cec1fdd35358b2281266197d28c21b67224f0"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_recoil.gd.uid",
+      "bytes": 20,
+      "sha256": "9a426593a35e3aa54debd237822e777022006830e51b8ccca31544028afcd27e"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_threat.gd",
+      "bytes": 11334,
+      "sha256": "335b3c9806d9d2c4451894ae9041567b148e67725107e2d1d6df69a59ded3876"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_threat.gd.uid",
+      "bytes": 20,
+      "sha256": "68bc8ddabaeba9ce61c2dffa6bf459e5ab2dac43dbad72c1e3c2e23ff8f5690e"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_tool_return.gd",
+      "bytes": 23124,
+      "sha256": "28aa3d5317b5aac4767f3bf564981a4dfdcc8b76222f1fbdc386dfe5838a4604"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_tool_return.gd.uid",
+      "bytes": 19,
+      "sha256": "fe728bd1955683a8de97311dcc3ad61b4e076be1de5a8a439fd8129358efb2ec"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_upside_down_play.gd",
+      "bytes": 38388,
+      "sha256": "0a90c430b6b3d4ba22662f2df776fe8d549e4b0a5c9ba0d0e0e74bcd212c48a8"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_upside_down_play.gd.uid",
+      "bytes": 19,
+      "sha256": "4cee1fe772d25b2a83ffcd2f33b426fdd6b2eb1b2a7e4024cdad8774e591978f"
+    },
+    {
+      "path": "LogicObjects/Wako/wako_voice_bank.res",
+      "bytes": 244037,
+      "sha256": "38b73a3a711579d11d3287078a0f627724492b6584ec5163db95982d418f58b1"
+    },
+    {
+      "path": "PLAYTEST.txt",
+      "bytes": 3273,
+      "sha256": "f302af86e9e25373904809c732b95e9af6b2e3e28adaeb78425dc6118d1d59d0"
+    },
+    {
+      "path": "README.md",
+      "bytes": 3686,
+      "sha256": "6df92f30cfbb8276b09109782d2cb4c88fb9efc40154576badc31744c593a445"
+    },
+    {
+      "path": "REFERENCE_MEDIA.md",
+      "bytes": 8537,
+      "sha256": "952ba3f41c94bb66f476e87ab63b9b2cefdc2b39f81444f3155e50a67f22f490"
+    },
+    {
+      "path": "ReferenceMedia/island-wako-cell-return-flip-and-head-carry.mp4",
+      "bytes": 579420,
+      "sha256": "f105cc3722f8b7ce75cca460d4f5e3e5350c165f2591a543796a13b4c2cf4ff0"
+    },
+    {
+      "path": "ReferenceMedia/maple-rescued-wako-departure-island.mp4",
+      "bytes": 423449,
+      "sha256": "44e2578fffd4b09fddf39a36c33e407ebc0bc06a7d7339ac75d77c7f4ca1fd81"
+    },
+    {
+      "path": "ReferenceMedia/shared-gun-wako-rifle-foot-shot.mp4",
+      "bytes": 60575,
+      "sha256": "7e147cf89a163dae5d7cdb5695b5cc22c1c717f114ca5762cb661b5addce3c93"
+    },
+    {
+      "path": "ReferenceMedia/wako-body-fitted-backpack-toss.mp4",
+      "bytes": 202694,
+      "sha256": "be09573ca1cf516283c43dc14e0b5d47bed75ff37e56538fff1b523dda48e00d"
+    },
+    {
+      "path": "ReferenceMedia/wako-brisk-assembly-left-focused.mp4",
+      "bytes": 214764,
+      "sha256": "4adffb394780cd2591c83683c63ffd8af0af4aba3cec4635ce0b2d8b946261a4"
+    },
+    {
+      "path": "ReferenceMedia/wako-brisk-assembly-right-focused.mp4",
+      "bytes": 218056,
+      "sha256": "590a16aea34aa7a829861819e7db7bf27bba9b2e89096c3751b22712899ff5b5"
+    },
+    {
+      "path": "ReferenceMedia/wako-brisk-pickaxe-dismantle-island.mp4",
+      "bytes": 319828,
+      "sha256": "f09e4c85441be47c9a87f6de22344fe81d780c597245a3411e3dbab23b8aa7c0"
+    },
+    {
+      "path": "ReferenceMedia/wako-complete-natural-dance-and-settle.mp4",
+      "bytes": 103662,
+      "sha256": "3682eda0e583fa224f71e1d41e335e12d3f300bbec8f2442a1769c9e9cb34b33"
+    },
+    {
+      "path": "ReferenceMedia/wako-current-ik-back-tool-retrieval.mp4",
+      "bytes": 233787,
+      "sha256": "027888f0bd78b1ec07c7831d3857b6ae18985225ecbba4791c21ca912c403a35"
+    },
+    {
+      "path": "ReferenceMedia/wako-current-native-start-stop-turn.mp4",
+      "bytes": 189892,
+      "sha256": "2a041422721fc50832a3606740f57733767d547190a8ea506f0e7a83e995aedf"
+    },
+    {
+      "path": "ReferenceMedia/wako-energetic-construction-run-island.mp4",
+      "bytes": 448696,
+      "sha256": "7cace340033d9193909576df2a8c1d24055f150a2ed0b811a206a89314dede3b"
+    },
+    {
+      "path": "ReferenceMedia/wako-energetic-work-contact-voice-focused.mp4",
+      "bytes": 125580,
+      "sha256": "c7c97c4d0106247898ea3c9445f96ebf235c61d9fe79088abfa250e14c5fe1a8"
+    },
+    {
+      "path": "ReferenceMedia/wako-forward-tuck-native-pickup-carry-install.mp4",
+      "bytes": 354677,
+      "sha256": "c874a4b789a57269cd39becebf5292db3fa1e4caa171ac59ca83ac5d9561167e"
+    },
+    {
+      "path": "ReferenceMedia/wako-highfive-partner-eyes-and-smile.mp4",
+      "bytes": 197556,
+      "sha256": "86c7610d28dc40565eaae6135cd854bc7c333c0d0ece77fc498f149caf160d8c"
+    },
+    {
+      "path": "ReferenceMedia/wako-island-mallet-player-greeting.mp4",
+      "bytes": 370939,
+      "sha256": "378ee741a5385ca65aad8bc7f74525eedb554b266e51093084dfbadae93fa710"
+    },
+    {
+      "path": "ReferenceMedia/wako-real-warning-into-flight.mp4",
+      "bytes": 595757,
+      "sha256": "5a9ddac6bc0f271888d6df10770087adfa077b36d44863ce40b99c0f7c3a312e"
+    },
+    {
+      "path": "ReferenceMedia/wako-spontaneous-native-upside-down-pair.mp4",
+      "bytes": 491956,
+      "sha256": "a66c7c30e8745ca97ff6d5fcd9fc6a18b870770ca970576e62b57a25e5f8fe9f"
+    },
+    {
+      "path": "ReferenceMedia/wako-water-notice-dive-paddle-return.mp4",
+      "bytes": 721662,
+      "sha256": "ca63262ceca6a259678757ed46d73f465d2c18db332827a2a4b05a98f1ab972b"
+    },
+    {
+      "path": "WAKO_ANIMATION_REBUILD.md",
+      "bytes": 45709,
+      "sha256": "b1a5584667c6139ffd97d5b1db36cc15d9a90af625b7f050b1136cdd21841675"
+    },
+    {
+      "path": "goals.md",
+      "bytes": 44091,
+      "sha256": "04362b44a9c8121578410d49a1e2ca7fcfec15eb648805215769f90245981ee9"
+    },
+    {
+      "path": "tools/feature_gallery.py",
+      "bytes": 18606,
+      "sha256": "f85ee610512ba17b9d0604e9cb0ed89cd739496247e64f0c4f799520d3c4e253"
+    }
+  ]
+}

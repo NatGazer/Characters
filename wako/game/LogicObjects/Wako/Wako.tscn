@@ -1,0 +1,31 @@
+[gd_scene load_steps=5 format=3 uid="uid://bif7a5hfilsvn"]
+
+[ext_resource type="PackedScene" uid="uid://i8c7pij5i3sp" path="res://LogicObjects/Wako/Wako.blend" id="1_model"]
+[ext_resource type="Script" path="res://LogicObjects/Wako/wako_helper.gd" id="2_helper"]
+
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_feet"]
+friction = 0.1
+bounce = 0.0
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
+radius = 0.29
+height = 1.02
+
+[node name="WakoHelper" type="RigidBody3D"]
+mass = 22.0
+physics_material_override = SubResource("PhysicsMaterial_feet")
+collision_layer = 4
+collision_mask = 5
+contact_monitor = true
+max_contacts_reported = 6
+axis_lock_angular_x = true
+axis_lock_angular_y = true
+axis_lock_angular_z = true
+script = ExtResource("2_helper")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.2, 0)
+shape = SubResource("CapsuleShape3D_body")
+
+[node name="Wako" parent="." instance=ExtResource("1_model")]
+unique_name_in_owner = true
