@@ -66,10 +66,11 @@ func setup() -> void:
 	wako = spawn_wako(Vector3(0, 1.0, 0), id)
 	cam_follow = wako
 	match _arg("cam", "three"):
-		"side": cam_offset = Vector3(2.5, .55, -.25)
+		"side": cam_offset = Vector3(2.75, .9, -.2)
 		"front": cam_offset = Vector3(.9, .75, -2.4)
 		"back": cam_offset = Vector3(.6, .9, 2.45)
-		_: cam_offset = Vector3(1.8, .95, 1.6)
+		_: cam_offset = Vector3(2.0, 1.0, 2.05)
+	cam_lift = float(_arg("cam_lift", ".35"))
 	cam_smooth = 2.5
 	if args.has("ceiling"):
 		var y := float(_arg("ceiling", "1.9"))
@@ -80,6 +81,13 @@ func setup() -> void:
 	add_child(target)
 	m = {"tool": tool_kind, "side": side, "worker": id, "interrupt": _arg("interrupt", ""), "save": _arg("save", ""),
 		"ceiling": float(_arg("ceiling", "0")) if args.has("ceiling") else 0.0}
+
+func build_world() -> void:
+	# Optional tilted ground (--slope=deg, rotation about X: facing up/down hill).
+	var slope := 0.0
+	for raw: String in OS.get_cmdline_user_args():
+		if raw.begins_with("--slope="): slope = float(raw.trim_prefix("--slope="))
+	add_box(Vector3(0, -0.5, 0), Vector3(60, 1, 60), Color(0.46, 0.5, 0.42), Vector3(slope, 0, 0))
 
 func _equip() -> void:
 	tool = Part.new()
@@ -309,6 +317,8 @@ func _observe(delta: float, bt: RefCounted) -> void:
 			if phase == "flight" or _prev_phase_tick == "flight":
 				_flight_samples += 1
 			if not _impulse_ticks.has(_tick): _max_jump = maxf(_max_jump, step)
+		if args.has("trace_interrupt") and _interrupt_t >= 0.0 and clock - _interrupt_t < .1:
+			print("INT t=%.4f pos=%s step=%.4f frozen=%s vel=%s" % [clock, tp, tp.distance_to(_prev_tool_pos) if _prev_tool_pos.is_finite() else -1.0, tool.freeze, tool.linear_velocity])
 		# Interrupt continuity: the released body must not jump.
 		if _interrupt_t >= 0.0 and clock - _interrupt_t < .3 and _prev_tool_pos.is_finite():
 			var predicted := _prev_tool_pos + _prev_tool_vel * delta
@@ -432,8 +442,12 @@ func _finish(why: String) -> void:
 		await get_tree().create_timer(.2).timeout
 		get_tree().quit()
 
+var cam_lift := 0.0
+
 func _process(delta: float) -> void:
 	super(delta)
+	# Frame the whole throw (apex ~2.1 m) as well as the feet.
+	if cam_lift != 0.0: camera.look_at(cam_target + Vector3(0, cam_lift, 0), Vector3.UP)
 	if not _done and args.has("quit") and clock > 40.0: _finish("wall_timeout")
 
 ## ---- Holder geometry (plate vs skin, seated tool vs plate) --------------------
