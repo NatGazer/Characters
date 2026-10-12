@@ -20,11 +20,13 @@ var _t0 := 0
 var _timer: SkeletonModifier3D
 var _first_lift_pending := -1.0
 var clock := 0.0
+var debug := "debug=1" in OS.get_cmdline_user_args()
 # Contact skating independent of the published plant flag: any sole within
 # CONTACT_H of its observed terrain counts as touching; its support-relative
 # drift during that contact is the skate.
 const CONTACT_H := .008
 var _contact := [false, false]
+var _last_sole: Array[Vector3] = [Vector3.INF, Vector3.INF]
 var _contact_anchor: Array = [null, null]
 var _contact_max := [0.0, 0.0]
 
@@ -50,6 +52,9 @@ func _on_pose_done() -> void:
 	s.perf_sum += dt
 	s.perf_n += 1
 	s.perf_max = maxi(s.perf_max, dt)
+	# Sample inside the evaluation: supports (moving decks) are at the very
+	# transform the pose used, so support-relative slip is exact.
+	_sample(1.0 / Engine.physics_ticks_per_second)
 
 func mark_motion_start() -> void:
 	# The scenario issued a travel command from standstill this tick.
@@ -63,7 +68,7 @@ func _bucket() -> Dictionary:
 			"stances": [], "slip_max": 0.0, "landings": 0, "ground_ticks": [0, 0], "flight": 0, "moving": 0,
 			"knee_pos": 0, "knee_n": 0, "knee_step": 0.0, "knee_dir_step": 0.0, "knee_step_stance": 0.0,
 			"reach_viol": 0, "land_rel": [], "mid_rel": [], "plan_lag": 0.0, "start_latency": [],
-			"neutral": [], "skates": [], "skate_max": 0.0, "swing_time": [], "stance_time": [], "min_clear": INF}
+			"neutral": [], "skates": [], "skate_max": 0.0, "sole_step": 0.0, "swing_time": [], "stance_time": [], "min_clear": INF}
 	return _stats[key]
 
 func _support_point(side: int) -> Array:
@@ -84,6 +89,8 @@ func _support_point_any(side: int) -> Array:
 
 func _physics_process(delta: float) -> void:
 	clock += delta
+
+func _sample(delta: float) -> void:
 	if not is_instance_valid(wako): return
 	var pose: Node = wako._pose
 	if not pose.evaluated_valid or pose.evaluation_serial == _serial: return
@@ -103,6 +110,8 @@ func _physics_process(delta: float) -> void:
 		var knee: Vector3 = pose.evaluated_knees[side]
 		var ankle: Vector3 = sole - pose.evaluated_ankles[side] * Vector3(0, pose._ankle_height[side], 0)
 		if g: both_air = false
+		if _last_sole[side].is_finite(): s.sole_step = maxf(s.sole_step, sole.distance_to(_last_sole[side]))
+		_last_sole[side] = sole
 		var tp0: Vector3 = pose._terrain_points[side]
 		var touching: bool = tp0.is_finite() and pose._sole_normals[side].dot(sole - tp0) < CONTACT_H
 		if touching and not _contact[side]:
@@ -114,11 +123,19 @@ func _physics_process(delta: float) -> void:
 			if ca[0] != null:
 				var csup: Object = (ca[0] as WeakRef).get_ref()
 				if csup is Node3D: cexp = (csup as Node3D).to_global(ca[1])
-			_contact_max[side] = maxf(_contact_max[side], (sole - cexp).slide(pose._sole_normals[side]).length())
+			var drift: float = (sole - cexp).slide(pose._sole_normals[side]).length()
+			if debug and drift > .008 and drift > _contact_max[side] + .002:
+				var gait: Variant = pose.get("gait")
+				var hip_d: float = pose.evaluated_hips[side].distance_to(sole - pose.evaluated_ankles[side] * Vector3(0, pose._ankle_height[side], 0))
+				print("SKATE c=%.3f %s side=%d drift=%.3f h=%.4f grounded=%s state=%s t=%.2f req_err=%.3f hip_ankle=%.3f v=%.2f" % [clock, label, side, drift, pose._sole_normals[side].dot(sole - tp0), g, str(gait.state[side]) if gait else "-", float(gait.t[side]) if gait else -1.0, sole.distance_to(gait.requested[side]) if gait and gait.requested[side].is_finite() else -1.0, hip_d, rel.length()])
+			_contact_max[side] = maxf(_contact_max[side], drift)
 		elif _contact[side]:
 			s.skates.append(_contact_max[side])
 			s.skate_max = maxf(s.skate_max, _contact_max[side])
 		_contact[side] = touching
+		if debug and side == 0 and clock > 19.0 and clock < 19.3:
+			var gd: Variant = pose.get("gait")
+			print("TRACE t=%.3f st=%d gt=%.2f g=%s touch=%s sole=(%.3f,%.3f,%.3f) h=%.4f hip_rel=%.3f land=(%.3f,%.3f)" % [clock, gd.state[side], gd.t[side], g, touching, sole.x, sole.y, sole.z, pose._sole_normals[side].dot(sole - tp0) if tp0.is_finite() else -1.0, (sole - hip).dot(travel), gd.landing[side].x, gd.landing[side].z])
 		if g: s.ground_ticks[side] += 1
 		# Knee bend side relative to the face.
 		var axis := (ankle - hip).normalized()
@@ -130,6 +147,9 @@ func _physics_process(delta: float) -> void:
 		var kd: Vector3 = pose.evaluated_basis.inverse() * (knee - hip).normalized()
 		if _knee_angle[side] != INF:
 			var step := absf(a - float(_knee_angle[side]))
+			if debug and step > 9.0:
+				var gk: Variant = pose.get("gait")
+				print("KNEE %s side=%d step=%.1f angle=%.1f g=%s state=%s t=%.2f hip_ankle=%.3f sole=%s req=%s drop=%.3f" % [label, side, step, a, g, str(gk.state[side]) if gk else "-", float(gk.t[side]) if gk else -1.0, hip.distance_to(ankle), str(sole), str(gk.requested[side]) if gk else "", float(gk.body_drop) if gk else 0.0])
 			s.knee_step = maxf(s.knee_step, step)
 			if g: s.knee_step_stance = maxf(s.knee_step_stance, step)
 			s.knee_dir_step = maxf(s.knee_dir_step, rad_to_deg(kd.angle_to(_knee_dir[side])))
@@ -169,7 +189,11 @@ func _physics_process(delta: float) -> void:
 			if anchor[0] != null:
 				var sup: Object = (anchor[0] as WeakRef).get_ref()
 				if sup is Node3D: expected = (sup as Node3D).to_global(anchor[1])
-			_stance_max[side] = maxf(_stance_max[side], sole.distance_to(expected))
+			var sl: float = (sole - expected).slide(wako.ground_normal).length()
+			if debug and sl > .004 and sl > _stance_max[side] + .001:
+				var gs: Variant = pose.get("gait")
+				print("SLIP %s side=%d slip=%.4f state=%s t=%.2f planted_pt=%s sole=%s hip_ankle=%.3f" % [label, side, sl, str(gs.state[side]) if gs else "-", float(gs.t[side]) if gs else -1.0, str(gs._planted_point(side)) if gs else "", str(sole), hip.distance_to(ankle)])
+			_stance_max[side] = maxf(_stance_max[side], sl)
 		elif _grounded[side]:
 			# Lift-off ends a stance.
 			s.stances.append(_stance_max[side])
@@ -231,6 +255,7 @@ func print_report() -> void:
 		if not (s.neutral as Array).is_empty():
 			var last: Array = s.neutral[-1]
 			line += " neutral_dev=%.3f/%.3f" % [last[0], last[1]]
+		line += " sole_step=%.3f" % s.sole_step
 		if float(s.min_clear) < INF: line += " min_swing_clear=%.3f" % s.min_clear
 		if int(s.perf_n) > 0: line += " perf_us=%.0f/%d" % [float(s.perf_sum) / s.perf_n, s.perf_max]
 		print(line)

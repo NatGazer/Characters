@@ -67,6 +67,13 @@ var ground_velocity := Vector3.ZERO
 var ground_normal := Vector3.UP
 var gait_phase := 0.0
 var gait_speed := 0.0
+# Post-limit commanded travel velocity (zero when not navigating). The gait
+# planner predicts landings from it with this same force law.
+var locomotion_desired := Vector3.ZERO
+var _step_audio: AudioStreamPlayer3D
+var _step_counts := [0, 0]
+var _step_rng := RandomNumberGenerator.new()
+var _clip_resync := false
 var turn_rate := 0.0
 var _grounded_heading_handoff := false
 var target_position := Vector3.ZERO
@@ -257,6 +264,17 @@ func _ready() -> void:
 	_work_audio.unit_size = 2.0
 	_work_audio.volume_db = -15.0
 	add_child(_work_audio)
+	# Footsteps get their own polyphonic channel so a run's contacts never
+	# cut each other (or a tool contact) off.
+	_step_rng.seed = absi(str(worker_id).hash())+3301
+	_step_audio = AudioStreamPlayer3D.new()
+	_step_audio.name = "WakoFootsteps"
+	_step_audio.max_distance = 20.0
+	_step_audio.unit_size = 2.0
+	_step_audio.volume_db = -14.0
+	_step_audio.max_polyphony = 4
+	_step_audio.stream = FOOTSTEP
+	add_child(_step_audio)
 	personality = Personality.new()
 	personality.setup(self)
 	bind_eye_smile_source(personality)
@@ -808,6 +826,7 @@ func _move_with_forces(delta: float, keep_evaluated_parent: bool = false) -> voi
 	else:
 		_work_departure_active = false
 		_work_departure_age = 0.0
+	locomotion_desired = desired
 	if feet_work_active() and stance_valid and on_ground:
 		# Authored counterlean already shifts the body over the planted leg. Correct
 		# only beyond the capsule's supported footprint, rather than shifting twice
@@ -841,8 +860,9 @@ func _move_with_forces(delta: float, keep_evaluated_parent: bool = false) -> voi
 		_heading = lerp_angle(_heading, _idle_heading, 1.0 - exp(-6.0 * delta))
 		turn_rate = lerpf(turn_rate, wrapf(_heading - previous_heading, -PI, PI) / maxf(delta, .001), 1.0 - exp(-10.0 * delta))
 	_model.rotation.y = _heading
-	var run_lean := -.1 if gait_speed > 2.5 else 0.0
-	_visual_pitch = lerpf(_visual_pitch, clampf(-relative.y * 0.035, -0.2, 0.18) + _reaction * 0.15 + run_lean, 1.0 - exp(-8.0 * delta))
+	# Locomotion lean (speed, acceleration, braking follow-through) belongs to
+	# the pose's gait acting; the model keeps only vertical/impact reactions.
+	_visual_pitch = lerpf(_visual_pitch, clampf(-relative.y * 0.035, -0.2, 0.18) + _reaction * 0.15, 1.0 - exp(-8.0 * delta))
 	_model.rotation.x = _visual_pitch
 
 func _probe_obstacles(direction: Vector3) -> Vector3:
@@ -876,20 +896,28 @@ func _update_animation(delta: float) -> void:
 		return
 	var clip := "wk_idle"
 	var playback := 1.0
-	if gait_speed > 0.15 and on_ground:
-		clip = "work/carry" if carrying else "work/run" if gait_speed > 2.5 else "wk_walkcycle"
-		# Each authored half-cycle moves the planted sole back by this distance.
-		# Match that stance velocity to native travel instead of speeding every
-		# clip by the walking cadence, which made running and hauling feet hurry.
-		var stance_distance := .40 if carrying else .50 if clip == "work/run" else .46
-		var nominal_speed := stance_distance * 2.0 / _animation.get_animation(clip).length
-		if tool_foot_occupied():
-			var stance_fraction := lerpf(.5,.24,smoothstep(2.1,3.2,gait_speed))
-			nominal_speed = stance_distance / (stance_fraction * _animation.get_animation(clip).length)
-		playback = clampf(gait_speed / nominal_speed, 0.12, 3.0)
+	var locomotion_clips := ["wk_walkcycle", "work/carry", "work/run"]
+	var travelling: bool = _animation.current_animation in locomotion_clips
+	if gait_speed > (0.11 if travelling else 0.15) and on_ground:
+		var running: bool = gait_speed > (2.35 if _animation.current_animation == "work/run" else 2.6)
+		clip = "work/carry" if carrying else "work/run" if running else "wk_walkcycle"
+		var gait: RefCounted = _pose.gait if _pose else null
+		if gait and gait.active:
+			# The planner's distance-locked phase is the clock: drive the clip
+			# so its authored body motion stays in step with the actual feet.
+			var length := _animation.get_animation(clip).length
+			playback = clampf(gait.phase_rate * length, 0.0, 8.0)
+			if _animation.current_animation == clip:
+				var target := fposmod(gait.phase + gait.phase_rate * delta - .1, 1.0) * length
+				var ahead := fposmod(target - _animation.current_animation_position, length)
+				if ahead < length * .5: playback = clampf(ahead / maxf(delta, .0001), 0.0, 8.0)
+				else: _clip_resync = true
+		else:
+			var stance_distance := .40 if carrying else .50 if clip == "work/run" else .46
+			var nominal_speed := stance_distance * 2.0 / _animation.get_animation(clip).length
+			playback = clampf(gait_speed / nominal_speed, 0.12, 3.0)
 	elif not on_ground or fear_time > 0.0: clip = "work/danger_L"
 	if _animation.current_animation != clip:
-		var locomotion_clips := ["wk_walkcycle", "work/carry", "work/run"]
 		var previous_phase := 0.0
 		var preserve_phase := _animation.current_animation in locomotion_clips and clip in locomotion_clips
 		if preserve_phase:
@@ -897,6 +925,25 @@ func _update_animation(delta: float) -> void:
 		_animation.play(clip, 0.24, 1.0)
 		if preserve_phase: _animation.seek(previous_phase * _animation.get_animation(clip).length, false)
 	_animation.speed_scale = playback
+	var planner: RefCounted = _pose.gait if _pose else null
+	if planner and planner.active:
+		gait_phase = planner.phase
+		if _clip_resync and _animation.current_animation == clip:
+			# A re-phased launch/early release: jump the clip with the feet.
+			_animation.seek(fposmod(planner.phase - .1, 1.0) * _animation.get_animation(clip).length, false)
+		_clip_resync = false
+		# One footstep per actual planner contact, louder and brighter at a run.
+		for side in 2:
+			var count: int = planner.landing_count[side]
+			if count != _step_counts[side]:
+				_step_counts[side] = count
+				if on_ground and _step_audio:
+					var strength: float = planner.landing_strength[side]
+					_step_audio.volume_db = lerpf(-22.0, -10.0, strength)
+					_step_audio.pitch_scale = lerpf(.92, 1.18, strength) * _step_rng.randf_range(.94, 1.06)
+					_step_audio.play()
+		_pending_step_side = -1
+		return
 	# The imported cycle plants the left sole near 90%, right near 40%; IK and sounds share that actual clip.
 	gait_phase = fposmod(_animation.current_animation_position / maxf(_animation.current_animation_length, .01) + .1, 1.0)
 	var index := int(gait_phase * 2.0)

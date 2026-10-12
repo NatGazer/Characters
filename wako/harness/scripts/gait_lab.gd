@@ -161,7 +161,7 @@ func _stop(label: String) -> void:
 
 func _run(scenario: String) -> void:
 	metrics.attach(wako)
-	await _phase("idle", 1.2)
+	await _phase("idle", .5 if scenario.ends_with("clip") else 1.2)
 	match scenario:
 		"flat":
 			await _go(Vector3.FORWARD, 1.0, "start_1.0", "walk_1.0", 2.4)
@@ -210,6 +210,24 @@ func _run(scenario: String) -> void:
 			wako.navigate_to(wako.global_position + Vector3(30, -wako.ride_height, 0))
 			await _phase("carry_turn", 2.0)
 			await _stop("carry_stop2")
+		"runclip":
+			await _go(Vector3.FORWARD, 3.4, "run 3.4 m/s", "run 3.4 m/s ", 1.6)
+			await _stop("stop")
+		"walkclip":
+			await _go(Vector3.FORWARD, 1.0, "walk 1.0 m/s", "walk 1.0 m/s ", 1.4)
+			await _go(Vector3.FORWARD, 2.1, "jog 2.1 m/s", "jog 2.1 m/s ", 1.0)
+			await _stop("stop")
+		"turnclip":
+			wako.walk_speed = 2.1
+			wako.navigate_to(wako.global_position + Vector3(0, -wako.ride_height, -40))
+			await _phase("jog", 1.2)
+			wako.navigate_to(wako.global_position + Vector3(40, -wako.ride_height, 0))
+			await _phase("turn 90", 1.4)
+			wako.navigate_to(wako.global_position + Vector3(-40, -wako.ride_height, 0))
+			await _phase("reverse", 1.6)
+			await _stop("stop")
+			wako.face_point(wako.global_position + Vector3(0, 0, 4))
+			await _phase("turn in place", 1.6)
 		"showcase":
 			await _go(Vector3.FORWARD, 1.0, "walk 1.0 m/s", "walk 1.0 m/s ", 1.6)
 			await _go(Vector3.FORWARD, 2.1, "jog 2.1 m/s", "jog 2.1 m/s ", 1.2)
