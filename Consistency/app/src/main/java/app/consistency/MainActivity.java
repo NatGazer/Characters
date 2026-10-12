@@ -20,16 +20,16 @@ public class MainActivity extends Activity {
     private static final String K_START = "start_ms";   // wall-clock start of open session, 0 = none
     private static final String K_CONVERTED = "legacy_converted";   // TODO(next update): remove
 
-    // Rolling windows shown under the buttons, top to bottom.
-    private static final int[] STAT_IDS = { R.id.last_day, R.id.last_week, R.id.last_month, R.id.last_year, R.id.last_decade };
+    // Rolling windows, top to bottom, then the overall total.
     private static final int[] STAT_FIELD = { Calendar.DAY_OF_YEAR, Calendar.DAY_OF_YEAR, Calendar.MONTH, Calendar.YEAR, Calendar.YEAR };
     private static final int[] STAT_AMOUNT = { 1, 7, 1, 1, 10 };
-    private static final String[] STAT_LABEL = { "LAST DAY", "LAST WEEK", "LAST MONTH", "LAST YEAR", "LAST DECADE" };
+    private static final String[] LABELS = { "LAST DAY", "LAST WEEK", "LAST MONTH", "LAST YEAR", "LAST DECADE", "TOTAL" };
+    private static final float[] SCALE = { 1f, 0.86f, 0.74f, 0.63f, 0.52f, 0.68f };
 
     private SharedPreferences prefs;
-    private TextView session, totalView;
+    private TextView session;
+    private StatsView stats;
     private View startBtn, runningRow;
-    private final TextView[] stats = new TextView[STAT_IDS.length];
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean resumed;
 
@@ -45,11 +45,10 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         setContentView(R.layout.activity_main);
         prefs = getSharedPreferences("consistency", MODE_PRIVATE);
-        totalView = (TextView) findViewById(R.id.total);
+        stats = (StatsView) findViewById(R.id.stats);
         session = (TextView) findViewById(R.id.session);
         startBtn = findViewById(R.id.start);
         runningRow = findViewById(R.id.running);
-        for (int i = 0; i < stats.length; i++) stats[i] = (TextView) findViewById(STAT_IDS[i]);
 
         // TODO(next update): remove. Time recorded before the log existed becomes 10 minutes per day.
         if (!prefs.getBoolean(K_CONVERTED, false)) {
@@ -122,14 +121,16 @@ public class MainActivity extends Activity {
         long el = live ? Math.max(0, now - start) : 0;
         long shown = total + el;
 
-        for (int i = 0; i < stats.length; i++) {
+        String[] vals = new String[LABELS.length];
+        boolean[] gold = new boolean[LABELS.length];
+        for (int i = 0; i < STAT_FIELD.length; i++) {
             long ms = Events.sumLast(this, STAT_FIELD[i], STAT_AMOUNT[i], now, start);
             double goal = DefinitionsActivity.goalFor(prefs, now - Events.windowStart(STAT_FIELD[i], STAT_AMOUNT[i], now));
-            stats[i].setText(clock(ms / 1000) + "   " + STAT_LABEL[i]);
-            stats[i].setTextColor(goal >= 0 && ms >= goal ? DefinitionsActivity.GOLD : DefinitionsActivity.SILVER);
+            vals[i] = clock(ms / 1000);
+            gold[i] = goal >= 0 && ms >= goal;
         }
-
-        totalView.setText(clock(shown / 1000) + "   TOTAL");
+        vals[LABELS.length - 1] = clock(shown / 1000);   // total has no goal: always silver
+        stats.set(vals, LABELS, SCALE, gold);
         startBtn.setVisibility(live ? View.GONE : View.VISIBLE);
         runningRow.setVisibility(live ? View.VISIBLE : View.GONE);
         session.setVisibility(live ? View.VISIBLE : View.INVISIBLE);
