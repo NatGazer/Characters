@@ -11,7 +11,8 @@ Reads the ORIGINAL editable ``Wako.blend`` and writes a rebuilt copy:
   rebuilt as lofted 16-sided tubes with organised loops (3 hip/junction loops,
   7 graded knee loops with a small front kneecap volume, 4 ankle loops), a rounded
   sole (4x4 quad grid with a soft bevel) and a small articulated toe on the face
-  side (8-sided, 3 loops + domed tip).  Every body/head vertex, face and UV is
+  side (8-sided: root loop on the foot, neck with a dorsal crease, pad, tip loop,
+  cap ring and a domed nose, ~6 cm in front of the leg).  Every body/head vertex, face and UV is
   kept bit-identical; the legs are bridged onto the existing 8-vertex junction
   ring with a symmetric 8->16 triangle fan that sits under the body flange.
 * UVs: new leg islands are packed inside the plain grey (167/255) leg region of
@@ -106,7 +107,7 @@ CENTER_Y_PROFILE = [(-0.003, -0.0025), (0.051, 0.0055), (0.126, 0.017), (0.200, 
                     (0.400, 0.044), (0.450, 0.040), (0.500, 0.037), (0.550, 0.033),
                     (0.600, 0.029), (0.750, 0.0065)]
 KNEE_Z = 0.504          # knee joint (Bone.001 tail) in world z
-ANKLE_Z = 0.105         # ankle joint (Bone.005 head)
+ANKLE_Z = 0.105         # ankle joint (Bone.005 head); ANKLE_BLEND below straddles it
 # Kneecap: a little extra front volume so the bent knee does not flatten (LBS loses
 # volume on the outer side of a hinge); a little less at the back to leave crease room.
 KNEECAP_FRONT = (0.0095, 0.506, 0.038)    # amplitude, centre z, gaussian width
@@ -620,7 +621,6 @@ def rebuild_mesh(ob, atlas_rgb):
         v[dl][group_index["Bone"]] = 1.0
 
     stats = {"uv_grey_samples": 0, "uv_grey_bad": 0}
-    leg_vertex_order = {}
     for side in (-1, +1):
         jverts, jworld = find_junction(bm, mw, side)
         # design in left-leg space: mirror the right junction into it
@@ -628,15 +628,11 @@ def rebuild_mesh(ob, atlas_rgb):
         design = LegDesign(jleft)
         groups = SIDE_GROUPS[side]
         keymap = {f"J{k}": jverts[k] for k in range(8)}
-        order = []
-        for key in sorted(k for k in design.pos):  # deterministic order, identical per side
+        for key in sorted(design.pos):  # deterministic order, identical for both sides
             p = design.pos[key].copy()
             if side > 0:
                 p.x = -p.x
-            v = bm.verts.new(mwi @ p)
-            keymap[key] = v
-            order.append(key)
-        leg_vertex_order[side] = order
+            keymap[key] = bm.verts.new(mwi @ p)
         bm.verts.ensure_lookup_table()
         # weights
         for key, w in design.weights.items():
@@ -686,7 +682,6 @@ def rebuild_mesh(ob, atlas_rgb):
     bm.normal_update()
 
     # orientation check: a consistent recalc must not flip any face
-    before = [tuple(v.index for v in f.verts) for f in bm.faces]
     bm.verts.index_update()
     before = [tuple(v.index for v in f.verts) for f in bm.faces]
     bm2 = bm.copy()

@@ -15,6 +15,12 @@ Usage::
     <blender-python> wako_deform_sheet.py -- BLEND OUT_DIR PREFIX [--label TEXT]
                          [--samples N] [--poses name,name,...] [--keep-panels DIR]
     python3 wako_deform_sheet.py compose JOB.json      # (internal) PIL composition step
+    python3 wako_deform_sheet.py godot-compose GODOT_JOB.json PANEL_DIR OUT_DIR PREFIX LABEL
+
+``--export-godot JOB.json`` (optionally with ``--no-render``) writes the exact armature-space
+bone matrices and camera framing of every pose/view, so a Godot scene can pose the
+imported Skeleton3D identically (Blender (x, y, z) -> Godot (x, z, -y)) and capture the
+same panels with the real game shader; ``godot-compose`` turns those captures into sheets.
 
 The render step runs inside Blender's Python.  Label composition needs Pillow; if the
 Blender interpreter has none, the script re-invokes itself with ``$WAKO_PIL_PYTHON``
@@ -301,13 +307,13 @@ def render_main(argv):
         knees = apply_pose(spec_l, spec_r)
         print(f"[wako_deform_sheet] pose {name}: knee heads (armature space) {knees}", flush=True)
         panels = []
-        gpose = {"name": name, "views": [],
+        gpose = {"name": name, "desc": desc, "views": [],
                  "bones": {pb.name: [list(r) for r in pb.matrix] for pb in arm.pose.bones}}
         for vname, vdir in VIEWS:
             frame(vdir, "left_foot" if name.startswith("foot") else "full")
             fname = f"{prefix}_{name}_{vname.replace('/', '')}.png"
             path = os.path.join(tmp, fname)
-            gpose["views"].append({"file": fname, "location": list(cam.location),
+            gpose["views"].append({"file": fname, "view": vname, "location": list(cam.location),
                                    "forward": list(Vector(vdir).normalized()),
                                    "ortho_scale": cam_data.ortho_scale})
             if not opts["no_render"]:
@@ -338,9 +344,26 @@ def render_main(argv):
         subprocess.run([py, os.path.abspath(__file__), "compose", job_path], check=True)
 
 
+def godot_compose(job_path, panel_dir, out_dir, prefix, label):
+    """Compose sheets from the PNGs written by the Godot render scene for an exported job."""
+    gjob = json.load(open(job_path))
+    os.makedirs(out_dir, exist_ok=True)
+    rows = [{"name": p["name"], "panels": [
+        {"file": os.path.join(panel_dir, v["file"]), "title": f"{label}  {p['name']}  [{v['view']}]",
+         "subtitle": p["desc"]} for v in p["views"]]} for p in gjob["poses"]]
+    sheets = [{"out": os.path.join(out_dir, f"{prefix}_{k // 2 + 1:02d}_{'_'.join(r['name'] for r in rows[k:k + 2])}.jpg"),
+               "rows": rows[k:k + 2]} for k in range(0, len(rows), 2)]
+    tmp = os.path.join(panel_dir, f"{prefix}_compose.json")
+    with open(tmp, "w") as fh:
+        json.dump({"panel": PANEL, "sheets": sheets}, fh)
+    compose(tmp)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 2 and sys.argv[1] == "compose":
         compose(sys.argv[2])
+    elif len(sys.argv) > 2 and sys.argv[1] == "godot-compose":
+        godot_compose(*sys.argv[2:7])
     else:
         args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
         render_main(args)
