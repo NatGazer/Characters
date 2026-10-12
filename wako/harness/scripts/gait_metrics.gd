@@ -21,6 +21,7 @@ var _timer: SkeletonModifier3D
 var _first_lift_pending := -1.0
 var clock := 0.0
 var debug := "debug=1" in OS.get_cmdline_user_args()
+var dump_label := ""
 # Contact skating independent of the published plant flag: any sole within
 # CONTACT_H of its observed terrain counts as touching; its support-relative
 # drift during that contact is the skate.
@@ -34,6 +35,10 @@ class EvalTimer extends SkeletonModifier3D:
 	var probe: Node
 	func _process_modification_with_delta(_delta: float) -> void:
 		probe._t0 = Time.get_ticks_usec()
+
+func _ready() -> void:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("dump="): dump_label = a.get_slice("=", 1)
 
 func attach(target: RigidBody3D) -> void:
 	wako = target
@@ -104,6 +109,14 @@ func _sample(delta: float) -> void:
 	_serial = pose.evaluation_serial
 	var s := _bucket()
 	s.ticks += 1
+	if not dump_label.is_empty() and label.begins_with(dump_label):
+		# Pose dump for the strobe plotter (harness/scripts/gait_strobe.py).
+		var root: Transform3D = pose.evaluated_root
+		var line := "POSE %.4f %s %s" % [clock, _v(root.origin), _v(root.basis.y)]
+		for side in 2:
+			var ankle: Vector3 = pose.evaluated_soles[side] - pose.evaluated_ankles[side] * Vector3(0, pose._ankle_height[side], 0)
+			line += " %d %s %s %s %s" % [1 if pose.evaluated_grounded[side] else 0, _v(pose.evaluated_hips[side]), _v(pose.evaluated_knees[side]), _v(ankle), _v(pose.evaluated_soles[side])]
+		print(line)
 	if not str(wako.tool_pose_blocked).is_empty(): s.tool_blocked += 1
 	var rel: Vector3 = (wako.linear_velocity - wako.ground_velocity).slide(wako.ground_normal)
 	var speed := rel.length()
@@ -235,6 +248,9 @@ func neutral_snapshot() -> Array:
 		out.append(d.length())
 	_bucket().neutral.append(out)
 	return out
+
+static func _v(p: Vector3) -> String:
+	return "%.4f,%.4f,%.4f" % [p.x, p.y, p.z]
 
 static func _median(a: Array) -> int:
 	if a.is_empty(): return 0

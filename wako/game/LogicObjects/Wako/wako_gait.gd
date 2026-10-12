@@ -110,6 +110,7 @@ var _yaw_v := 0.0
 var body_drop := 0.0
 var _drop_v := 0.0
 var settle_dip := 0.0
+var body_nod := 0.0
 var _rest_foot: Array[Basis] = []
 var _query := PhysicsRayQueryParameters3D.new()
 var _query_key := -1
@@ -856,6 +857,9 @@ func _update_body(delta: float) -> void:
 	var low := duty - .5 * (1.0 - run_weight)
 	var amplitude := lerpf(.012 * smoothstep(.2, 1.0, v), .042, run_weight) * (.4 if carry else 1.0)
 	var bob := -amplitude * cos(TAU * (step_phase - low))
+	# The cube nods into each running footfall (absorb) and lifts its face in
+	# flight: secondary motion that sells weight, kept small and phase-locked.
+	body_nod = .035 * run_weight * cos(TAU * (step_phase - low)) * (.4 if carry else 1.0)
 	# Launch: a quick gather on the first step reads as anticipation.
 	var gather := -.03 * sin(PI * clampf(moving_age / .16, 0.0, 1.0)) if moving and moving_age < .16 else 0.0
 	var y_target := (dip + bob) * steady + gather
@@ -908,7 +912,7 @@ func acting_root(sk: Skeleton3D, authored: Transform3D) -> Transform3D:
 	# +X rotation tilts the top backward, +Z rotation tilts it left.
 	var drop := body_drop
 	root.origin += Vector3(body_shift * w, (body_y * w) + settle_dip - drop, 0.0)
-	var tilt := Basis(Vector3.UP, body_yaw * w) * Basis(Vector3.RIGHT, -body_lean * w) * Basis(Vector3.BACK, body_roll * w)
+	var tilt := Basis(Vector3.UP, body_yaw * w) * Basis(Vector3.RIGHT, -(body_lean + body_nod) * w) * Basis(Vector3.BACK, body_roll * w)
 	root.basis = (tilt * root.basis).orthonormalized()
 	return root
 
