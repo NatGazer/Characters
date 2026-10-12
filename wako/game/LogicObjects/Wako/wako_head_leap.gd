@@ -195,6 +195,11 @@ static func begin_group(source: RigidBody3D, members: Array) -> String:
 	if bounds.size.length_squared() < .0001: return "Physical stock has no complete contact geometry"
 	var world_bounds: AABB=source.global_transform*bounds
 	var axis := 0 if world_bounds.size.x >= world_bounds.size.z else 2
+	if members.size() > 1 and absf(world_bounds.size.x-world_bounds.size.z) < .02:
+		# A square face has no long axis: share contacts along the crew's own
+		# side-by-side spacing instead of a float tie (which crossed paths).
+		var spread: Vector3 = (members[members.size()-1].global_position-members[0].global_position).slide(Vector3.UP)
+		axis = 0 if absf(spread.x) >= absf(spread.z) else 2
 	if members.size() > 1 and world_bounds.size[axis] < 1.18:
 		return "This heavy stock needs a wider supported head contact face"
 	for member: Node in members:

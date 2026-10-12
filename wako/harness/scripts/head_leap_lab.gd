@@ -32,6 +32,8 @@ var interrupt_state := "outbound"
 var heading := 0.0
 var save_state := "return"
 var save_at := .3
+var crew_gap := 1.0
+var gap := 1.35
 
 func setup() -> void:
 	for arg: String in OS.get_cmdline_user_args():
@@ -44,19 +46,21 @@ func setup() -> void:
 		if arg.begins_with("--heading="): heading = deg_to_rad(float(arg.trim_prefix("--heading=")))
 		if arg.begins_with("--save-state="): save_state = arg.trim_prefix("--save-state=")
 		if arg.begins_with("--save-at="): save_at = float(arg.trim_prefix("--save-at="))
+		if arg.begins_with("--crew-gap="): crew_gap = float(arg.trim_prefix("--crew-gap="))
+		if arg.begins_with("--gap="): gap = float(arg.trim_prefix("--gap="))
 	var focus := Vector3(0, .75, -.8)
 	match case_name:
 		"solo", "interrupt", "hit", "save":
-			part = _part("bracket", Vector3(0, .15, -1.5))
+			part = _part("bracket", Vector3(0, .15, -(gap+.15)))
 			crew = [spawn_wako(Vector3(0, 1.0, 0), "leap_solo")]
 		"large":
 			# 48 kg flux generator: outside the small-stock limits (> 35 kg).
-			part = _part("generator", Vector3(0, .325, -(1.35+.475)))
+			part = _part("generator", Vector3(0, .325, -(gap+.475)))
 			crew = [spawn_wako(Vector3(0, 1.0, 0), "leap_large")]
 			focus = Vector3(0, .8, -1.0)
 		"crew":
 			# 32 kg cut armour plate (1.2 m face): one shared two-Wako job.
-			part = _part("armor", Vector3(0, .075, -(1.0+.6)))
+			part = _part("armor", Vector3(0, .075, -(crew_gap+.6)))
 			crew = [spawn_wako(Vector3(-.49, 1.0, 0), "leap_crew_a"), spawn_wako(Vector3(.49, 1.0, 0), "leap_crew_b")]
 			focus = Vector3(0, .8, -.85)
 		"obstacle":
