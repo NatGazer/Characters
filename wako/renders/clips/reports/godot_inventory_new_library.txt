@@ -1,0 +1,54 @@
+animation              length frames  loop tracks   kfwd
+RESET                  1.0000     30     0     27  1.000
+wk_assemble_L          1.0000     30     0     27  0.949
+wk_assemble_R          1.0000     30     0     27  0.949
+wk_brace_L             1.4000     42     0     27  0.945
+wk_brace_R             1.4000     42     0     27  0.945
+wk_carry               0.6667     20     1     27  0.949
+wk_cheer               0.9000     27     0     27  0.963
+wk_dance_a             4.0000    120     0     27  0.960
+wk_dance_b             4.0000    120     0     27  0.971
+wk_dance_c             4.0000    120     0     27  0.969
+wk_danger              1.0000     30     1     27  0.964
+wk_greet               1.6000     48     0     27  0.960
+wk_idle                4.0000    120     1     27  0.983
+wk_inspect_L           1.3000     39     0     27  0.936
+wk_inspect_R           1.3000     39     0     27  0.936
+wk_interrupted_L       0.7000     21     0     27  0.985
+wk_interrupted_R       0.7000     21     0     27  0.985
+wk_maintenance_L       1.1000     33     0     27  0.948
+wk_maintenance_R       1.1000     33     0     27  0.948
+wk_operate_L           1.2000     36     0     27  0.944
+wk_operate_R           1.2000     36     0     27  0.944
+wk_pickup_L            1.2000     36     0     27  0.939
+wk_pickup_R            1.2000     36     0     27  0.939
+wk_place_L             1.1000     33     0     27  0.938
+wk_place_R             1.1000     33     0     27  0.938
+wk_pull_L              1.4000     42     0     27  0.949
+wk_pull_R              1.4000     42     0     27  0.949
+wk_push_L              1.4000     42     0     27  0.927
+wk_push_R              1.4000     42     0     27  0.927
+wk_repair_L            1.1000     33     0     27  0.932
+wk_repair_R            1.1000     33     0     27  0.932
+wk_run                 0.5333     16     1     27  0.918
+wk_sit_down            1.6000     48     0     27  0.575
+wk_sit_idle            4.8000    144     1     27  0.825
+wk_sit_up              1.1000     33     0     27  0.571
+wk_step_L              0.7000     21     0     27  0.958
+wk_step_R              0.7000     21     0     27  0.958
+wk_swim                1.0000     30     1     27  0.981
+wk_tool_change_L       1.2000     36     0     27  0.945
+wk_tool_change_R       1.2000     36     0     27  0.945
+wk_unbend_L            1.2000     36     0     27  0.913
+wk_unbend_R            1.2000     36     0     27  0.913
+wk_walkcycle           0.8000     24     1     27  0.960
+count 43 (RESET yes)
+Bone { "parent": -1, "origin": [0.0, 0.0, 0.0], "basis_x": [-1.0, 0.0, 0.0], "basis_y": [0.0, 1.0, 0.0] }
+Bone.001 { "parent": 0, "origin": [0.237, -0.16, 0.0], "basis_x": [-0.7247, 0.0, 0.689], "basis_y": [0.0, -1.0, 0.0] }
+Bone.003 { "parent": 1, "origin": [0.0, 0.41, 0.0], "basis_x": [-0.7247, 0.0, 0.689], "basis_y": [0.0, 1.0, 0.0] }
+Bone.005 { "parent": 2, "origin": [0.0, 0.399, 0.0], "basis_x": [1.0, 0.0, 0.0], "basis_y": [0.0, 1.0, 0.0] }
+toe.L { "parent": 3, "origin": [0.0, 0.056, -0.06], "basis_x": [-1.0, 0.0, 0.0], "basis_y": [0.0, 0.0, -1.0] }
+Bone.002 { "parent": 0, "origin": [-0.237, -0.16, 0.0], "basis_x": [-0.6998, 0.0, -0.7143], "basis_y": [0.0, -1.0, 0.0] }
+Bone.004 { "parent": 5, "origin": [0.0, 0.41, 0.0], "basis_x": [-0.6998, 0.0, -0.7143], "basis_y": [0.0, 1.0, 0.0] }
+Bone.006 { "parent": 6, "origin": [0.0, 0.399, 0.0], "basis_x": [1.0, 0.0, 0.0], "basis_y": [0.0, 1.0, 0.0] }
+toe.R { "parent": 7, "origin": [0.0, 0.056, -0.06], "basis_x": [-1.0, 0.0, 0.0], "basis_y": [0.0, 0.0, -1.0] }

@@ -1,0 +1,1520 @@
+{
+ "actions_written": 42,
+ "bones_changed": [
+  "toe.L",
+  "toe.R"
+ ],
+ "clips": {
+  "wk_assemble_L": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     -0.175,
+     0.2249,
+     -0.42
+    ],
+    "foot_pitch_deg": -40.0,
+    "frame": 16.8,
+    "hip": [
+     -0.1523,
+     0.8751,
+     0.0306
+    ],
+    "toe_dir": [
+     -0.054,
+     -0.788,
+     -0.613
+    ],
+    "toe_tip": [
+     -0.1828,
+     0.041,
+     -0.5097
+    ]
+   },
+   "frames": 30,
+   "knee_flex_jump_deg_per_f": 46.6,
+   "knee_flex_max_deg": 103.6,
+   "knee_forward_min": 0.949,
+   "knee_plane_jump_deg_per_f": 2.8,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "notes": "mallet stroke: support accepts f0-3, slow heavy draw f4-12 (knee cocked high, foot pulled under it, toe up = mallet up/back, body leans back), 1-2 f hang, 3 f accelerating strike (knee leads, shin whips, body lunges with it), contact at 0.56, 3 cm rebound + hold, exponential ease-out to a ready pose, plant",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.0,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_assemble_R": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     0.175,
+     0.2249,
+     -0.42
+    ],
+    "foot_pitch_deg": -40.0,
+    "frame": 16.8,
+    "hip": [
+     0.1523,
+     0.8751,
+     0.0306
+    ],
+    "toe_dir": [
+     0.054,
+     -0.788,
+     -0.613
+    ],
+    "toe_tip": [
+     0.1828,
+     0.041,
+     -0.5097
+    ]
+   },
+   "frames": 30,
+   "knee_flex_jump_deg_per_f": 46.6,
+   "knee_flex_max_deg": 103.6,
+   "knee_forward_min": 0.949,
+   "knee_plane_jump_deg_per_f": 2.8,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "mirror_error_mm": 0.0,
+   "notes": "mallet stroke: support accepts f0-3, slow heavy draw f4-12 (knee cocked high, foot pulled under it, toe up = mallet up/back, body leans back), 1-2 f hang, 3 f accelerating strike (knee leads, shin whips, body lunges with it), contact at 0.56, 3 cm rebound + hold, exponential ease-out to a ready pose, plant",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.0,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_brace_L": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     -0.1811,
+     0.304,
+     -0.3275
+    ],
+    "foot_pitch_deg": 47.0,
+    "frame": 23.52,
+    "hip": [
+     -0.1661,
+     0.8607,
+     0.0044
+    ],
+    "toe_dir": [
+     -0.054,
+     0.787,
+     -0.615
+    ],
+    "toe_tip": [
+     -0.1952,
+     0.412,
+     -0.489
+    ]
+   },
+   "frames": 42,
+   "knee_flex_jump_deg_per_f": 16.4,
+   "knee_flex_max_deg": 74.6,
+   "knee_forward_min": 0.945,
+   "knee_plane_jump_deg_per_f": 2.9,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "notes": "brace: sole set against the load, lean in, sustained hold kept alive (load pulses, effort tremor), re-press accent at 0.56, eased release",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.4,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_brace_R": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     0.1811,
+     0.304,
+     -0.3275
+    ],
+    "foot_pitch_deg": 47.0,
+    "frame": 23.52,
+    "hip": [
+     0.1661,
+     0.8607,
+     0.0044
+    ],
+    "toe_dir": [
+     0.054,
+     0.787,
+     -0.615
+    ],
+    "toe_tip": [
+     0.1952,
+     0.412,
+     -0.489
+    ]
+   },
+   "frames": 42,
+   "knee_flex_jump_deg_per_f": 16.4,
+   "knee_flex_max_deg": 74.6,
+   "knee_forward_min": 0.945,
+   "knee_plane_jump_deg_per_f": 2.9,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "mirror_error_mm": 0.0,
+   "notes": "brace: sole set against the load, lean in, sustained hold kept alive (load pulses, effort tremor), re-press accent at 0.56, eased release",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.4,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_carry": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": null,
+   "frames": 20,
+   "knee_flex_jump_deg_per_f": 10.1,
+   "knee_flex_max_deg": 67.8,
+   "knee_forward_min": 0.949,
+   "knee_plane_jump_deg_per_f": 1.2,
+   "knee_pole_min": 1.0,
+   "loop": true,
+   "loop_seam": 0.0,
+   "notes": "loaded grounded jog 20 f (no flight), level steady body, deeper knees, wider track; L contact 0.0, R 0.5",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 0.6667,
+   "slip_mm": {
+    "L": 0.02,
+    "R": 0.02
+   }
+  },
+  "wk_cheer": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": null,
+   "frames": 27,
+   "knee_flex_jump_deg_per_f": 21.0,
+   "knee_flex_max_deg": 54.5,
+   "knee_forward_min": 0.963,
+   "knee_plane_jump_deg_per_f": 1.5,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "notes": "completion cheer: quick dip, springy hop (~12 cm) with a knee tuck, face up and a roll wiggle in the air, landing absorb, overshoot settle",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 0.9,
+   "slip_mm": {
+    "L": 1.24,
+    "R": 1.24
+   }
+  },
+  "wk_dance_a": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": null,
+   "frames": 120,
+   "knee_flex_jump_deg_per_f": 33.5,
+   "knee_flex_max_deg": 73.4,
+   "knee_forward_min": 0.96,
+   "knee_plane_jump_deg_per_f": 26.0,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "notes": "phrase A: ta-da jump-out hit (b1), groove (b2), side-step R/L with rolls (b3-4), forward kick hit with pointed toe (b5), groove (b6), two-hop 360 spin landing on the bar (b7-8)",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 4.0,
+   "slip_mm": {
+    "L": 1.86,
+    "R": 0.91
+   }
+  },
+  "wk_dance_b": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": null,
+   "frames": 120,
+   "knee_flex_jump_deg_per_f": 22.6,
+   "knee_flex_max_deg": 62.7,
+   "knee_forward_min": 0.971,
+   "knee_plane_jump_deg_per_f": 8.9,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "notes": "phrase B: alternating heel taps on the 8ths with yaw wiggles (b1-4), hop, hop, big HOP with a tuck (b5-7), wide pose hit (b8), settle",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 4.0,
+   "slip_mm": {
+    "L": 0.28,
+    "R": 0.28
+   }
+  },
+  "wk_dance_c": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": null,
+   "frames": 120,
+   "knee_flex_jump_deg_per_f": 23.3,
+   "knee_flex_max_deg": 101.5,
+   "knee_forward_min": 0.969,
+   "knee_plane_jump_deg_per_f": 4.1,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "notes": "phrase C: heel-toe taps (b1-2), double knee pops with rolls (b3), body wave (b4), flamingo knee-up hit with balance wobble (b5), quick knee swap (b6), side hops R/L (b7), ta-da (b8) and step back in",
+   "overreach_mm": 1.12,
+   "penetration_mm": -0.0,
+   "seconds": 4.0,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_danger": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": null,
+   "frames": 30,
+   "knee_flex_jump_deg_per_f": 1.7,
+   "knee_flex_max_deg": 61.5,
+   "knee_forward_min": 0.964,
+   "knee_plane_jump_deg_per_f": 12.9,
+   "knee_pole_min": 1.0,
+   "loop": true,
+   "loop_seam": 0.0,
+   "notes": "wary crouch on the balls of the feet, staggered stance, snap looks right/left with overshoot, ready bounces, fear tremor",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.0,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_greet": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": null,
+   "frames": 48,
+   "knee_flex_jump_deg_per_f": 13.9,
+   "knee_flex_max_deg": 51.8,
+   "knee_forward_min": 0.96,
+   "knee_plane_jump_deg_per_f": 0.9,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "notes": "greeting: 'oh!' rise onto the toes, settle, dip wind-up, bow-hop (~5 cm) with a 12 deg nod at the apex, landing absorb, happy 7 deg side-tilt glow with a sway and one tiny bounce, eased release (no pop)",
+   "overreach_mm": 0.33,
+   "penetration_mm": -0.0,
+   "seconds": 1.6,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_idle": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": null,
+   "frames": 120,
+   "knee_flex_jump_deg_per_f": 4.5,
+   "knee_flex_max_deg": 32.4,
+   "knee_forward_min": 0.983,
+   "knee_plane_jump_deg_per_f": 1.0,
+   "knee_pole_min": 1.0,
+   "loop": true,
+   "loop_seam": 0.0,
+   "notes": "alert idle: irregular breaths, one weight shift each way with overshoot, glances, a curiosity lean, an unweighted heel-lift fidget; feet planted, never symmetric",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 4.0,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_inspect_L": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     -0.1712,
+     0.1929,
+     -0.36
+    ],
+    "foot_pitch_deg": -34.0,
+    "frame": 21.84,
+    "hip": [
+     -0.1729,
+     0.8805,
+     0.0456
+    ],
+    "toe_dir": [
+     0.03,
+     -0.5,
+     -0.865
+    ],
+    "toe_tip": [
+     -0.1666,
+     0.0479,
+     -0.4909
+    ]
+   },
+   "frames": 39,
+   "knee_flex_jump_deg_per_f": 19.8,
+   "knee_flex_max_deg": 60.5,
+   "knee_forward_min": 0.936,
+   "knee_plane_jump_deg_per_f": 2.5,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "notes": "curious probe: lean onto support, lift with the toe leading, strong slow-in approach, light toe touch at 0.56, two rubs, nod + head tilt, eased withdraw",
+   "overreach_mm": 0.59,
+   "penetration_mm": -0.0,
+   "seconds": 1.3,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_inspect_R": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     0.1712,
+     0.1929,
+     -0.36
+    ],
+    "foot_pitch_deg": -34.0,
+    "frame": 21.84,
+    "hip": [
+     0.1729,
+     0.8805,
+     0.0456
+    ],
+    "toe_dir": [
+     -0.03,
+     -0.5,
+     -0.865
+    ],
+    "toe_tip": [
+     0.1666,
+     0.0479,
+     -0.4909
+    ]
+   },
+   "frames": 39,
+   "knee_flex_jump_deg_per_f": 19.8,
+   "knee_flex_max_deg": 60.5,
+   "knee_forward_min": 0.936,
+   "knee_plane_jump_deg_per_f": 2.5,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "mirror_error_mm": 0.0,
+   "notes": "curious probe: lean onto support, lift with the toe leading, strong slow-in approach, light toe touch at 0.56, two rubs, nod + head tilt, eased withdraw",
+   "overreach_mm": 0.59,
+   "penetration_mm": -0.0,
+   "seconds": 1.3,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_interrupted_L": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": null,
+   "frames": 21,
+   "knee_flex_jump_deg_per_f": 14.6,
+   "knee_flex_max_deg": 54.3,
+   "knee_forward_min": 0.985,
+   "knee_plane_jump_deg_per_f": 0.7,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "notes": "startle/interrupt: 2 f flinch (lean back, dip), work foot snaps up and replants under the hip, absorb, recover with a small forward overshoot, settle",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 0.7,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_interrupted_R": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": null,
+   "frames": 21,
+   "knee_flex_jump_deg_per_f": 14.6,
+   "knee_flex_max_deg": 54.3,
+   "knee_forward_min": 0.985,
+   "knee_plane_jump_deg_per_f": 0.7,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "mirror_error_mm": 0.0,
+   "notes": "startle/interrupt: 2 f flinch (lean back, dip), work foot snaps up and replants under the hip, absorb, recover with a small forward overshoot, settle",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 0.7,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_maintenance_L": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     -0.1742,
+     0.3242,
+     -0.335
+    ],
+    "foot_pitch_deg": -5.4,
+    "frame": 18.48,
+    "hip": [
+     -0.219,
+     0.8949,
+     0.024
+    ],
+    "toe_dir": [
+     -0.268,
+     -0.403,
+     -0.875
+    ],
+    "toe_tip": [
+     -0.2427,
+     0.2184,
+     -0.5013
+    ]
+   },
+   "frames": 33,
+   "knee_flex_jump_deg_per_f": 13.8,
+   "knee_flex_max_deg": 68.9,
+   "knee_forward_min": 0.948,
+   "knee_plane_jump_deg_per_f": 3.1,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "notes": "service ratchet: foot sets on the fitting, quick twist + reset, harder twist with body counter-yaw clicking at 0.56, little shake, listen tilt, return",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.1,
+   "slip_mm": {
+    "L": 1.1,
+    "R": 0.0
+   }
+  },
+  "wk_maintenance_R": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     0.1742,
+     0.3242,
+     -0.335
+    ],
+    "foot_pitch_deg": -5.4,
+    "frame": 18.48,
+    "hip": [
+     0.219,
+     0.8949,
+     0.024
+    ],
+    "toe_dir": [
+     0.268,
+     -0.403,
+     -0.875
+    ],
+    "toe_tip": [
+     0.2427,
+     0.2184,
+     -0.5013
+    ]
+   },
+   "frames": 33,
+   "knee_flex_jump_deg_per_f": 13.8,
+   "knee_flex_max_deg": 68.9,
+   "knee_forward_min": 0.948,
+   "knee_plane_jump_deg_per_f": 3.1,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "mirror_error_mm": 0.0,
+   "notes": "service ratchet: foot sets on the fitting, quick twist + reset, harder twist with body counter-yaw clicking at 0.56, little shake, listen tilt, return",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.1,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 1.1
+   }
+  },
+  "wk_operate_L": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     -0.1804,
+     0.1799,
+     -0.305
+    ],
+    "foot_pitch_deg": -14.0,
+    "frame": 20.16,
+    "hip": [
+     -0.1733,
+     0.8583,
+     0.0272
+    ],
+    "toe_dir": [
+     -0.081,
+     -0.375,
+     -0.924
+    ],
+    "toe_tip": [
+     -0.1948,
+     0.0624,
+     -0.4696
+    ]
+   },
+   "frames": 36,
+   "knee_flex_jump_deg_per_f": 16.4,
+   "knee_flex_max_deg": 71.2,
+   "knee_forward_min": 0.944,
+   "knee_plane_jump_deg_per_f": 2.8,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "notes": "station duty: foot hovers onto the pedal, small gather, decisive press bottoming at 0.56 with a body bounce, a shorter second pump, safe lift-off",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.2,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_operate_R": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     0.1804,
+     0.1799,
+     -0.305
+    ],
+    "foot_pitch_deg": -14.0,
+    "frame": 20.16,
+    "hip": [
+     0.1733,
+     0.8583,
+     0.0272
+    ],
+    "toe_dir": [
+     0.081,
+     -0.375,
+     -0.924
+    ],
+    "toe_tip": [
+     0.1948,
+     0.0624,
+     -0.4696
+    ]
+   },
+   "frames": 36,
+   "knee_flex_jump_deg_per_f": 16.4,
+   "knee_flex_max_deg": 71.2,
+   "knee_forward_min": 0.944,
+   "knee_plane_jump_deg_per_f": 2.8,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "mirror_error_mm": 0.0,
+   "notes": "station duty: foot hovers onto the pedal, small gather, decisive press bottoming at 0.56 with a body bounce, a shorter second pump, safe lift-off",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.2,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_pickup_L": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     -0.1721,
+     0.1599,
+     -0.36
+    ],
+    "foot_pitch_deg": -12.0,
+    "frame": 20.16,
+    "hip": [
+     -0.1664,
+     0.8591,
+     0.0455
+    ],
+    "toe_dir": [
+     -0.085,
+     0.242,
+     -0.967
+    ],
+    "toe_tip": [
+     -0.1872,
+     0.1241,
+     -0.5325
+    ]
+   },
+   "frames": 36,
+   "knee_flex_jump_deg_per_f": 25.7,
+   "knee_flex_max_deg": 108.2,
+   "knee_forward_min": 0.939,
+   "knee_plane_jump_deg_per_f": 3.2,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "notes": "small-part pickup: lean in, open toe reaches down, grips at 0.56, lifts the part, flicks it up toward the head (face tracks up), catch dip, plant",
+   "overreach_mm": 0.71,
+   "penetration_mm": -0.0,
+   "seconds": 1.2,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_pickup_R": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     0.1721,
+     0.1599,
+     -0.36
+    ],
+    "foot_pitch_deg": -12.0,
+    "frame": 20.16,
+    "hip": [
+     0.1664,
+     0.8591,
+     0.0455
+    ],
+    "toe_dir": [
+     0.085,
+     0.242,
+     -0.967
+    ],
+    "toe_tip": [
+     0.1872,
+     0.1241,
+     -0.5325
+    ]
+   },
+   "frames": 36,
+   "knee_flex_jump_deg_per_f": 25.7,
+   "knee_flex_max_deg": 108.2,
+   "knee_forward_min": 0.939,
+   "knee_plane_jump_deg_per_f": 3.2,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "mirror_error_mm": 0.0,
+   "notes": "small-part pickup: lean in, open toe reaches down, grips at 0.56, lifts the part, flicks it up toward the head (face tracks up), catch dip, plant",
+   "overreach_mm": 0.71,
+   "penetration_mm": -0.0,
+   "seconds": 1.2,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_place_L": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     -0.1772,
+     0.2849,
+     -0.345
+    ],
+    "foot_pitch_deg": 36.0,
+    "frame": 18.48,
+    "hip": [
+     -0.2061,
+     0.8131,
+     0.0119
+    ],
+    "toe_dir": [
+     -0.064,
+     0.684,
+     -0.726
+    ],
+    "toe_tip": [
+     -0.1925,
+     0.3639,
+     -0.5206
+    ]
+   },
+   "frames": 33,
+   "knee_flex_jump_deg_per_f": 12.4,
+   "knee_flex_max_deg": 79.6,
+   "knee_forward_min": 0.938,
+   "knee_plane_jump_deg_per_f": 2.9,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "notes": "place/install: weight to support, lower 8 cm and tip the head cargo toward the socket while the work foot steadies the part, seat at 0.56, relief pop (rises faster than it lowered), sole recovery",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.1,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_place_R": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     0.1772,
+     0.2849,
+     -0.345
+    ],
+    "foot_pitch_deg": 36.0,
+    "frame": 18.48,
+    "hip": [
+     0.2061,
+     0.8131,
+     0.0119
+    ],
+    "toe_dir": [
+     0.064,
+     0.684,
+     -0.726
+    ],
+    "toe_tip": [
+     0.1925,
+     0.3639,
+     -0.5206
+    ]
+   },
+   "frames": 33,
+   "knee_flex_jump_deg_per_f": 12.4,
+   "knee_flex_max_deg": 79.6,
+   "knee_forward_min": 0.938,
+   "knee_plane_jump_deg_per_f": 2.9,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "mirror_error_mm": 0.0,
+   "notes": "place/install: weight to support, lower 8 cm and tip the head cargo toward the socket while the work foot steadies the part, seat at 0.56, relief pop (rises faster than it lowered), sole recovery",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.1,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_pull_L": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     -0.1829,
+     0.268,
+     -0.3313
+    ],
+    "foot_pitch_deg": -18.2,
+    "frame": 23.52,
+    "hip": [
+     -0.1754,
+     0.8583,
+     0.0182
+    ],
+    "toe_dir": [
+     -0.036,
+     -0.913,
+     -0.407
+    ],
+    "toe_tip": [
+     -0.191,
+     0.0775,
+     -0.4237
+    ]
+   },
+   "frames": 42,
+   "knee_flex_jump_deg_per_f": 16.0,
+   "knee_flex_max_deg": 77.3,
+   "knee_forward_min": 0.949,
+   "knee_plane_jump_deg_per_f": 2.9,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "notes": "pull: toe hooks the object ahead, body sits back, trembling draw, release at 0.56 snaps the foot back and the body lurches back, recover",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.4,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_pull_R": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     0.1829,
+     0.268,
+     -0.3313
+    ],
+    "foot_pitch_deg": -18.2,
+    "frame": 23.52,
+    "hip": [
+     0.1754,
+     0.8583,
+     0.0182
+    ],
+    "toe_dir": [
+     0.036,
+     -0.913,
+     -0.407
+    ],
+    "toe_tip": [
+     0.191,
+     0.0775,
+     -0.4237
+    ]
+   },
+   "frames": 42,
+   "knee_flex_jump_deg_per_f": 16.0,
+   "knee_flex_max_deg": 77.3,
+   "knee_forward_min": 0.949,
+   "knee_plane_jump_deg_per_f": 2.9,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "mirror_error_mm": 0.0,
+   "notes": "pull: toe hooks the object ahead, body sits back, trembling draw, release at 0.56 snaps the foot back and the body lurches back, recover",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.4,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_push_L": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     -0.1795,
+     0.2317,
+     -0.3502
+    ],
+    "foot_pitch_deg": 55.1,
+    "frame": 23.52,
+    "hip": [
+     -0.1779,
+     0.8534,
+     0.0038
+    ],
+    "toe_dir": [
+     -0.04,
+     0.887,
+     -0.461
+    ],
+    "toe_tip": [
+     -0.1917,
+     0.364,
+     -0.49
+    ]
+   },
+   "frames": 42,
+   "knee_flex_jump_deg_per_f": 14.5,
+   "knee_flex_max_deg": 70.7,
+   "knee_forward_min": 0.927,
+   "knee_plane_jump_deg_per_f": 2.4,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "notes": "push: low sole contact, deep support knee, body drives forward with tremor, shove at 0.56 (foot extends, body lurches forward), follow-through, release",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.4,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_push_R": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     0.1795,
+     0.2317,
+     -0.3502
+    ],
+    "foot_pitch_deg": 55.1,
+    "frame": 23.52,
+    "hip": [
+     0.1779,
+     0.8534,
+     0.0038
+    ],
+    "toe_dir": [
+     0.04,
+     0.887,
+     -0.461
+    ],
+    "toe_tip": [
+     0.1917,
+     0.364,
+     -0.49
+    ]
+   },
+   "frames": 42,
+   "knee_flex_jump_deg_per_f": 14.5,
+   "knee_flex_max_deg": 70.7,
+   "knee_forward_min": 0.927,
+   "knee_plane_jump_deg_per_f": 2.4,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "mirror_error_mm": 0.0,
+   "notes": "push: low sole contact, deep support knee, body drives forward with tremor, shove at 0.56 (foot extends, body lurches forward), follow-through, release",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.4,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_repair_L": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     -0.182,
+     0.2499,
+     -0.345
+    ],
+    "foot_pitch_deg": -25.0,
+    "frame": 18.48,
+    "hip": [
+     -0.1728,
+     0.8724,
+     0.0379
+    ],
+    "toe_dir": [
+     -0.066,
+     -0.656,
+     -0.752
+    ],
+    "toe_tip": [
+     -0.1932,
+     0.0885,
+     -0.4733
+    ]
+   },
+   "frames": 33,
+   "knee_flex_jump_deg_per_f": 16.0,
+   "knee_flex_max_deg": 81.4,
+   "knee_forward_min": 0.932,
+   "knee_plane_jump_deg_per_f": 3.0,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "notes": "craftsman taps: still body (<0.5 deg f6-18), choked mallet feints 8 cm then 5 cm stopping 1 cm short, 12 cm draw, 2.7 f tap at 0.56, hold, 3 cm check lift, satisfied nod",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.1,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_repair_R": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     0.182,
+     0.2499,
+     -0.345
+    ],
+    "foot_pitch_deg": -25.0,
+    "frame": 18.48,
+    "hip": [
+     0.1728,
+     0.8724,
+     0.0379
+    ],
+    "toe_dir": [
+     0.066,
+     -0.656,
+     -0.752
+    ],
+    "toe_tip": [
+     0.1932,
+     0.0885,
+     -0.4733
+    ]
+   },
+   "frames": 33,
+   "knee_flex_jump_deg_per_f": 16.0,
+   "knee_flex_max_deg": 81.4,
+   "knee_forward_min": 0.932,
+   "knee_plane_jump_deg_per_f": 3.0,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "mirror_error_mm": 0.0,
+   "notes": "craftsman taps: still body (<0.5 deg f6-18), choked mallet feints 8 cm then 5 cm stopping 1 cm short, 12 cm draw, 2.7 f tap at 0.56, hold, 3 cm check lift, satisfied nod",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.1,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_run": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": null,
+   "frames": 16,
+   "knee_flex_jump_deg_per_f": 20.1,
+   "knee_flex_max_deg": 112.5,
+   "knee_forward_min": 0.918,
+   "knee_plane_jump_deg_per_f": 3.7,
+   "knee_pole_min": 1.0,
+   "loop": true,
+   "loop_seam": 0.0,
+   "notes": "job run 16 f: 5.4 f stance + 2.6 f flight per step, knee drive, trailing foot tucks high; L contact 0.0, R 0.5",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 0.5333,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_sit_down": {
+   "body_clip_mm": 20.6,
+   "contact_normalized": null,
+   "frames": 48,
+   "knee_flex_jump_deg_per_f": 20.5,
+   "knee_flex_max_deg": 122.1,
+   "knee_forward_min": 0.575,
+   "knee_plane_jump_deg_per_f": 7.5,
+   "knee_pole_min": 0.94,
+   "loop": false,
+   "notes": "supported lower into the V-sit: glance down, two quick wide steps while the squat starts, deep squat with counter-pitch (knees fold up and OUT, clear of the body), sit back onto the bottom (1 cm bump), feet lift-and-place into the V, lean back face up; root Z carries the full 0.779 m seat descent",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.6,
+   "slip_mm": {
+    "L": 0.3,
+    "R": 0.27
+   }
+  },
+  "wk_sit_idle": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": null,
+   "frames": 144,
+   "knee_flex_jump_deg_per_f": 2.3,
+   "knee_flex_max_deg": 54.8,
+   "knee_forward_min": 0.825,
+   "knee_plane_jump_deg_per_f": 0.3,
+   "knee_pole_min": 0.992,
+   "loop": true,
+   "loop_seam": 0.0,
+   "notes": "attentive V-sit: body pitched back, head forward/up, slow alternating 2-4 cm foot lifts with uneven gaps, toe wiggles, breathing, unhurried attention turns",
+   "overreach_mm": 0.0,
+   "penetration_mm": 0.0,
+   "seconds": 4.8,
+   "slip_mm": {
+    "L": 0.91,
+    "R": 0.91
+   }
+  },
+  "wk_sit_up": {
+   "body_clip_mm": 16.3,
+   "contact_normalized": null,
+   "frames": 33,
+   "knee_flex_jump_deg_per_f": 38.4,
+   "knee_flex_max_deg": 123.0,
+   "knee_forward_min": 0.571,
+   "knee_plane_jump_deg_per_f": 9.3,
+   "knee_pole_min": 0.941,
+   "loop": false,
+   "notes": "supported rise: eyes snap, feet pulled back under (two placements), rock forward over the feet, push up with ease-out (root advances 0.2 m over the feet), small settle",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.1,
+   "slip_mm": {
+    "L": 1.2,
+    "R": 0.97
+   }
+  },
+  "wk_step_L": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     -0.1985,
+     0.1128,
+     -0.2233
+    ],
+    "foot_pitch_deg": 8.0,
+    "frame": 11.76,
+    "hip": [
+     -0.1974,
+     0.871,
+     -0.0368
+    ],
+    "toe_dir": [
+     -0.086,
+     0.139,
+     -0.986
+    ],
+    "toe_tip": [
+     -0.2156,
+     0.0838,
+     -0.4185
+    ]
+   },
+   "frames": 21,
+   "knee_flex_jump_deg_per_f": 11.7,
+   "knee_flex_max_deg": 60.0,
+   "knee_forward_min": 0.958,
+   "knee_plane_jump_deg_per_f": 2.0,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "notes": "reposition step: weight onto support, work foot swings forward 0.24 m with 8 cm clearance, heel lands at 0.56 and rolls flat, body transfers over the new base",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 0.7,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_step_R": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     0.1985,
+     0.1128,
+     -0.2233
+    ],
+    "foot_pitch_deg": 8.0,
+    "frame": 11.76,
+    "hip": [
+     0.1974,
+     0.871,
+     -0.0368
+    ],
+    "toe_dir": [
+     0.086,
+     0.139,
+     -0.986
+    ],
+    "toe_tip": [
+     0.2156,
+     0.0838,
+     -0.4185
+    ]
+   },
+   "frames": 21,
+   "knee_flex_jump_deg_per_f": 11.7,
+   "knee_flex_max_deg": 60.0,
+   "knee_forward_min": 0.958,
+   "knee_plane_jump_deg_per_f": 2.0,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "mirror_error_mm": 0.0,
+   "notes": "reposition step: weight onto support, work foot swings forward 0.24 m with 8 cm clearance, heel lands at 0.56 and rolls flat, body transfers over the new base",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 0.7,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_swim": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": null,
+   "frames": 30,
+   "knee_flex_jump_deg_per_f": 18.5,
+   "knee_flex_max_deg": 87.7,
+   "knee_forward_min": 0.981,
+   "knee_plane_jump_deg_per_f": 1.9,
+   "knee_pole_min": 1.0,
+   "loop": true,
+   "loop_seam": 0.0,
+   "notes": "dog-paddle: body pitched back 20 deg (eyes above the waterline), alternating 15 f leg strokes (5 f power, 10 f recovery) in the body frame, surge bob and roll in sync",
+   "overreach_mm": 0.0,
+   "penetration_mm": 0.0,
+   "seconds": 1.0,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_tool_change_L": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     -0.1823,
+     0.3129,
+     -0.38
+    ],
+    "foot_pitch_deg": -15.0,
+    "frame": 20.16,
+    "hip": [
+     -0.1605,
+     0.8741,
+     0.0431
+    ],
+    "toe_dir": [
+     -0.086,
+     0.191,
+     -0.978
+    ],
+    "toe_tip": [
+     -0.1972,
+     0.2681,
+     -0.5504
+    ]
+   },
+   "frames": 36,
+   "knee_flex_jump_deg_per_f": 14.0,
+   "knee_flex_max_deg": 73.7,
+   "knee_forward_min": 0.945,
+   "knee_plane_jump_deg_per_f": 3.2,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "notes": "tool fetch/fit: open toe reaches the handle with slow-in, snaps closed at 0.56, pulls the tool up/back (toe up = tool upright) with a counter-lean for the 5 kg mallet, then sets the foot down still gripping",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.2,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_tool_change_R": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     0.1823,
+     0.3129,
+     -0.38
+    ],
+    "foot_pitch_deg": -15.0,
+    "frame": 20.16,
+    "hip": [
+     0.1605,
+     0.8741,
+     0.0431
+    ],
+    "toe_dir": [
+     0.086,
+     0.191,
+     -0.978
+    ],
+    "toe_tip": [
+     0.1972,
+     0.2681,
+     -0.5504
+    ]
+   },
+   "frames": 36,
+   "knee_flex_jump_deg_per_f": 14.0,
+   "knee_flex_max_deg": 73.7,
+   "knee_forward_min": 0.945,
+   "knee_plane_jump_deg_per_f": 3.2,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "mirror_error_mm": 0.0,
+   "notes": "tool fetch/fit: open toe reaches the handle with slow-in, snaps closed at 0.56, pulls the tool up/back (toe up = tool upright) with a counter-lean for the 5 kg mallet, then sets the foot down still gripping",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.2,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_unbend_L": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     -0.1814,
+     0.3103,
+     -0.36
+    ],
+    "foot_pitch_deg": 36.8,
+    "frame": 20.16,
+    "hip": [
+     -0.1753,
+     0.8694,
+     0.027
+    ],
+    "toe_dir": [
+     -0.058,
+     0.75,
+     -0.659
+    ],
+    "toe_tip": [
+     -0.196,
+     0.3989,
+     -0.527
+    ]
+   },
+   "frames": 36,
+   "knee_flex_jump_deg_per_f": 20.4,
+   "knee_flex_max_deg": 86.0,
+   "knee_forward_min": 0.913,
+   "knee_plane_jump_deg_per_f": 2.8,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "notes": "sustained diagonal sole push: sole settles, brace, slow-in push with 7.5 Hz tremor, give at 0.56 (foot and body lurch), support absorbs, exhale, release",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.2,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_unbend_R": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": 0.56,
+   "contact_pose": {
+    "ankle": [
+     0.1814,
+     0.3103,
+     -0.36
+    ],
+    "foot_pitch_deg": 36.8,
+    "frame": 20.16,
+    "hip": [
+     0.1753,
+     0.8694,
+     0.027
+    ],
+    "toe_dir": [
+     0.058,
+     0.75,
+     -0.659
+    ],
+    "toe_tip": [
+     0.196,
+     0.3989,
+     -0.527
+    ]
+   },
+   "frames": 36,
+   "knee_flex_jump_deg_per_f": 20.4,
+   "knee_flex_max_deg": 86.0,
+   "knee_forward_min": 0.913,
+   "knee_plane_jump_deg_per_f": 2.8,
+   "knee_pole_min": 1.0,
+   "loop": false,
+   "mirror_error_mm": 0.0,
+   "notes": "sustained diagonal sole push: sole settles, brace, slow-in push with 7.5 Hz tremor, give at 0.56 (foot and body lurch), support absorbs, exhale, release",
+   "overreach_mm": 0.0,
+   "penetration_mm": -0.0,
+   "seconds": 1.2,
+   "slip_mm": {
+    "L": 0.0,
+    "R": 0.0
+   }
+  },
+  "wk_walkcycle": {
+   "body_clip_mm": 0.0,
+   "contact_normalized": null,
+   "frames": 24,
+   "knee_flex_jump_deg_per_f": 11.1,
+   "knee_flex_max_deg": 59.0,
+   "knee_forward_min": 0.96,
+   "knee_plane_jump_deg_per_f": 1.4,
+   "knee_pole_min": 1.0,
+   "loop": true,
+   "loop_seam": 0.0,
+   "notes": "springy bent-knee walk; heel strike -> flat -> toe roll; L contact at 0.0, R at 0.5; subtle root (gait owns bob/lean)",
+   "overreach_mm": 0.0,
+   "penetration_mm": 0.0,
+   "seconds": 0.8,
+   "slip_mm": {
+    "L": 0.01,
+    "R": 0.01
+   }
+  }
+ },
+ "input": "/tmp/claude-0/-home-user-Characters/933fde2e-3927-555f-ac1f-2179166bd9f0/scratchpad/upload/LogicObjects/Wako/Wako.blend",
+ "output": "/tmp/claude-0/-home-user-Characters/933fde2e-3927-555f-ac1f-2179166bd9f0/scratchpad/clips_work/Wako_clips_orig.blend",
+ "removed_actions": [
+  "wk_assemble_L",
+  "wk_assemble_R",
+  "wk_brace_L",
+  "wk_brace_R",
+  "wk_carry",
+  "wk_danger",
+  "wk_idle",
+  "wk_inspect_L",
+  "wk_inspect_R",
+  "wk_interrupted_L",
+  "wk_interrupted_R",
+  "wk_maintenance_L",
+  "wk_maintenance_R",
+  "wk_operate_L",
+  "wk_operate_R",
+  "wk_pickup_L",
+  "wk_pickup_R",
+  "wk_place_L",
+  "wk_place_R",
+  "wk_pull_L",
+  "wk_pull_R",
+  "wk_push_L",
+  "wk_push_R",
+  "wk_repair_L",
+  "wk_repair_R",
+  "wk_run",
+  "wk_step_L",
+  "wk_step_R",
+  "wk_tool_change_L",
+  "wk_tool_change_R",
+  "wk_unbend_L",
+  "wk_unbend_R",
+  "wk_walkcycle"
+ ],
+ "roundtrip_max_mm": 0.0004,
+ "toe_flip": {
+  "applied": true,
+  "bones": {
+   "toe.L": {
+    "head": [
+     -0.237,
+     0.06,
+     -1.025
+    ],
+    "tail": [
+     -0.237,
+     0.19,
+     -1.025
+    ]
+   },
+   "toe.R": {
+    "head": [
+     0.237,
+     0.06,
+     -1.025
+    ],
+    "tail": [
+     0.237,
+     0.19,
+     -1.025
+    ]
+   }
+  },
+  "other_bones_max_dev": 0.0
+ }
+}
