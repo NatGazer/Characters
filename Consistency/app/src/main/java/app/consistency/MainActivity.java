@@ -27,8 +27,7 @@ public class MainActivity extends Activity {
     private static final String[] STAT_LABEL = { "LAST DAY", "LAST WEEK", "LAST MONTH", "LAST YEAR", "LAST DECADE" };
 
     private SharedPreferences prefs;
-    private TimerView timer;
-    private TextView session;
+    private TextView session, totalView;
     private View startBtn, runningRow;
     private final TextView[] stats = new TextView[STAT_IDS.length];
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -46,7 +45,7 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         setContentView(R.layout.activity_main);
         prefs = getSharedPreferences("consistency", MODE_PRIVATE);
-        timer = (TimerView) findViewById(R.id.timer);
+        totalView = (TextView) findViewById(R.id.total);
         session = (TextView) findViewById(R.id.session);
         startBtn = findViewById(R.id.start);
         runningRow = findViewById(R.id.running);
@@ -130,7 +129,7 @@ public class MainActivity extends Activity {
             stats[i].setTextColor(goal >= 0 && ms >= goal ? DefinitionsActivity.GOLD : DefinitionsActivity.SILVER);
         }
 
-        timer.set(shown / 1000, live);
+        totalView.setText(clock(shown / 1000) + "   TOTAL");
         startBtn.setVisibility(live ? View.GONE : View.VISIBLE);
         runningRow.setVisibility(live ? View.VISIBLE : View.GONE);
         session.setVisibility(live ? View.VISIBLE : View.INVISIBLE);

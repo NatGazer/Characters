@@ -36,11 +36,50 @@
             android:contentDescription="Definitions" />
     </FrameLayout>
 
-    <app.consistency.TimerView
-        android:id="@+id/timer"
+    <Space
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />
+
+    <!-- Rolling totals, biggest on top down to the decade, then the overall total. -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="14dp"
+        android:orientation="vertical"
+        android:gravity="center_horizontal">
+
+        <TextView
+            android:id="@+id/last_day"
+            style="@style/Stat"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/last_week"
+            style="@style/Stat"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/last_month"
+            style="@style/Stat"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/last_year"
+            style="@style/Stat"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/last_decade"
+            style="@style/Stat"
+            android:textSize="10sp" />
+
+        <TextView
+            android:id="@+id/total"
+            style="@style/Stat"
+            android:layout_marginTop="6dp"
+            android:textSize="13sp" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/session"
@@ -102,37 +141,4 @@
                 android:text="SUBMIT" />
         </LinearLayout>
     </FrameLayout>
-
-    <LinearLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:orientation="vertical"
-        android:gravity="center_horizontal">
-
-        <TextView
-            android:id="@+id/last_day"
-            style="@style/Stat"
-            android:textSize="12sp" />
-
-        <TextView
-            android:id="@+id/last_week"
-            style="@style/Stat"
-            android:textSize="11sp" />
-
-        <TextView
-            android:id="@+id/last_month"
-            style="@style/Stat"
-            android:textSize="10sp" />
-
-        <TextView
-            android:id="@+id/last_year"
-            style="@style/Stat"
-            android:textSize="9sp" />
-
-        <TextView
-            android:id="@+id/last_decade"
-            style="@style/Stat"
-            android:textSize="8sp" />
-    </LinearLayout>
 </LinearLayout>
