@@ -24,6 +24,7 @@ const MAX_STANCE := .52         # stance distance must fit the run-crouch reach
 const STOP_HORIZON := .45
 const COMMIT_T := .8
 const CORRIDOR: Array[float] = [.15, .45, .75]
+const TOOL_STANCE_LEAD := .08
 const HIP_ABOVE_BODY := .035    # rest hip above the capsule origin: -.85 + 1.0739 - .029 - .16
 const REACH_DROP := .06         # extra crouch the visual root may still add to reach lower ground            # swing progress after which the footfall is fixed
 
@@ -74,6 +75,8 @@ var foot_yaw: Array[float] = [0.0, 0.0]
 var _t_prev: Array[float] = [-1.0, -1.0]
 var _frozen: Array[bool] = [false, false]
 var _planar: Array[bool] = [true, true]
+var _contact_delay: Array[int] = [0, 0]
+var _contact_kind: Array[int] = [SWING, SWING]
 var _frozen_support: Array = [null, null]
 var _frozen_local: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]
 var stance_age: Array[float] = [0.0, 0.0]
@@ -107,6 +110,8 @@ var body_drop := 0.0
 var _drop_v := 0.0
 var settle_dip := 0.0
 var _rest_foot: Array[Basis] = []
+var _query := PhysicsRayQueryParameters3D.new()
+var _space: PhysicsDirectSpaceState3D
 var _toe_axis: Array[Vector3] = []
 
 func setup(owner_pose: SkeletonModifier3D, sk: Skeleton3D) -> void:
@@ -185,21 +190,27 @@ func _stride(v: float) -> float:
 	# (the native body height is measured at its centre, not at the feet).
 	l *= lerpf(1.0, .72, smoothstep(.985, .89, up.y))
 	if carry: l *= .8
+	elif _tool_mode(): l *= .75
 	elif flee: l *= 1.1
 	return l
 
 func _duty(v: float) -> float:
 	var d := lerpf(.62, .50, smoothstep(.6, 1.8, v))
 	d = lerpf(d, .36, smoothstep(1.8, 3.2, v))
+	if _tool_mode(): return maxf(d, .56)
 	return maxf(d, .52) if carry else d
 
-func _foot_duty(side: int, v: float, d: float) -> float:
-	# A retained full tool keeps its finite toe speed (5.4 m/s peak): its foot
-	# lifts earlier and swings longer while the free foot keeps the cadence.
-	if not (worker.tool_foot_occupied() and side == worker.tool_foot_side()) or v < .3: return d
-	var cycle := 2.0 * _stride(v) / v
-	var needed := 1.875 * 2.0 * _stride(v) / (5.4 * cycle)
-	return clampf(1.0 - needed, .24, d)
+func _is_tool_foot(side: int) -> bool:
+	return worker.tool_foot_occupied() and side == worker.tool_foot_side()
+
+func _tool_mode() -> bool:
+	# A foot-held full tool: shorter, double-supported steps keep the whole
+	# tool's clearance and the finite toe speed (<= 5.4 m/s) without lagging.
+	return worker.tool_foot_occupied()
+
+func _foot_duty(_side: int, _v: float, d: float) -> float:
+	# Per-foot duty hook (both feet share it; tool mode shapes the stride).
+	return d
 
 func _swing_span(v: float, d: float) -> float:
 	# Phase span of a swing: (1-d), shortened by the T_SWING_MAX time floor.
@@ -270,21 +281,45 @@ func validate_landing(side: int, hip: Vector3, delta: float) -> void:
 	# Called by the pose with this tick's real hip: a footfall the leg will
 	# not reach at contact is pulled toward the hip now and committed, so the
 	# foot lands exactly where it plants (no slide at contact).
-	if state[side] == PLANTED or t[side] < .45: return
+	# Corrections must stay absorbable by the fading re-target offset: none
+	# in the last part of the swing, and only small ones once it is late.
+	if state[side] == PLANTED or t[side] < .45 or t[side] > .97: return
 	var rate: float = maxf(min_rate[side], phase_rate / maxf(1.0 - p0[side], .05) if state[side] == SWING and moving else min_rate[side])
 	var t_rem := (1.0 - t[side]) / maxf(rate, .001)
-	var hip_contact := hip + velocity.slide(Vector3.UP) * t_rem - Vector3.UP * clampf(.2 - body_drop, 0.0, .04)
+	var hip_contact := hip + velocity.slide(Vector3.UP) * t_rem - Vector3.UP * clampf(.2 - body_drop, 0.0, .02)
 	var ankle: Vector3 = landing[side] + Vector3.UP * float(pose._ankle_height[side])
-	var reach: float = float(worker._leg_lengths[side]) - .02
+	# Land on a slightly flexed knee: a fully straight reach whips the knee.
+	var reach: float = float(worker._leg_lengths[side]) - .035
 	var offset := ankle - hip_contact
 	if offset.length() <= reach or absf(offset.y) >= reach: return
 	var horizontal := offset.slide(Vector3.UP).limit_length(sqrt(reach * reach - offset.y * offset.y))
-	var hit: Dictionary = pose._walk_ground(Vector3(hip_contact.x + horizontal.x, landing[side].y, hip_contact.z + horizontal.z))
+	var wanted := Vector3(hip_contact.x + horizontal.x, landing[side].y, hip_contact.z + horizontal.z)
+	var step := (.008 if t[side] > .88 else .015) if t[side] > .7 else .06
+	wanted = landing[side] + (wanted - landing[side]).slide(Vector3.UP).limit_length(step)
+	var hit: Dictionary = _ground(wanted)
 	if hit.is_empty() or not hit.collider is Node3D: return
 	_frozen[side] = true
 	_frozen_support[side] = weakref(hit.collider)
 	_frozen_local[side] = (hit.collider as Node3D).to_local(hit.position)
 	landing[side] = hit.position
+
+func defer_contact(side: int) -> bool:
+	# The pose found this tick's footfall below the real hip's reach (steep
+	# descent): keep reaching for it a little longer instead of planting a
+	# stretched leg that would have to slide back toward the hip.
+	if state[side] != PLANTED or _contact_delay[side] >= 14: return false
+	var delay := _contact_delay[side] + 1
+	var body := _support_alive(side)
+	state[side] = _contact_kind[side]
+	t[side] = .999
+	_t_prev[side] = .999
+	_frozen[side] = true
+	_frozen_support[side] = weakref(body) if body else null
+	_frozen_local[side] = local_point[side]
+	_contact_delay[side] = delay
+	landing_count[side] -= 1
+	out_planted[side] = false
+	return true
 
 func replant(side: int, hit: Dictionary, point: Vector3) -> void:
 	# Pose moved a fresh contact to where the leg can actually reach it.
@@ -320,12 +355,32 @@ func _lift_off(side: int, kind: int, rate_floor: float, base_lift: float) -> voi
 	_clear_lift[side] = 0.0
 	_t_prev[side] = -1.0
 	_frozen[side] = false
+	_contact_delay[side] = 0
 	armed[side] = false
 
 func _swing_start(side: int) -> Vector3:
 	# The lift-off point travels with its support (moving decks).
 	var body := _support_alive(side)
 	return body.to_global(local_point[side]) if body else start_world[side]
+
+func _ground(point: Vector3) -> Dictionary:
+	# Same column probe as wako_pose._walk_ground, but it also ignores the
+	# creature's own carried bodies (a foot-held mallet is a layer-1 body that
+	# would otherwise look like a raised floor under its own swing).
+	_query.from = Vector3(point.x, maxf(point.y + .55, worker.global_position.y + .25), point.z)
+	_query.to = Vector3(point.x, minf(point.y - .8, worker.global_position.y - worker.ride_height - .45), point.z)
+	var hit := _space.intersect_ray(_query)
+	return hit if not hit.is_empty() and hit.normal.y > .6 else {}
+
+func _refresh_query() -> void:
+	var exclusions: Array[RID] = worker.query_exclusions()
+	for body: Variant in [worker.equipped_tool, worker._cargo_source]:
+		if body is CollisionObject3D and is_instance_valid(body) and (body as Node).get("carrier") != null \
+			and body.get("carrier") in [worker.tool_anchor, worker.head_anchor, worker.back_tool.back_anchor if worker.back_tool else null]:
+			exclusions.append((body as CollisionObject3D).get_rid())
+	_query.exclude = exclusions
+	_query.collision_mask = 1
+	_space = worker.get_world_3d().direct_space_state
 
 # ------------------------------------------------------------------ resync
 func _init_from_published(side: int, sk: Skeleton3D) -> void:
@@ -339,7 +394,7 @@ func _init_from_published(side: int, sk: Skeleton3D) -> void:
 	else:
 		var foot := sk.get_bone_global_pose(pose._chains[side][2])
 		sole = sk.global_transform * (foot * Vector3(0, pose._ankle_height[side], 0))
-	var hit: Dictionary = pose._walk_ground(sole)
+	var hit: Dictionary = _ground(sole)
 	out_sole[side] = sole
 	requested[side] = Vector3.INF
 	foot_yaw[side] = yaw
@@ -365,6 +420,7 @@ func plan(sk: Skeleton3D, delta: float, can_settle: bool, hold_feet: bool, lenie
 	up = worker.ground_normal if worker.ground_normal.is_finite() else Vector3.UP
 	hold = hold_feet
 	settle_allowed = can_settle and not hold_feet
+	_refresh_query()
 	if not active or not pose.evaluated_valid:
 		for side in 2: _init_from_published(side, sk)
 		_last_velocity = Vector3.INF
@@ -374,7 +430,9 @@ func plan(sk: Skeleton3D, delta: float, can_settle: bool, hold_feet: bool, lenie
 			# Another owner (tool clearance, head/back endpoints, IK reach) moved
 			# the published sole away from the request: continue from it.
 			var tolerance := .02 if state[side] == PLANTED else .035
-			if worker.tool_foot_occupied() and side == worker.tool_foot_side(): tolerance = .07
+			# The retained-tool clearance block adds its own bounded lift/shift
+			# (<= ~.1 m) to the tool foot after this plan: that is not a new owner.
+			if worker.tool_foot_occupied() and side == worker.tool_foot_side(): tolerance = .2
 			if lenient: tolerance = .12
 			if requested[side].is_finite() and pose.evaluated_soles[side].distance_to(requested[side]) > tolerance:
 				_init_from_published(side, sk)
@@ -442,6 +500,13 @@ func _events(sk: Skeleton3D, delta: float) -> void:
 				if p < d: armed[side] = true
 				if not moving or hold: continue
 				var other_planted := state[1 - side] == PLANTED
+				# Walking keeps a supporting foot: wait for the partner's contact
+				# (flight is for running; a foot-held tool never flies, since its
+				# whole-tool clearance needs a genuinely supported opposite sole).
+				var tool_foot: bool = worker.tool_foot_occupied() and side == worker.tool_foot_side()
+				var may_fly: bool = duty < .49 and not tool_foot and not worker.tool_foot_occupied()
+				if not other_planted and not may_fly and not _overreached(side, sk): continue
+				if not other_planted and tool_foot: continue
 				if armed[side] and p >= d:
 					var first := moving_age < .05
 					_lift_off(side, SWING, 1.0 / (T_FIRST_SWING if first else T_SWING_MAX), _base_lift(side))
@@ -481,14 +546,14 @@ func _events(sk: Skeleton3D, delta: float) -> void:
 		else: quiet = true
 
 func _dip(v: float) -> float:
-	return -.03 * smoothstep(.1, 1.0, v) - .05 * smoothstep(1.2, 3.2, v)
+	return -.022 * smoothstep(.1, 1.0, v) - .04 * smoothstep(1.2, 3.2, v)
 
 func _roll_weight() -> float:
 	return smoothstep(.3, 1.2, speed)
 
 func _base_lift(side: int) -> float:
 	if worker.tool_foot_occupied() and side == worker.tool_foot_side(): return .075
-	var l := lerpf(.07, .13, smoothstep(1.2, 3.2, speed))
+	var l := lerpf(.07, .16, smoothstep(1.2, 3.2, speed))
 	return l * .6 if carry else l
 
 func _overreached(side: int, sk: Skeleton3D) -> bool:
@@ -500,6 +565,9 @@ func _overreached(side: int, sk: Skeleton3D) -> bool:
 	var reach: float = float(worker._leg_lengths[side]) - .012
 	if hip.distance_to(ankle) > reach - .004: return true
 	var direction := velocity.normalized() if speed > .2 else facing(worker._heading)
+	# A foot-held mallet points forward-up: behind the hip it swings under the
+	# cube, so that foot keeps its stance in front and leaves early.
+	if _is_tool_foot(side): return -(sole - hip).dot(direction) > .04
 	return -(sole - hip).dot(direction) > stance_distance(speed, side) * .5 + .12
 
 func _landing_target(side: int, t_rem: float) -> Array:
@@ -513,7 +581,7 @@ func _landing_target(side: int, t_rem: float) -> Array:
 		var vl := v_land.length()
 		var direction := v_land / vl if vl > .2 else facing(heading)
 		var hip := point + Vector3.UP * (HIP_ABOVE_BODY + _dip(vl) - body_drop - REACH_DROP)
-		point += direction * (stance_distance(vl, side) * .5)
+		point += direction * (stance_distance(vl, side) * .5 + (TOOL_STANCE_LEAD if _is_tool_foot(side) else 0.0))
 		return [point, heading, hip]
 	# Stopping or settling: land where the hip will come to rest, facing the
 	# requested heading (with a bounded lead so turning in place can continue).
@@ -531,7 +599,7 @@ func _sample_corridor(side: int, from: Vector3, to: Vector3) -> void:
 	var heights: Array[float] = []
 	var planar := true
 	for k: float in CORRIDOR:
-		var hit: Dictionary = pose._walk_ground(from.lerp(to, k) + Vector3.UP * .3)
+		var hit: Dictionary = _ground(from.lerp(to, k) + Vector3.UP * .3)
 		var h: float = hit.position.y if not hit.is_empty() else lerpf(from.y, to.y, k)
 		heights.append(h)
 		planar = planar and absf(h - lerpf(from.y, to.y, k)) < .025
@@ -541,7 +609,10 @@ func _sample_corridor(side: int, from: Vector3, to: Vector3) -> void:
 	for i in CORRIDOR.size():
 		var t_k := _glide_inverse(CORRIDOR[i])
 		var path := from.y + rise * _vertical(side, rise, t_k)
-		need = maxf(need, (heights[i] + .06 - path) / maxf(bump(t_k), .25))
+		# Only ground that actually protrudes above the planned path asks for
+		# a higher apex (flat ground keeps the ordinary lift).
+		var protrusion := heights[i] - path
+		if protrusion > .01: need = maxf(need, (protrusion + .05) / maxf(bump(t_k), .25))
 	_clear_lift[side] = clampf(need, 0.0, .45)
 
 func _vertical(side: int, rise: float, tt: float) -> float:
@@ -557,14 +628,25 @@ func _curve(side: int, from: Vector3, land: Vector3, tt: float) -> Vector3:
 	point.y += maxf(lift[side], _clear_lift[side]) * bump(tt)
 	return point
 
+func _swing_point(side: int, from: Vector3, land: Vector3, tt: float, previous: Vector3, delta: float) -> Vector3:
+	var point := _curve(side, from, land, tt)
+	if _t_prev[side] >= 0.0 and tt < 1.0 and delta > 0.0:
+		# Re-targeting (new prediction, stop, step height) must not jump the
+		# foot: carry last tick's offset from the re-targeted curve and let it
+		# fade with the remaining progress, so contact is still exact.
+		var before := _curve(side, from, land, _t_prev[side])
+		var fade := (1.0 - glide(tt)) / maxf(1.0 - glide(_t_prev[side]), .0001)
+		point += (previous - before) * clampf(fade, 0.0, 1.0)
+	return point
+
 func _foot_output(side: int, delta: float) -> void:
 	out_tool_cap[side] = false
 	if state[side] == PLANTED:
 		var point := _planted_point(side)
-		var hit: Dictionary = pose._walk_ground(point)
+		var hit: Dictionary = _ground(point)
 		var body := _support_alive(side)
 		var same: bool = not hit.is_empty() and (support[side] == null or (body != null and hit.collider == body and hit.rid == support_rid[side]))
-		if not same or (hit.normal.dot(point - hit.position) > .03):
+		if not same or absf(hit.normal.dot(point - hit.position)) > .03:
 			# The plant's support vanished/changed under the sole: recover.
 			out_sole[side] = point
 			_lift_off(side, SETTLE, 1.0 / T_RECOVER, .04)
@@ -580,7 +662,7 @@ func _foot_output(side: int, delta: float) -> void:
 			var reachable: Vector3 = pose._reachable_plant(pose.get_skeleton(), side, point, Basis.IDENTITY, hit.normal)
 			var previous: Vector3 = pose.evaluated_soles[side] + worker.ground_velocity * delta
 			var next: Vector3 = previous.move_toward(reachable, minf(.075, delta * 5.4))
-			var next_hit: Dictionary = pose._walk_ground(next)
+			var next_hit: Dictionary = _ground(next)
 			if not next_hit.is_empty() and next_hit.collider == body and next_hit.rid == support_rid[side]:
 				point = next_hit.position
 				hit = next_hit
@@ -615,11 +697,16 @@ func _foot_output(side: int, delta: float) -> void:
 		# Committed footfall: the last part of the swing descends onto a fixed
 		# point (carried by its support) instead of chasing new predictions.
 		land = frozen_body.to_global(_frozen_local[side]) if frozen_body else _frozen_local[side]
-		hit = pose._walk_ground(land)
-		if not hit.is_empty(): land = hit.position
+		hit = _ground(land)
+		if hit.is_empty() or (frozen_body and hit.collider != frozen_body) or absf(hit.position.y - land.y) > .03:
+			# Something new entered the committed column (a dropped part, a
+			# moved deck): keep the committed point, plant only on what is
+			# really there at contact.
+			if not hit.is_empty() and absf(hit.position.y - land.y) > .03: hit = {}
+		else: land = hit.position
 	else:
 		var target := _landing_target(side, t_rem)
-		hit = pose._walk_ground(target[0])
+		hit = _ground(target[0])
 		if not hit.is_empty():
 			# Reachable footfall: on steep descents pull the landing toward the
 			# predicted hip (with the crouch the body may still add) so the sole
@@ -630,7 +717,7 @@ func _foot_output(side: int, delta: float) -> void:
 			var offset := ankle - hip
 			if offset.length() > reach and absf(offset.y) < reach:
 				var horizontal := offset.slide(Vector3.UP).limit_length(sqrt(reach * reach - offset.y * offset.y))
-				var closer: Dictionary = pose._walk_ground(Vector3(hip.x + horizontal.x, hit.position.y, hip.z + horizontal.z))
+				var closer: Dictionary = _ground(Vector3(hip.x + horizontal.x, hit.position.y, hip.z + horizontal.z))
 				if not closer.is_empty(): hit = closer
 		land = hit.position if not hit.is_empty() else Vector3(target[0].x, landing[side].y, target[0].z)
 		landing_yaw[side] = target[1]
@@ -643,44 +730,55 @@ func _foot_output(side: int, delta: float) -> void:
 	landing_normal[side] = hit.normal if not hit.is_empty() else Vector3.UP
 	var from := _swing_start(side)
 	if not _sampled_for[side].is_finite() or _sampled_for[side].distance_to(land) > .08: _sample_corridor(side, from, land)
+	# A foot-held tool's clearance block may hold or nudge that sole after
+	# this plan; continue from where the sole really is, not where it was asked.
+	var actual: Vector3 = out_sole[side]
+	if worker.tool_foot_occupied() and side == worker.tool_foot_side() and pose.evaluated_valid:
+		var held: Vector3 = pose.evaluated_soles[side] - pose._held_shift
+		actual = Vector3(held.x, out_sole[side].y, held.z)
+	var previous: Vector3 = actual + worker.ground_velocity * delta
+	var point := _swing_point(side, from, land, t[side], previous, delta)
+	if delta > 0.0 and out_sole[side].is_finite() and _t_prev[side] >= 0.0:
+		# Walking/jogging feet keep a calm 5.9 m/s ceiling (a foot-held tool
+		# 5.4 m/s); running is only sanity-capped. Rather than letting the foot
+		# trail its plan, the swing clock itself slows: the sole stays exactly
+		# on its curve and simply lands a moment later.
+		var cap := (SANITY_SPEED if speed > 2.4 else 5.9) * delta
+		if _is_tool_foot(side):
+			cap = minf(cap, maxf(5.4, speed * 2.4) * delta)
+			out_tool_cap[side] = true
+		if previous.distance_to(point) > cap and _is_tool_foot(side):
+			# The retained tool keeps its original finite toe budget as a plain
+			# per-tick limit (its clearance block re-solves around that sole).
+			point = previous.move_toward(point, cap)
+		elif previous.distance_to(point) > cap:
+			var lo: float = _t_prev[side]
+			var hi: float = t[side]
+			for i in 8:
+				var mid := (lo + hi) * .5
+				if previous.distance_to(_swing_point(side, from, land, mid, previous, delta)) > cap: hi = mid
+				else: lo = mid
+			t[side] = lo
+			point = _swing_point(side, from, land, lo, previous, delta)
+			if previous.distance_to(point) > cap: point = previous.move_toward(point, cap)
 	var s := glide(t[side])
-	var point := _curve(side, from, land, t[side])
-	debug_planned[side] = point
-	if _t_prev[side] >= 0.0 and t[side] < 1.0 and delta > 0.0:
-		# Re-targeting (new prediction, stop, step height) must not jump the
-		# foot: carry last tick's offset from the re-targeted curve and let it
-		# fade with the remaining progress, so contact is still exact.
-		var before := _curve(side, from, land, _t_prev[side])
-		var fade := (1.0 - s) / maxf(1.0 - glide(_t_prev[side]), .0001)
-		point += (out_sole[side] + worker.ground_velocity * delta - before) * clampf(fade, 0.0, 1.0)
+	debug_planned[side] = _curve(side, from, land, t[side])
 	_t_prev[side] = t[side]
 	# Never let a planned sole sink into terrain met on the way.
-	var under: Dictionary = pose._walk_ground(point)
+	var under: Dictionary = _ground(point)
 	var floor_clear := .012 * clampf(minf(t[side] / .12, (1.0 - t[side]) / .12), 0.0, 1.0)
 	if not under.is_empty() and floor_clear > 0.0:
 		var gap: float = under.normal.dot(point - under.position)
 		if gap < floor_clear: point += under.normal * (floor_clear - gap)
-	if delta > 0.0 and out_sole[side].is_finite():
-		# Walking/jogging feet keep a calm 5.9 m/s ceiling (re-targets settle
-		# through the fading offset above); running is only sanity-capped.
-		var cap := (SANITY_SPEED if speed > 2.4 else 5.9) * delta
-		if worker.tool_foot_occupied() and side == worker.tool_foot_side():
-			cap = minf(cap, maxf(5.4, speed * 2.4) * delta)
-			out_tool_cap[side] = true
-		var previous: Vector3 = out_sole[side] + worker.ground_velocity * delta
-		if previous.distance_to(point) > cap:
-			point = previous.move_toward(point, cap)
-			# A foot still catching up never skims the ground: it stays above
-			# it in proportion to the distance left to its footfall.
-			var left := (land - point).slide(Vector3.UP).length()
-			var ground: Dictionary = pose._walk_ground(point)
-			if not ground.is_empty() and t[side] < 1.0:
-				point.y = maxf(point.y, ground.position.y + minf(.5 * left, .06))
+	if delta > 0.0 and _t_prev[side] >= 0.0 and speed <= 2.4:
+		var ceiling := 5.9 * delta
+		if previous.distance_to(point) > ceiling: point = previous.move_toward(point, ceiling)
 	var yaw := lerp_angle(start_yaw[side], landing_yaw[side], s)
 	foot_yaw[side] = yaw
 	var normal := start_normal[side].slerp(landing_normal[side], s).normalized() if start_normal[side].dot(landing_normal[side]) < .9999 else landing_normal[side]
 	var tt := t[side]
 	var kind_scale := (1.0 if state[side] == SWING else .4) * _roll_weight()
+	if worker.tool_foot_occupied() and side == worker.tool_foot_side(): kind_scale = 0.0
 	# Toe-off plantar flexion (continuing the stance heel peel) -> dorsiflexed
 	# reach before contact -> flat at contact.
 	var plantar := -(.10 + .14 * sin(PI * clampf(tt / .4, 0.0, 1.0))) * (1.0 - smoothstep(.25, .5, tt))
@@ -696,12 +794,16 @@ func _foot_output(side: int, delta: float) -> void:
 		# (normally the landing itself; a capped foot never slides to it).
 		var contact: Vector3 = hit.position if not hit.is_empty() else point
 		if point.distance_to(contact) > .004:
-			var below: Dictionary = pose._walk_ground(point)
+			var below: Dictionary = _ground(point)
 			if not below.is_empty():
 				hit = below
 				contact = below.position
 		var was_swing := state[side] == SWING
+		_contact_kind[side] = state[side]
+		# The swing start (support-local) must survive a deferred contact.
+		var start_keep := _swing_start(side)
 		_plant(side, hit, contact, landing_yaw[side])
+		start_world[side] = start_keep
 		landing_count[side] += 1
 		landing_strength[side] = clampf(speed / 3.4, .15, 1.0) if was_swing else .12
 		out_sole[side] = contact
@@ -731,11 +833,15 @@ func _update_body(delta: float) -> void:
 	var dip := _dip(v)
 	var step_phase := fposmod(2.0 * phase, 1.0)
 	var low := duty - .5 * (1.0 - run_weight)
-	var amplitude := lerpf(.012 * smoothstep(.2, 1.0, v), .032, run_weight) * (.4 if carry else 1.0)
+	var amplitude := lerpf(.012 * smoothstep(.2, 1.0, v), .042, run_weight) * (.4 if carry else 1.0)
 	var bob := -amplitude * cos(TAU * (step_phase - low))
 	# Launch: a quick gather on the first step reads as anticipation.
 	var gather := -.03 * sin(PI * clampf(moving_age / .16, 0.0, 1.0)) if moving and moving_age < .16 else 0.0
 	var y_target := (dip + bob) * steady + gather
+	# A foot-held mallet points forward-up from the toe: an upright, taller
+	# cube keeps the whole tool clear of the body while it travels.
+	var tool := _tool_mode()
+	if tool: y_target *= .35
 	var y := spring(body_y, _by_v, y_target, 34.0, delta)
 	body_y = y.x
 	_by_v = y.y
@@ -743,7 +849,7 @@ func _update_body(delta: float) -> void:
 	# underdamped so a stop pitches slightly forward, then settles.
 	var forward := facing(worker._heading)
 	var a_fwd := clampf(accel.dot(forward), -14.0, 14.0)
-	var lean_target := clampf(.034 * velocity.dot(forward) + .016 * a_fwd, -.16, .24) * (.5 if carry else 1.0) * steady
+	var lean_target := clampf(.045 * velocity.dot(forward) + .016 * a_fwd, -.16, .26) * (.5 if carry else (.15 if tool else 1.0)) * steady
 	if flee: lean_target *= 1.25
 	var zeta := .55
 	var omega := 13.0
@@ -804,6 +910,6 @@ func update_drop(sk: Skeleton3D, root: Transform3D, delta: float) -> void:
 		var vertical := hip.y - ankle.y
 		need = maxf(need, vertical - sqrt(reach * reach - horizontal * horizontal))
 	need = clampf(need, 0.0, .2)
-	var d := spring(body_drop, _drop_v, need, 16.0 if need > body_drop else 9.0, delta)
+	var d := spring(body_drop, _drop_v, need, 24.0 if need > body_drop else 9.0, delta)
 	body_drop = maxf(d.x, 0.0)
 	_drop_v = d.y

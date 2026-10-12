@@ -1588,12 +1588,18 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 	var world_basis: Basis = gait.out_basis[side]
 	var basis := sk.global_basis.inverse()*world_basis
 	var ankle_offset: Vector3 = world_basis*Vector3(0,_ankle_height[side],0)
+	if planted and gait.stance_age[side] < .001:
+		var contact_offset: Vector3 = sole-ankle_offset-hip
+		if contact_offset.length()>worker._leg_lengths[side]-.014 and gait.defer_contact(side):
+			planted = false
+			hit = {}
 	if not planted:
 		gait.validate_landing(side,hip,delta)
 		# An airborne sole keeps its own column and rises until the leg can
 		# reach it (down-steps, descents); clamping along the leg would drag
 		# it back toward the hip. Planted soles stay exact or are re-planned.
-		var reach: float = worker._leg_lengths[side]-.012
+		# A swing keeps a little knee flex (no whip through full extension).
+		var reach: float = worker._leg_lengths[side]-lerpf(.03,.012,smoothstep(.7,1.0,gait.t[side]))
 		var hip_to_ankle: Vector3 = sole-ankle_offset-hip
 		var horizontal := hip_to_ankle.slide(Vector3.UP)
 		if horizontal.length_squared()<reach*reach:
@@ -1606,7 +1612,7 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 		var offset: Vector3 = sole-ankle_offset-hip
 		if offset.length()>reach and absf(offset.y)<reach:
 			var horizontal := offset.slide(Vector3.UP).limit_length(sqrt(reach*reach-offset.y*offset.y))
-			var closer: Dictionary = _walk_ground(Vector3(hip.x+horizontal.x,sole.y,hip.z+horizontal.z)+ankle_offset)
+			var closer: Dictionary = gait._ground(Vector3(hip.x+horizontal.x,sole.y,hip.z+horizontal.z)+ankle_offset)
 			if not closer.is_empty() and closer.collider is Node3D:
 				hit = closer
 				sole = closer.position

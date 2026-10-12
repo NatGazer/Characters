@@ -228,6 +228,26 @@ func _run(scenario: String) -> void:
 			await _stop("stop")
 			wako.face_point(wako.global_position + Vector3(0, 0, 4))
 			await _phase("turn in place", 1.6)
+		"tool":
+			# A retained full mallet on the tool foot: finite toe budget and
+			# whole-tool clearance still own that foot during travel.
+			var tool: RigidBody3D = Part.new()
+			tool.setup("assembly_tool", "gait-lab-mallet", true)
+			tool.position = wako.global_position + Vector3(2, 0, 0)
+			add_child(tool)
+			await _ticks(.2)
+			tool.set_carried(wako.tool_anchor, Vector3.ZERO)
+			tool.global_transform = wako.tool_anchor.global_transform
+			wako.set_equipped_tool(tool)
+			await _phase("tool_idle", .8)
+			# Trips longer than 1.1 m make the back tool stow the mallet first;
+			# short repositioning hops keep it on the foot (the case to test).
+			wako.walk_speed = 2.1
+			for hop: Vector3 in [Vector3(0, 0, -1.0), Vector3(0, 0, -1.0), Vector3(.9, 0, -.4), Vector3(.9, 0, .3), Vector3(-1.0, 0, 0)]:
+				wako.navigate_to(wako.global_position + hop - Vector3(0, wako.ride_height, 0))
+				await _phase("tool_hop", .9)
+				print("TOOL_STATE c=%.2f phase=%s held=%s reason=%s blocked=%s" % [metrics.clock, wako.back_tool.phase, is_instance_valid(wako.equipped_tool) and wako.equipped_tool.get("carrier") == wako.tool_anchor, wako.back_tool.reason, wako.tool_pose_blocked])
+			await _stop("tool_stop")
 		"showcase":
 			await _go(Vector3.FORWARD, 1.0, "walk 1.0 m/s", "walk 1.0 m/s ", 1.6)
 			await _go(Vector3.FORWARD, 2.1, "jog 2.1 m/s", "jog 2.1 m/s ", 1.2)

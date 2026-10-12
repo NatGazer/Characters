@@ -68,7 +68,7 @@ func _bucket() -> Dictionary:
 			"stances": [], "slip_max": 0.0, "landings": 0, "ground_ticks": [0, 0], "flight": 0, "moving": 0,
 			"knee_pos": 0, "knee_n": 0, "knee_step": 0.0, "knee_dir_step": 0.0, "knee_step_stance": 0.0,
 			"reach_viol": 0, "land_rel": [], "mid_rel": [], "plan_lag": 0.0, "start_latency": [],
-			"neutral": [], "skates": [], "skate_max": 0.0, "sole_step": 0.0, "swing_time": [], "stance_time": [], "min_clear": INF}
+			"neutral": [], "skates": [], "skate_max": 0.0, "sole_step": 0.0, "tool_blocked": 0, "swing_time": [], "stance_time": [], "min_clear": INF}
 	return _stats[key]
 
 func _support_point(side: int) -> Array:
@@ -97,6 +97,7 @@ func _sample(delta: float) -> void:
 	_serial = pose.evaluation_serial
 	var s := _bucket()
 	s.ticks += 1
+	if not str(wako.tool_pose_blocked).is_empty(): s.tool_blocked += 1
 	var rel: Vector3 = (wako.linear_velocity - wako.ground_velocity).slide(wako.ground_normal)
 	var speed := rel.length()
 	s.speed += speed
@@ -110,7 +111,11 @@ func _sample(delta: float) -> void:
 		var knee: Vector3 = pose.evaluated_knees[side]
 		var ankle: Vector3 = sole - pose.evaluated_ankles[side] * Vector3(0, pose._ankle_height[side], 0)
 		if g: both_air = false
-		if _last_sole[side].is_finite(): s.sole_step = maxf(s.sole_step, sole.distance_to(_last_sole[side]))
+		if _last_sole[side].is_finite():
+			s.sole_step = maxf(s.sole_step, sole.distance_to(_last_sole[side]))
+			if debug and sole.distance_to(_last_sole[side]) > .08:
+				var gj: Variant = pose.get("gait")
+				print("JUMP c=%.3f %s side=%d step=%.3f from=%s to=%s state=%s t=%.2f g=%s req=%s back=%s empty=%s" % [clock, label, side, sole.distance_to(_last_sole[side]), str(_last_sole[side]), str(sole), str(gj.state[side]) if gj else "-", float(gj.t[side]) if gj else -1.0, g, str(gj.requested[side]) if gj else "", wako.back_tool.phase, str(wako.back_tool._empty_return_active)])
 		_last_sole[side] = sole
 		var tp0: Vector3 = pose._terrain_points[side]
 		var touching: bool = tp0.is_finite() and pose._sole_normals[side].dot(sole - tp0) < CONTACT_H
@@ -133,9 +138,9 @@ func _sample(delta: float) -> void:
 			s.skates.append(_contact_max[side])
 			s.skate_max = maxf(s.skate_max, _contact_max[side])
 		_contact[side] = touching
-		if debug and side == 0 and clock > 19.0 and clock < 19.3:
+		if debug and side == int(OS.get_environment("TRACE_SIDE") if OS.get_environment("TRACE_SIDE") != "" else "0") and clock > float(OS.get_environment("TRACE_T0") if OS.get_environment("TRACE_T0") != "" else "1e9") and clock < float(OS.get_environment("TRACE_T1") if OS.get_environment("TRACE_T1") != "" else "0"):
 			var gd: Variant = pose.get("gait")
-			print("TRACE t=%.3f st=%d gt=%.2f g=%s touch=%s sole=(%.3f,%.3f,%.3f) h=%.4f hip_rel=%.3f land=(%.3f,%.3f)" % [clock, gd.state[side], gd.t[side], g, touching, sole.x, sole.y, sole.z, pose._sole_normals[side].dot(sole - tp0) if tp0.is_finite() else -1.0, (sole - hip).dot(travel), gd.landing[side].x, gd.landing[side].z])
+			print("TRACE c=%.3f st=%d gt=%.2f g=%s sole=%s req=%s land=%s clr=%.3f lift=%.3f held=%.3f/%s blocked=%s tv=%s" % [clock, gd.state[side], gd.t[side], g, str(sole), str(gd.requested[side]), str(gd.landing[side]), gd._clear_lift[side], gd.lift[side], pose._held_lift, str(pose._held_shift), wako.tool_pose_blocked, pose._target_valid[side]])
 		if g: s.ground_ticks[side] += 1
 		# Knee bend side relative to the face.
 		var axis := (ankle - hip).normalized()
@@ -149,7 +154,7 @@ func _sample(delta: float) -> void:
 			var step := absf(a - float(_knee_angle[side]))
 			if debug and step > 9.0:
 				var gk: Variant = pose.get("gait")
-				print("KNEE %s side=%d step=%.1f angle=%.1f g=%s state=%s t=%.2f hip_ankle=%.3f sole=%s req=%s drop=%.3f" % [label, side, step, a, g, str(gk.state[side]) if gk else "-", float(gk.t[side]) if gk else -1.0, hip.distance_to(ankle), str(sole), str(gk.requested[side]) if gk else "", float(gk.body_drop) if gk else 0.0])
+				print("KNEE c=%.3f %s side=%d step=%.1f angle=%.1f g=%s state=%s t=%.2f hip_ankle=%.3f sole=%s req=%s drop=%.3f" % [clock, label, side, step, a, g, str(gk.state[side]) if gk else "-", float(gk.t[side]) if gk else -1.0, hip.distance_to(ankle), str(sole), str(gk.requested[side]) if gk else "", float(gk.body_drop) if gk else 0.0])
 			s.knee_step = maxf(s.knee_step, step)
 			if g: s.knee_step_stance = maxf(s.knee_step_stance, step)
 			s.knee_dir_step = maxf(s.knee_dir_step, rad_to_deg(kd.angle_to(_knee_dir[side])))
@@ -256,6 +261,7 @@ func print_report() -> void:
 			var last: Array = s.neutral[-1]
 			line += " neutral_dev=%.3f/%.3f" % [last[0], last[1]]
 		line += " sole_step=%.3f" % s.sole_step
+		if int(s.tool_blocked) > 0: line += " tool_blocked=%d" % s.tool_blocked
 		if float(s.min_clear) < INF: line += " min_swing_clear=%.3f" % s.min_clear
 		if int(s.perf_n) > 0: line += " perf_us=%.0f/%d" % [float(s.perf_sum) / s.perf_n, s.perf_max]
 		print(line)
