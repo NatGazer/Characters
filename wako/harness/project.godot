@@ -1,0 +1,42 @@
+; Wako validation harness (standalone). Mirrors the RaulsMod settings that matter
+; to Wako: Godot 4.7 Forward+, Jolt, 120 Hz physics. Built by harness/build.sh.
+config_version=5
+
+[application]
+config/name="Wako Harness"
+run/main_scene="res://harness/scenes/gait_course.tscn"
+config/features=PackedStringArray("4.7", "Forward Plus")
+
+[autoload]
+Global="*res://harness/scripts/autoload_global.gd"
+Shortcuts="*res://harness/scripts/autoload_shortcuts.gd"
+InputHub="*res://harness/scripts/autoload_inputhub.gd"
+
+[audio]
+buses/default_bus_layout="res://harness/scripts/bus_layout.tres"
+
+[display]
+window/size/viewport_width=1280
+window/size/viewport_height=720
+
+[layer_names]
+3d_physics/layer_1="world"
+3d_physics/layer_2="parts"
+3d_physics/layer_3="helpers"
+
+[physics]
+common/physics_ticks_per_second=120
+common/max_physics_steps_per_frame=12
+3d/physics_engine="Jolt Physics"
+common/physics_interpolation=false
+
+[rendering]
+renderer/rendering_method="forward_plus"
+anti_aliasing/quality/msaa_3d=2
+
+[debug]
+; The package's geometry/visual stubs are untyped; keep strict inference errors
+; from blocking the real Wako scripts that consume them.
+gdscript/warnings/inference_on_variant=0
+gdscript/warnings/unsafe_method_access=0
+gdscript/warnings/unsafe_property_access=0
