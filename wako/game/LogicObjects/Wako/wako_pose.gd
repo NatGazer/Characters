@@ -2360,11 +2360,15 @@ func _solve(sk: Skeleton3D, a: int, b: int, c: int, target: Vector3, weight: flo
 	var bend: Vector3 = (knee-hip).slide(leg_axis.normalized()) if leg_axis.length_squared()>1e-8 else pole
 	if bend.length_squared()<1e-8: bend = pole.slide(leg_axis.normalized()) if leg_axis.length_squared()>1e-8 else pole
 	var continuation: bool = (_head_ground_continuation or _head_work_continuation) and evaluated_valid
-	if weight>=.999 and not continuation and _rest_frame_inv.has(a) and _rest_frame_inv.has(b):
-		axf.basis = _deterministic_basis(a,knee-hip,bend)
+	if not continuation and _rest_frame_inv.has(a) and _rest_frame_inv.has(b):
+		# Partial weights slerp from the current (authored) frame toward the
+		# same deterministic target, so twist never comes from the clip alone.
+		var upper_target := _deterministic_basis(a,knee-hip,bend)
+		axf.basis = upper_target if weight>=.999 else Basis(axf.basis.get_rotation_quaternion().slerp(upper_target.get_rotation_quaternion(),weight))
 		sk.set_bone_global_pose(a, axf)
 		bxf = sk.get_bone_global_pose(b)
-		bxf.basis = _deterministic_basis(b,endpoint-knee,bend)
+		var lower_target := _deterministic_basis(b,endpoint-knee,bend)
+		bxf.basis = lower_target if weight>=.999 else Basis(bxf.basis.get_rotation_quaternion().slerp(lower_target.get_rotation_quaternion(),weight))
 		sk.set_bone_global_pose(b, bxf)
 	else:
 		var qa := Quaternion((bxf.origin - hip).normalized(), (knee - hip).normalized())
