@@ -111,11 +111,11 @@ public class DefinitionsActivity extends Activity {
         return goalMs * windowMs / perMs;
     }
 
-    /** The goal as entered ("3 minutes / day", "7 hours / 2 weeks"), or null if none is set. */
+    /** The goal as entered ("3 minutes per day", "7 hours per 2 weeks"), or null if none is set. */
     static String goalText(SharedPreferences prefs) {
         int g = prefs.getInt(K_GOAL_N, 0);
         if (g <= 0) return null;
-        return Fmt.count(g, prefs.getInt(K_GOAL_UNIT, 1)) + " / "
+        return Fmt.count(g, prefs.getInt(K_GOAL_UNIT, 1)) + " per "
                 + Fmt.per(prefs.getInt(K_PER_N, 1), prefs.getInt(K_PER_UNIT, 3));
     }
 

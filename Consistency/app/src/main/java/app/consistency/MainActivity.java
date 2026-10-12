@@ -23,10 +23,10 @@ public class MainActivity extends Activity {
     // Rolling windows, top to bottom, then the overall total.
     private static final int[] STAT_FIELD = { Calendar.DAY_OF_YEAR, Calendar.DAY_OF_YEAR, Calendar.MONTH, Calendar.YEAR, Calendar.YEAR };
     private static final int[] STAT_AMOUNT = { 1, 7, 1, 1, 10 };
-    private static final String[] LABELS = { "LAST DAY", "LAST WEEK", "LAST MONTH", "LAST YEAR", "LAST DECADE", "TOTAL" };
+    private static final String[] LABELS = { "THIS DAY", "THIS WEEK", "THIS MONTH", "THIS YEAR", "THIS DECADE", "TOTAL" };
     private static final float[] SCALE = { 1f, 0.86f, 0.74f, 0.63f, 0.52f, 0.68f };
     // Same rows plus the goal under the total, when one is set.
-    private static final String[] LABELS_GOAL = { "LAST DAY", "LAST WEEK", "LAST MONTH", "LAST YEAR", "LAST DECADE", "TOTAL", "GOAL" };
+    private static final String[] LABELS_GOAL = { "THIS DAY", "THIS WEEK", "THIS MONTH", "THIS YEAR", "THIS DECADE", "TOTAL", "GOAL" };
     private static final float[] SCALE_GOAL = { 1f, 0.86f, 0.74f, 0.63f, 0.52f, 0.68f, 0.5f };
 
     private SharedPreferences prefs;
@@ -124,20 +124,22 @@ public class MainActivity extends Activity {
         long el = live ? Math.max(0, now - start) : 0;
         long shown = total + el;
 
-        // Windows show "done / expected", expected being the goal scaled to the window.
+        // Windows show "done" over "of expected", expected being the goal scaled to the window.
         String goalText = DefinitionsActivity.goalText(prefs);
         String[] labels = goalText != null ? LABELS_GOAL : LABELS;
         String[] vals = new String[labels.length];
+        String[] subs = new String[labels.length];
         boolean[] gold = new boolean[labels.length];
         for (int i = 0; i < STAT_FIELD.length; i++) {
             long ms = Events.sumLast(this, STAT_FIELD[i], STAT_AMOUNT[i], now, start);
             double goal = DefinitionsActivity.goalFor(prefs, now - Events.windowStart(STAT_FIELD[i], STAT_AMOUNT[i], now));
-            vals[i] = goal >= 0 ? Fmt.amount(ms) + " / " + Fmt.amount(goal) : Fmt.amount(ms);
+            vals[i] = Fmt.amount(ms);
+            if (goal >= 0) subs[i] = "of " + Fmt.amount(goal);
             gold[i] = goal >= 0 && ms >= goal;
         }
         vals[5] = Fmt.elapsed(shown);   // the only clock; no goal, always silver
         if (goalText != null) { vals[6] = goalText; gold[6] = true; }   // always gold
-        stats.set(vals, labels, goalText != null ? SCALE_GOAL : SCALE, gold);
+        stats.set(vals, subs, labels, goalText != null ? SCALE_GOAL : SCALE, gold);
         startBtn.setVisibility(live ? View.GONE : View.VISIBLE);
         runningRow.setVisibility(live ? View.VISIBLE : View.GONE);
         session.setVisibility(live ? View.VISIBLE : View.INVISIBLE);
