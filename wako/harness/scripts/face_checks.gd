@@ -28,6 +28,10 @@ var _closed := [false, false]
 var _async_blink := false
 var _finite := true
 var _shared_material := false
+var _vor_err_max := 0.0
+var _vor_err_sum := 0.0
+var _vor_samples := 0
+var _swing := Vector2(INF, -INF)
 var _gaze_prev := {}
 var _gaze_step_max := 0.0
 
@@ -81,6 +85,16 @@ func scenario(delta: float) -> void:
 	if clock < 2.0:
 		gun_wako.work_target = gun_wako.portable_gun
 		gun_wako.portable_gun.desired_target = _gun_point
+		# VOR: the body swings +-45 deg while the eyes must hold the target.
+		gun_wako._idle_heading = .8 * sin(clock * 5.0)
+		var e: RefCounted = gun_wako.eyes
+		if clock > 1.0 and e._sacc_t < 0.0:
+			var truth: Vector2 = e._uv_toward(_gun_point)
+			var err: float = (e.gaze - truth).length() / (e.G_MAX / e.G_KNEE) * 57.3
+			_vor_err_max = maxf(_vor_err_max, err)
+			_vor_err_sum += err
+			_vor_samples += 1
+			_swing = Vector2(minf(_swing.x, gun_wako._heading), maxf(_swing.y, gun_wako._heading))
 		if clock > 1.0:
 			_gun_samples += 1
 			if gun_wako.eyes._want_point.distance_to(_gun_point) < .01 and gun_wako.eyes.gaze.y > .004: _gun_ok += 1
@@ -88,6 +102,8 @@ func scenario(delta: float) -> void:
 	if not is_instance_valid(hostile):
 		gun_wako.work_target = null
 		gun_wako.portable_gun.desired_target = Vector3.INF
+		_check(_vor_err_max < 4.0 and _swing.y - _swing.x > .5, "VOR: eyes hold the world target while the body swings %.0f deg (mean err %.2f deg, max %.2f deg)" % [rad_to_deg(_swing.y - _swing.x), _vor_err_sum / maxf(_vor_samples, 1), _vor_err_max])
+		gun_wako._idle_heading = 0.0
 		_check(_gun_ok > _gun_samples * .9, "gun hold gaze follows the real aim target (%d/%d samples), not the gun node" % [_gun_ok, _gun_samples])
 		hostile = Props.make_hostile(self, Vector3(1.0, 0, -13.0))
 		_hostile_time = clock

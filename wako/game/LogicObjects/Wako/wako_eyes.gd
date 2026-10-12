@@ -737,7 +737,7 @@ func _compose() -> void:
 			var widen := float(watch.notice_widen)
 			var focus := float(watch.notice_focus)
 			if widen>0.0 or focus>0.0:
-				uc += -.34*widen+.2*focus
+				uc += -.34*widen+.12*focus
 				lr += .14*focus
 				pop += .9*widen
 				dil += -.75*widen-.35*focus
