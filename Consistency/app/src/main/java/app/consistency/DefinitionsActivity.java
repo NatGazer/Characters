@@ -39,9 +39,6 @@ public class DefinitionsActivity extends Activity {
     private static final int[] UNIT_FIELD = {
             Calendar.SECOND, Calendar.MINUTE, Calendar.HOUR_OF_DAY, Calendar.DAY_OF_YEAR,
             Calendar.WEEK_OF_YEAR, Calendar.MONTH, Calendar.YEAR };
-    // Goal amounts in ms; months and years use their average Gregorian length.
-    private static final long[] UNIT_MS = {
-            1000L, 60_000L, 3_600_000L, 86_400_000L, 604_800_000L, 2_629_746_000L, 31_556_952_000L };
 
     private SharedPreferences prefs;
     private EditText goalN, perN;
@@ -109,9 +106,17 @@ public class DefinitionsActivity extends Activity {
     static double goalFor(SharedPreferences prefs, long windowMs) {
         int g = prefs.getInt(K_GOAL_N, 0);
         if (g <= 0) return -1;
-        double goalMs = g * (double) UNIT_MS[prefs.getInt(K_GOAL_UNIT, 1)];
-        double perMs = prefs.getInt(K_PER_N, 1) * (double) UNIT_MS[prefs.getInt(K_PER_UNIT, 3)];
+        double goalMs = g * (double) Fmt.UNIT_MS[prefs.getInt(K_GOAL_UNIT, 1)];
+        double perMs = prefs.getInt(K_PER_N, 1) * (double) Fmt.UNIT_MS[prefs.getInt(K_PER_UNIT, 3)];
         return goalMs * windowMs / perMs;
+    }
+
+    /** The goal as entered ("3 minutes / day", "7 hours / 2 weeks"), or null if none is set. */
+    static String goalText(SharedPreferences prefs) {
+        int g = prefs.getInt(K_GOAL_N, 0);
+        if (g <= 0) return null;
+        return Fmt.count(g, prefs.getInt(K_GOAL_UNIT, 1)) + " / "
+                + Fmt.per(prefs.getInt(K_PER_N, 1), prefs.getInt(K_PER_UNIT, 3));
     }
 
     private static int num(EditText e, int dflt) {
@@ -135,12 +140,12 @@ public class DefinitionsActivity extends Activity {
         if (g <= 0) { progress.setText(""); return; }
         int p = prefs.getInt(K_PER_N, 1);
         int pu = prefs.getInt(K_PER_UNIT, 3);
-        long target = g * UNIT_MS[prefs.getInt(K_GOAL_UNIT, 1)];
+        long target = g * Fmt.UNIT_MS[prefs.getInt(K_GOAL_UNIT, 1)];
         long done = Events.sumLast(this, UNIT_FIELD[pu], p, System.currentTimeMillis(), prefs.getLong("start_ms", 0));
         long pct = target > 0 ? done * 100 / target : 0;
         progress.setTextColor(done >= target ? GOLD : SILVER);
-        progress.setText(MainActivity.clock(done / 1000) + " / " + MainActivity.clock(target / 1000)
-                + "   " + pct + "%   LAST " + p + " " + UNITS[pu]);
+        progress.setText(Fmt.amount(done) + " / " + Fmt.amount(target)
+                + "   " + pct + "%   LAST " + Fmt.per(p, pu).toUpperCase(Locale.US));
     }
 
     private final class LogAdapter extends BaseAdapter {
