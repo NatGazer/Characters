@@ -66,9 +66,10 @@ func setup(owner: RigidBody3D, sk: Skeleton3D, skin: Node3D) -> bool:
 		shapes[chain[2]] = {"kind": "sphere", "radius": .09, "offset": Vector3(0, .026, 0)}
 		shapes[chain[3]] = {"kind": "sphere", "radius": .026, "offset": Vector3(0, .01, 0)}
 		joints[chain[0]] = {"kind": "cone", "axis": Vector3.UP, "swing_deg": 75, "twist_deg": 45, "getup_swing_deg": 150, "getup_twist_deg": 65}
-		# The canonical lower bones have a mirrored X rest axis. Their forward
-		# knee flexion is positive about bone -X, matching native one-way limits.
-		joints[chain[1]] = {"kind": "hinge", "axis": Vector3.LEFT, "swing_deg": 145}
+		# Both lower bones rest with X = model -X. Flexion about bone +X swings the
+		# ankle toward model +Z, so the one-way native knee bends toward the eye
+		# face (model -Z) like the supported IK, instead of folding backwards.
+		joints[chain[1]] = {"kind": "hinge", "axis": Vector3.RIGHT, "swing_deg": 145}
 		joints[chain[2]] = {"kind": "cone", "axis": Vector3.RIGHT, "swing_deg": 75, "twist_deg": 25, "getup_swing_deg": 100, "getup_twist_deg": 70}
 		joints[chain[3]] = {"kind": "cone", "axis": Vector3.RIGHT, "swing_deg": 70, "twist_deg": 20}
 	if not rig.build_skeleton(skeleton, model, BODY_DEFS, holder, {"shapes": shapes, "regions": regions,
