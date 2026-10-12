@@ -5,6 +5,7 @@ extends "res://harness/scripts/stage.gd"
 ## often saccades/blinks coincide, plus per-Wako face cost.
 ## --headless-stats: run without the camera close-up requirements.
 const Props := preload("res://harness/scripts/face_props.gd")
+const Eyes := preload("res://LogicObjects/Wako/wako_eyes.gd")
 const COUNT := 12
 var crowd: Array[RigidBody3D] = []
 var player: Node3D
@@ -25,6 +26,7 @@ var _rng := RandomNumberGenerator.new()
 var service: Node
 
 func setup() -> void:
+	Eyes.profiling = true
 	_rng.seed = 4242
 	# Real idle play (dance, hops, high-fives, routes) needs a scheduler/yard.
 	service = Props.make_coordinator(self, false)
@@ -46,6 +48,8 @@ func setup() -> void:
 	player = Props.make_player(self, Vector3(-3.5, .5, -2.6))
 	cam_target = Vector3(0, .95, 1.4)
 	cam_offset = Vector3(.4, .55, -5.0)
+	# --far: camera 35 m away (face LOD 2) to measure the crowd cost at distance.
+	if "--far" in OS.get_cmdline_user_args(): cam_offset = Vector3(0, 6.0, -35.0)
 
 func _once(key: String) -> bool:
 	if _flags.has(key): return false

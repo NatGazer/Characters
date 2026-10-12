@@ -20,7 +20,13 @@ const EYE_REST_POINT := Vector3(0.0, 1.175, -.197)
 const EYE_SIDE := .213
 const STROKE_KINDS := ["assemble","repair","inspect","tool_change","operate"]
 const STRAIN_KINDS := ["unbend","maintenance","push","pull","brace"]
-const LOD_INTERVALS := [1.0/30.0, 1.0/15.0, 1.0/6.0]
+# Brain rates: quiet faces think at 10/8/4 Hz (near/mid/far or off-screen),
+# a near face that acts, talks, startles or is alarmed at 20 Hz (the
+# expression channels themselves settle smoothly at the upload rate).
+const LOD_INTERVALS := [1.0/10.0, 1.0/8.0, 1.0/4.0]
+const BUSY_INTERVAL := 1.0/20.0
+# Gaze/settle/upload stride in physics ticks (60/30/15 Hz at 120 Hz).
+const STRIDES := [2, 4, 8]
 enum {UC, LR, TILT, WINK, DIL, POP, SMILE, MOPEN, MCURVE, MWIDTH, MSKEW, ALARM, STARTLE, CHANNELS}
 # Event pulses: [attack, hold, release, uc, lr, tilt, wink, dil, pop, smile, open, curve, width, skew].
 const PULSES := {
@@ -35,6 +41,8 @@ const PULSES := {
 	&"notice": [.05,.22,.3, -.1,0.0,0.0,0.0,.3,.25,0.0,0.0,0.0,0.0,0.0],
 	&"squeeze": [.03,.07,.22, .7,.45,.2,0.0,0.0,0.0,0.0,.05,-.4,.45,0.0],
 }
+## Harness/profiling switch: per-tick usec accounting (off in the game).
+static var profiling := false
 var worker: RigidBody3D
 var gaze := Vector2.ZERO
 var profile_ticks := 0
@@ -47,7 +55,11 @@ var _time := 0.0
 var _tick := 0
 var _brain_wait := 0.0
 var _brain_count := 0
-var _brain_interval := 1.0/30.0
+var _brain_interval := 1.0/15.0
+var _busy := false
+var _choose_wait := 0.0
+var _choose_elapsed := 0.0
+var _gaze_debt := 0.0
 var _lod := 0
 var _eye_local := EYE_REST_POINT
 var _rest_inverse := Basis.IDENTITY
@@ -66,13 +78,16 @@ var _blink_hold := .03
 var _blink_open := .1
 var _blink_depth := 1.0
 var _blink_value := 1.0
-var _next_blink := 2.0
+var _blink_at := 2.0
+var _blink_started := -10.0
 var _double_pending := false
-var _since_blink := 10.0
 # Gaze.
 var _want_point := Vector3.INF
 var _want_node: WeakRef
 var _want_offset := Vector3.ZERO
+var _want_face := false
+var _body_moving := true
+var _body_turning := true
 var _want_key := 0
 var _track := Vector3.INF
 var _desired := Vector2.ZERO
@@ -97,6 +112,7 @@ var _value: Array[float] = []
 var _settling := true
 var _settle_debt := 0.0
 var _dirty := true
+var _channels_dirty := true
 var _pulses: Array[Array] = []
 # Change-only uploads.
 var _sent_open := -1.0
@@ -124,6 +140,8 @@ var _rest_relaxed := 0.0
 var _rest_sleepy := 0.0
 var _rest_age := 0.0
 var _attention_serial := -1
+var _up_y := 1.0
+var _fast_turn := false
 var _partner_ref: WeakRef
 
 func setup(owner: RigidBody3D) -> void:
@@ -136,7 +154,7 @@ func setup(owner: RigidBody3D) -> void:
 	_expressive = _rng.randf_range(.85,1.15)
 	_side = 1.0 if _rng.randf()<.5 else -1.0
 	_hippus_phase = _rng.randf()*TAU
-	_next_blink = _rng.randf_range(.5,3.2)
+	_blink_at = _rng.randf_range(.5,3.2)
 	_brain_wait = _rng.randf()*_brain_interval
 	_brain_count = _rng.randi_range(0,5)
 	_target.resize(CHANNELS)
@@ -180,7 +198,8 @@ func _on_contact(kind: String) -> void:
 		pulse(&"satisfied",.55,.04)
 
 func advance(delta: float) -> void:
-	var began := Time.get_ticks_usec()
+	var began := Time.get_ticks_usec() if profiling else 0
+	profile_ticks += 1
 	_time += delta
 	_tick += 1
 	_brain_wait -= delta
@@ -188,19 +207,28 @@ func advance(delta: float) -> void:
 		var elapsed := _brain_interval-_brain_wait
 		_brain_wait = maxf(_brain_wait+_brain_interval,0.0)
 		_brain(elapsed)
-	_advance_blink(delta)
-	_advance_gaze(delta)
-	if _settling:
-		# Expression channels settle at 60 Hz (brain rate when far).
-		_settle_debt += delta
-		if _lod>0 or _tick%2==0:
-			_settle(_settle_debt)
-			_settle_debt = 0.0
+	if _blink_t>=0.0 or _time>=_blink_at: _advance_blink(delta)
+	# Gaze, settling and uploads run on a stride (60 Hz near, the renderer
+	# never sees more); saccades and the dizzy swirl step every tick. A still
+	# body watching a still target refreshes its VOR at half that rate.
+	var stride: int = STRIDES[_lod]
+	var saccading := _sacc_t>=0.0 or _down
+	_gaze_debt += delta
+	_settle_debt += delta
+	var gaze_stride := stride if _body_turning else stride*2 if _gaze_static<=2 else stride*4
+	if saccading or _tick%gaze_stride==0:
+		_advance_gaze(_gaze_debt)
+		_gaze_debt = 0.0
+	if _tick%stride!=0:
+		if profiling: profile_total_usec += Time.get_ticks_usec()-began
+		return
+	if _settling: _settle(_settle_debt)
+	_settle_debt = 0.0
 	if _dirty: _upload()
-	var spent := Time.get_ticks_usec()-began
-	profile_ticks += 1
-	profile_total_usec += spent
-	profile_peak_usec = maxi(profile_peak_usec,spent)
+	if profiling:
+		var spent := Time.get_ticks_usec()-began
+		profile_total_usec += spent
+		profile_peak_usec = maxi(profile_peak_usec,spent)
 
 # ---------------------------------------------------------------- blinks
 
@@ -211,11 +239,10 @@ func _start_blink(depth: float, slow: bool) -> void:
 	_blink_close = (.085 if slow else .05)*_rng.randf_range(.9,1.12)*(1.0+.6*sleepy)
 	_blink_hold = (.09 if slow else .028)*_rng.randf_range(.8,1.3)*(1.0+1.5*sleepy)
 	_blink_open = (.16 if slow else .1)*_rng.randf_range(.9,1.15)*(1.0+.8*sleepy)
-	_since_blink = 0.0
+	_blink_started = _time
 	events.blink += 1
 
 func _advance_blink(delta: float) -> void:
-	_since_blink += delta
 	if _blink_t>=0.0:
 		_blink_t += delta
 		var closure := 0.0
@@ -226,17 +253,16 @@ func _advance_blink(delta: float) -> void:
 			_blink_t = -1.0
 			if _double_pending:
 				_double_pending = false
-				_next_blink = _rng.randf_range(.05,.12)
+				_blink_at = _time+_rng.randf_range(.05,.12)
 		_blink_value = 1.0-_blink_depth*closure
 		_dirty = true
 		return
-	_next_blink -= delta
-	if _next_blink>0.0: return
+	if _time<_blink_at: return
 	if _blink_suppressed():
-		_next_blink = .08
+		_blink_at = _time+.08
 		return
 	var mean := _blink_mean*(1.3 if worker.fear_time>0.0 else 1.0)*(1.0+.8*_rest_sleepy)
-	_next_blink = clampf(exp(log(mean)-.1+.45*_rng.randfn()),.8,9.0)
+	_blink_at = _time+clampf(exp(log(mean)-.1+.45*_rng.randfn()),.8,9.0)
 	var roll := _rng.randf()
 	_double_pending = roll<.12
 	_start_blink(_rng.randf_range(.55,.75) if roll>.87 else 1.0,_rest_sleepy>.5)
@@ -248,7 +274,7 @@ func _blink_suppressed() -> bool:
 	return is_instance_valid(watch) and float(watch.notice_widen)>.15
 
 func _motivated_blink(chance: float, depth := 1.0) -> void:
-	if _blink_t>=0.0 or _since_blink<.3 or _rng.randf()>chance or _blink_suppressed(): return
+	if _blink_t>=0.0 or _time-_blink_started<.3 or _rng.randf()>chance or _blink_suppressed(): return
 	_start_blink(depth,false)
 
 # ---------------------------------------------------------------- gaze
@@ -264,6 +290,7 @@ func _eye_frame() -> Transform3D:
 
 func _uv_toward(point: Vector3) -> Vector2:
 	var frame := _eye_frame()
+	_up_y = frame.basis.y.y
 	var local: Vector3 = (point-frame.origin)*frame.basis
 	var distance := local.length()
 	if distance<.001: return _desired
@@ -285,17 +312,18 @@ func _advance_gaze(delta: float) -> void:
 		var live: Node3D = _want_node.get_ref()
 		if is_instance_valid(live) and live.is_inside_tree():
 			var at: Vector3 = live.global_position
-			var face: Variant = live.get("_visual_head_point")
-			if face is Vector3 and face.is_finite(): at = face
+			if _want_face:
+				var face: Vector3 = live._visual_head_point
+				if face.is_finite(): at = face
 			# Refixations: a watched actor gets small saccades between its
 			# face, body and feet (mostly the face), like real looking.
 			_feature_wait -= delta
 			var hop := false
-			if _feature_wait<=0.0 and _lod==0 and _sacc_t<0.0 and (face is Vector3 or live==Global.Player):
+			if _feature_wait<=0.0 and _lod==0 and _sacc_t<0.0 and (_want_face or live==Global.Player):
 				_feature_wait = _rng.randf_range(.3,.9)
 				var roll := _rng.randf()
 				var feature := Vector3.ZERO if roll<.55 else Vector3(_rng.randf_range(-.12,.12),-.35,0.0) if roll<.85 else Vector3(_rng.randf_range(-.15,.15),-.75,0.0)
-				if face is Vector3: feature *= .5
+				if _want_face: feature *= .5
 				hop = feature.distance_squared_to(_feature)>.01
 				_feature = feature
 			at += _want_offset+_feature
@@ -310,16 +338,9 @@ func _advance_gaze(delta: float) -> void:
 	else:
 		if _want_point!=_track: moving = true
 		_track = _want_point
-	if not moving:
-		moving = absf(worker.turn_rate)>.02 or worker.linear_velocity.length_squared()>.0025 \
-			or _lod==0 and (not worker.action.is_empty() or worker.idle_play and worker.idle_play.dance_weight>.001)
-	if moving: _gaze_static = 0
+	if moving or _body_moving: _gaze_static = 0
 	else: _gaze_static += 1
-	# A still body and still target need no per-tick frame (VOR) refresh;
-	# a far or off-screen face refreshes at 30 Hz outside saccades.
-	if (_gaze_static>2 or _lod==2 and _sacc_t<0.0) and _tick%4!=0: return
 	var desired := _uv_toward(_track) if _track.is_finite() else Vector2(-.003,0.0)
-	var previous := gaze
 	if _sacc_t>=0.0:
 		_sacc_t += delta
 		var s := clampf(_sacc_t/_sacc_dur,0.0,1.0)
@@ -330,7 +351,7 @@ func _advance_gaze(delta: float) -> void:
 		# behind the body) becomes a catch-up saccade, never a pop.
 		_start_saccade(desired)
 	else:
-		_micro_wait -= delta*(4.0 if _gaze_static>2 else 1.0)
+		_micro_wait -= delta
 		if _micro_wait<=0.0 and _lod==0:
 			_micro_wait = _rng.randf_range(.35,1.1)
 			_micro_goal = Vector2(_rng.randf_range(-1.0,1.0),_rng.randf_range(-1.0,1.0)).normalized()*_rng.randf_range(.0003,.0008)
@@ -338,7 +359,7 @@ func _advance_gaze(delta: float) -> void:
 		_micro_goal = _micro_goal.move_toward(Vector2.ZERO,delta*.0015)
 		gaze = (desired+_micro).limit_length(.021)
 	_desired = desired
-	if gaze!=previous: _dirty = true
+	if gaze.distance_squared_to(_sent_gaze)>.000000015: _dirty = true
 
 func _start_saccade(to_uv: Vector2) -> void:
 	var amplitude := to_uv.distance_to(gaze)
@@ -362,8 +383,10 @@ func _look_at(point: Vector3, key: int, follow: Node3D = null, offset := Vector3
 	_want_point = point
 	_want_node = weakref(follow) if follow else null
 	_want_offset = offset
+	_want_face = false
 	if follow:
 		var face: Variant = follow.get("_visual_head_point")
+		_want_face = face is Vector3
 		_track = (face if face is Vector3 and face.is_finite() else follow.global_position)+offset
 	else:
 		_track = point
@@ -373,13 +396,20 @@ func _look_at(point: Vector3, key: int, follow: Node3D = null, offset := Vector3
 # ---------------------------------------------------------------- brain
 
 func _brain(elapsed: float) -> void:
-	# Staggered sub-steps: expression every brain tick, events every other,
-	# gaze choice every third, LOD every sixth (all on a personal phase).
+	# Staggered sub-steps: events and expression every brain tick, gaze
+	# choice every other, LOD every fourth (all on a personal phase).
 	_brain_count += 1
-	if _brain_count%6==0: _update_lod()
-	if _brain_count%2==0 or _lod>0: _poll_events(elapsed*(1.0 if _lod>0 else 2.0))
-	if _brain_count%3==0 or _lod>0 or _want_key==0: _choose_gaze(elapsed*(1.0 if _lod>0 else 3.0))
+	if _brain_count%4==0: _update_lod()
+	_poll_events(elapsed)
+	_choose_wait -= elapsed
+	if _choose_wait<=0.0 or _lod>0 or _want_key==0:
+		_choose_gaze(_choose_elapsed+elapsed)
+		_choose_elapsed = 0.0
+		_choose_wait = .1
+	else:
+		_choose_elapsed += elapsed
 	_compose()
+	_brain_interval = BUSY_INTERVAL if _busy and _lod==0 else LOD_INTERVALS[_lod]
 
 func _update_lod() -> void:
 	var camera: Camera3D = worker.get_viewport().get_camera_3d() if worker.is_inside_tree() else null
@@ -389,11 +419,15 @@ func _update_lod() -> void:
 		var distance := camera.global_position.distance_to(head)
 		lod = 0 if distance<9.0 else 1 if distance<22.0 else 2
 		if lod<2 and not camera.is_position_in_frustum(head): lod = 2
-	if lod!=_lod:
-		_lod = lod
-		_brain_interval = LOD_INTERVALS[lod]
+	_lod = lod
 
 func _poll_events(elapsed: float) -> void:
+	# The VOR refresh rate follows real body motion (sampled at brain rate).
+	var play_node: RefCounted = worker.idle_play
+	var turn: float = absf(worker.turn_rate)
+	var dancing: bool = play_node and (play_node.dance_weight>.001 or play_node.crouch_weight>.001)
+	_body_turning = turn>.6 or dancing or not worker.on_ground
+	_body_moving = _body_turning or turn>.02 or worker.linear_velocity.length_squared()>.0025 or not worker.action.is_empty() or _sacc_t>=0.0
 	# Hits, stumbles and native impacts raise the helper's reaction clock.
 	var reaction: float = worker._reaction
 	if reaction>_last_reaction+.08:
@@ -422,6 +456,10 @@ func _poll_events(elapsed: float) -> void:
 			if _air_time>.5 and worker.cargo_mass>0.0: pulse(&"pride",.7,.25)
 		_air_time = 0.0
 	_was_grounded = grounded
+	# A big, fast body turn carries a blink (eyes reset during the turn).
+	var fast_turn: bool = absf(worker.turn_rate)>2.5
+	if fast_turn and not _fast_turn: _motivated_blink(.55)
+	_fast_turn = fast_turn
 	# Head-first flips.
 	var leap_node: RefCounted = worker.head_leap
 	var leap: String = leap_node.state if leap_node else ""
@@ -482,8 +520,13 @@ func _poll_events(elapsed: float) -> void:
 		var kind: StringName = attention.kind
 		if attention.novel and kind in [&"flip",&"splash",&"toss",&"fall",&"hit",&"hop",&"landing"]: pulse(&"curious",.8)
 		elif kind in [&"job_done",&"highfive",&"catch"]: pulse(&"satisfied",.6)
-	if _rest_relaxed>0.0: _rest_age += elapsed
+	if _rest_amount()>0.0: _rest_age += elapsed
 	else: _rest_age = 0.0
+
+func _rest_amount() -> float:
+	var play: RefCounted = worker.idle_play
+	if play and play.state.begins_with("sit"): return 1.0
+	return _rest_relaxed
 
 func _work_focus() -> bool:
 	return worker.action in STROKE_KINDS and is_instance_valid(worker.work_target) and worker.on_ground and worker.fear_time<=0.0 and not _down
@@ -711,11 +754,13 @@ func _compose() -> void:
 		mcurve += .6*social
 		if personality: mopen += .22*social*float(personality.greeting_weight)
 		dil += .3*social
-		# Resting (sit API): relaxed lids, sleepy after a while.
-		if _rest_relaxed>0.0:
+		# Resting (sit API or a future idle "sit*" state): relaxed lids,
+		# sleepy after a while unless something interesting is watched.
+		var rest := _rest_amount()
+		if rest>0.0:
 			var sleepy := maxf(_rest_sleepy,smoothstep(15.0,25.0,_rest_age)*.6)*(1.0-attention_strength)
-			uc = lerpf(uc,maxf(uc,.2+.3*sleepy),_rest_relaxed)
-			lr += .1*_rest_relaxed; tilt -= .15*sleepy; mcurve += .15*_rest_relaxed; dil += .2*sleepy
+			uc = lerpf(uc,maxf(uc,.2+.3*sleepy),rest)
+			lr += .1*rest; tilt -= .15*sleepy; mcurve += .15*rest; dil += .2*sleepy
 		# Gun aim: a determined one-eye aiming squint.
 		var gun: Node3D = worker.portable_gun
 		if gun and is_instance_valid(worker.equipped_gun) and gun.desired_target.is_finite():
@@ -732,9 +777,18 @@ func _compose() -> void:
 				mcurve += shape.y*shaped
 				mwidth += shape.z*shaped
 				if kind=="play" or kind=="yay" or kind=="giggle": smile = maxf(smile,.35)
+	# Upside down (flips, upside-down play) a smile would read as a frown:
+	# show happy arcs and a small round "o" instead.
+	if _up_y<-.3:
+		var inverted := smoothstep(-.3,-.7,_up_y)
+		mcurve = lerpf(mcurve,0.0,inverted)
+		mopen = maxf(mopen,.3*inverted)
+		mwidth = lerpf(mwidth,-.6,inverted)
+		smile = maxf(smile,.55*inverted)
 	var t := _target
 	t[UC] = uc; t[LR] = lr; t[TILT] = tilt; t[WINK] = wink; t[DIL] = dil; t[POP] = pop; t[SMILE] = smile
 	t[MOPEN] = mopen; t[MCURVE] = mcurve; t[MWIDTH] = mwidth; t[MSKEW] = mskew; t[ALARM] = alarm; t[STARTLE] = startle
+	_busy = _down or alarm>0.0 or startle>0.0 or mopen>0.0 or not worker.action.is_empty() or not _pulses.is_empty() or _air_time>0.0
 	if not _pulses.is_empty(): _apply_pulses()
 	t[UC] = clampf(t[UC],-.4,1.0)
 	t[LR] = clampf(t[LR],0.0,1.0)
@@ -802,15 +856,15 @@ func _settle(delta: float) -> void:
 		_value[channel] = value
 	_settling = not settled
 	_dirty = true
+	_channels_dirty = true
 
 func _upload() -> void:
 	_dirty = false
 	var mesh: MeshInstance3D = worker._skin_mesh
 	if not mesh: return
 	var changed := false
-	var v := _value
 	var open := _blink_value
-	if absf(open-_sent_open)>.003 or (open!=_sent_open and (open<=0.0 or open>=1.0)):
+	if open!=_sent_open and (absf(open-_sent_open)>.003 or open<=0.0 or open>=1.0):
 		_sent_open = open
 		mesh.set_instance_shader_parameter(&"eye_openness",open)
 		changed = true
@@ -818,6 +872,22 @@ func _upload() -> void:
 		_sent_gaze = gaze
 		mesh.set_instance_shader_parameter(&"gaze_uv_offset",gaze)
 		changed = true
+	if _channels_dirty or absf(_vergence-_sent_iris.y)>.0003:
+		_channels_dirty = false
+		changed = _upload_channels(mesh) or changed
+	# Material-only changes have no motion vectors: mark the eye pass
+	# reactive for TAA while (and only while) the face changes.
+	var reactive := 1.0 if changed else 0.0
+	if reactive!=_sent_reactive:
+		_sent_reactive = reactive
+		mesh.set_instance_shader_parameter(&"eye_reactivity",reactive)
+	if changed:
+		uploads += 1
+		_dirty = true
+
+func _upload_channels(mesh: MeshInstance3D) -> bool:
+	var changed := false
+	var v := _value
 	if absf(v[SMILE]-_sent_smile)>.003 or (v[SMILE]==0.0 and _sent_smile!=0.0):
 		_sent_smile = v[SMILE]
 		mesh.set_instance_shader_parameter(&"eye_smile",_sent_smile)
@@ -845,15 +915,7 @@ func _upload() -> void:
 		_sent_mouth = mouth
 		mesh.set_instance_shader_parameter(&"mouth_shape",mouth)
 		changed = true
-	# Material-only changes have no motion vectors: mark the eye pass
-	# reactive for TAA while (and only while) the face changes.
-	var reactive := 1.0 if changed else 0.0
-	if reactive!=_sent_reactive:
-		_sent_reactive = reactive
-		mesh.set_instance_shader_parameter(&"eye_reactivity",reactive)
-	if changed:
-		uploads += 1
-		_dirty = true
+	return changed
 
 static func _vec4_moved(a: Vector4, b: Vector4) -> bool:
 	return absf(a.x-b.x)>.003 or absf(a.y-b.y)>.003 or absf(a.z-b.z)>.003 or absf(a.w-b.w)>.003 \

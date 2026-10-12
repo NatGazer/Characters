@@ -85,6 +85,7 @@ var _alert_time := 0.0
 var _attention_turn := 0.0
 var _attention_turn_wait := 0.0
 var _attention_seen := -1
+var _poll_clock := 0.0
 
 func setup(owner: RigidBody3D) -> void:
 	worker = owner
@@ -124,7 +125,11 @@ func advance(delta: float) -> void:
 	_chatter_remaining = maxf(0.0,_chatter_remaining-delta)
 	_advance_voice_clock(delta)
 	_advance_work_voice(delta)
-	_poll_voice_events(delta)
+	# Event voices poll real state at 15 Hz (crossings are edge-detected).
+	_poll_clock += delta
+	if _poll_clock>=1.0/15.0:
+		_poll_voice_events(_poll_clock)
+		_poll_clock = 0.0
 	_cover_retry = maxf(0.0,_cover_retry-delta)
 	if _scan_remaining<=0.0:
 		_scan_remaining = _rng.randf_range(.21,.29)
@@ -173,7 +178,7 @@ func advance(delta: float) -> void:
 	# the gaps between smiles. Only a real smile asks the body to turn.
 	look_position = player.global_position+Vector3.UP*.6 if free_expression and not core and is_instance_valid(player) else Vector3.INF
 	if wanted>0.0 and look_position.is_finite(): worker.face_point(look_position)
-	_follow_attention(delta,free_expression and not core)
+	if _poll_clock==0.0: _follow_attention(1.0/15.0,free_expression and not core)
 	var elapsed := Time.get_ticks_usec()-began
 	profile_ticks += 1
 	profile_total_usec += elapsed

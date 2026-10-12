@@ -2,12 +2,14 @@ extends "res://harness/scripts/stage.gd"
 ## Headless face diagnostics: prints the uploaded uniforms, gaze and eye
 ## engine counters while a player walks past and a hostile appears.
 const Props := preload("res://harness/scripts/face_props.gd")
+const Eyes := preload("res://LogicObjects/Wako/wako_eyes.gd")
 var wako: RigidBody3D
 var player: Node3D
 var hostile: Node3D
 var _next := 0.0
 
 func setup() -> void:
+	Eyes.profiling = true
 	wako = spawn_wako(Vector3(0, .86, 0), "face_probe")
 	cam_target = Vector3(0, 1.1, -.2)
 	cam_offset = Vector3(.35, .12, -1.45)

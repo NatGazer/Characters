@@ -4,6 +4,7 @@ extends "res://harness/scripts/stage.gd"
 ## smile, a hit, a live hostile notice -> alarm -> relief, a completion).
 ## --part=a: idle life + work strokes; b: greeting + hit; c: threat + relief + win.
 const Props := preload("res://harness/scripts/face_props.gd")
+const Eyes := preload("res://LogicObjects/Wako/wako_eyes.gd")
 var wako: RigidBody3D
 var player: Node3D
 var hostile: Node3D
@@ -14,6 +15,7 @@ var _flags := {}
 var _log_next := 0.0
 
 func setup() -> void:
+	Eyes.profiling = true
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--part="): part = arg.trim_prefix("--part=")
 	wako = spawn_wako(Vector3(0, .86, 0), "face_lab_" + part)
