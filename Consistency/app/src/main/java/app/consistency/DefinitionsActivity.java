@@ -27,6 +27,9 @@ import java.util.Locale;
 /** Goal ("N unit per M unit") and the log of every session. */
 public class DefinitionsActivity extends Activity {
 
+    static final int GOLD = 0xFFF0B44C;     // goal reached
+    static final int SILVER = 0xFF9A9FA8;   // not reached
+
     private static final String K_GOAL_N = "goal_n";        // 0 = no goal
     private static final String K_GOAL_UNIT = "goal_unit";
     private static final String K_PER_N = "per_n";
@@ -102,6 +105,15 @@ public class DefinitionsActivity extends Activity {
 
     @Override protected void onPause() { super.onPause(); resumed = false; handler.removeCallbacks(tick); }
 
+    /** Goal scaled to a window of windowMs (3 min per day -> 21 min per week), or -1 if none is set. */
+    static double goalFor(SharedPreferences prefs, long windowMs) {
+        int g = prefs.getInt(K_GOAL_N, 0);
+        if (g <= 0) return -1;
+        double goalMs = g * (double) UNIT_MS[prefs.getInt(K_GOAL_UNIT, 1)];
+        double perMs = prefs.getInt(K_PER_N, 1) * (double) UNIT_MS[prefs.getInt(K_PER_UNIT, 3)];
+        return goalMs * windowMs / perMs;
+    }
+
     private static int num(EditText e, int dflt) {
         try { return Integer.parseInt(e.getText().toString().trim()); }
         catch (NumberFormatException x) { return dflt; }
@@ -126,6 +138,7 @@ public class DefinitionsActivity extends Activity {
         long target = g * UNIT_MS[prefs.getInt(K_GOAL_UNIT, 1)];
         long done = Events.sumLast(this, UNIT_FIELD[pu], p, System.currentTimeMillis(), prefs.getLong("start_ms", 0));
         long pct = target > 0 ? done * 100 / target : 0;
+        progress.setTextColor(done >= target ? GOLD : SILVER);
         progress.setText(MainActivity.clock(done / 1000) + " / " + MainActivity.clock(target / 1000)
                 + "   " + pct + "%   LAST " + p + " " + UNITS[pu]);
     }

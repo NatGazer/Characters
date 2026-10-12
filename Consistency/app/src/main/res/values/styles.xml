@@ -20,7 +20,7 @@
     <style name="Stat">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:textColor">#66FFFFFF</item>
+        <item name="android:textColor">#FF9A9FA8</item>
         <item name="android:textStyle">bold</item>
         <item name="android:letterSpacing">0.12</item>
     </style>

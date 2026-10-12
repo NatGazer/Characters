@@ -48,18 +48,20 @@ final class Events {
     }
 
     // TODO(next update): remove. One-time conversion of the time recorded before the log existed.
-    /** Spreads legacyMs over the log as 10 minutes per day, going back day by day from now. */
+    /** Spreads legacyMs over the log as 10 minutes per day at 4 p.m., from yesterday backwards. */
     static synchronized void convertLegacyTotal(Context c, long legacyMs, long now) {
         if (legacyMs <= 0 || !all(c).isEmpty()) return;
         final long chunk = 10 * 60 * 1000L;
         ArrayList<long[]> back = new ArrayList<>();
         Calendar cal = Calendar.getInstance();
         cal.setTimeInMillis(now);
+        cal.set(Calendar.HOUR_OF_DAY, 16);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
         for (long left = legacyMs; left > 0; left -= chunk) {
-            long dur = Math.min(chunk, left);
-            long end = cal.getTimeInMillis();
-            back.add(new long[] { end - dur, dur });
             cal.add(Calendar.DAY_OF_YEAR, -1);
+            back.add(new long[] { cal.getTimeInMillis(), Math.min(chunk, left) });
         }
         Collections.reverse(back);   // oldest first
         StringBuilder sb = new StringBuilder();
@@ -75,10 +77,7 @@ final class Events {
      * session inside it. liveStart != 0 adds the session still running.
      */
     static long sumLast(Context c, int field, int amount, long now, long liveStart) {
-        Calendar cal = Calendar.getInstance();
-        cal.setTimeInMillis(now);
-        cal.add(field, -amount);
-        long from = cal.getTimeInMillis();
+        long from = windowStart(field, amount, now);
 
         long sum = liveStart != 0 ? overlap(liveStart, now, from, now) : 0;
         List<long[]> list = all(c);
@@ -87,6 +86,14 @@ final class Events {
             sum += overlap(e[0], e[0] + e[1], from, now);
         }
         return sum;
+    }
+
+    /** now minus amount of the Calendar field. */
+    static long windowStart(int field, int amount, long now) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTimeInMillis(now);
+        cal.add(field, -amount);
+        return cal.getTimeInMillis();
     }
 
     private static long overlap(long s, long e, long from, long to) {

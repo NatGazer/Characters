@@ -54,8 +54,7 @@ public class MainActivity extends Activity {
 
         // TODO(next update): remove. Time recorded before the log existed becomes 10 minutes per day.
         if (!prefs.getBoolean(K_CONVERTED, false)) {
-            long live = prefs.getLong(K_START, 0);
-            Events.convertLegacyTotal(this, prefs.getLong(K_TOTAL, 0), live != 0 ? live : System.currentTimeMillis());
+            Events.convertLegacyTotal(this, prefs.getLong(K_TOTAL, 0), System.currentTimeMillis());
             prefs.edit().putBoolean(K_CONVERTED, true).apply();
         }
 
@@ -126,7 +125,9 @@ public class MainActivity extends Activity {
 
         for (int i = 0; i < stats.length; i++) {
             long ms = Events.sumLast(this, STAT_FIELD[i], STAT_AMOUNT[i], now, start);
+            double goal = DefinitionsActivity.goalFor(prefs, now - Events.windowStart(STAT_FIELD[i], STAT_AMOUNT[i], now));
             stats[i].setText(clock(ms / 1000) + "   " + STAT_LABEL[i]);
+            stats[i].setTextColor(goal >= 0 && ms >= goal ? DefinitionsActivity.GOLD : DefinitionsActivity.SILVER);
         }
 
         timer.set(shown / 1000, live);
