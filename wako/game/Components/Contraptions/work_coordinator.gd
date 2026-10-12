@@ -218,6 +218,7 @@ func refresh_jobs() -> void:
 			worker.safe_position = _parking_position(worker)
 			worker.status_text = "Fetching " + _part_title(job) if entry.phase == "fetch" else "Inspecting " + _part_title(job)
 	# Unclaimed helpers stay behind the workshop instead of roaming into combat.
+	var blocked_reported := false
 	for worker: Node in workers:
 		if not worker.current_job_id.is_empty() or worker.paused or not worker.is_available() or worker.head_leap.active(): continue
 		if is_instance_valid(worker.station): continue
@@ -251,7 +252,16 @@ func refresh_jobs() -> void:
 			worker.navigate_to(worker.safe_position - Vector3.UP * worker.ride_height)
 		elif not blocked.is_empty():
 			worker.status_text = str(blocked.values()[0])
-			worker.needs = worker.status_text
+			# One representative carries the shared blocked reason for the Build
+			# panel; the rest stay free for play, greetings and eye smiles while
+			# they wait. Per-helper refusals above still set their own needs.
+			if not blocked_reported:
+				blocked_reported = true
+				worker.needs = worker.status_text
+			else:
+				worker.needs = ""
+				var waiting_play: RefCounted = worker.get("idle_play")
+				if waiting_play and waiting_play.idle_navigation_claim(): continue
 			if _navigate(worker, worker.safe_position - Vector3.UP * worker.ride_height): worker.stop_navigation()
 		elif worker.get("portable_gun") != null and worker.portable_gun.idle_stance_claim():
 			worker.stop_navigation()
@@ -2169,10 +2179,20 @@ func _try_stage_admit(entry: Dictionary) -> bool:
 
 func _on_action_finished(_kind: String, worker: Node) -> void:
 	var id: String = worker.current_job_id
-	if not active_jobs.has(id): return
+	if not active_jobs.has(id):
+		# A jobless helper just finished its post-commit tail: admit its next
+		# useful lease on this tick instead of idling up to a refresh period.
+		_refresh_clock = maxf(_refresh_clock, .25)
+		return
 	var entry: Dictionary = active_jobs[id]
 	if entry.get("unloading_held",false): return
-	if entry.crew[0] != worker: return
+	if entry.crew[0] != worker:
+		# A brace partner keeps holding through the whole shared phase rather
+		# than dropping to idle between the lead's strokes. Contacts of
+		# partners stay ignored; the lead's own re-begin remains a no-op.
+		if _kind == "brace" and worker.action.is_empty() and String(entry.phase) in ["work","staging","storage_staging","placing"]:
+			worker.begin_action("brace")
+		return
 	if _job_tool_custody_lost(entry):
 		_cancel(entry, "Original work tool released; recover a compatible physical tool before continuing")
 		return
@@ -2261,8 +2281,15 @@ func _begin_staging(entry: Dictionary) -> void:
 		w.cargo_target = entry.job.target
 		w.cargo_staging = true
 		w.begin_action("place" if w == lead else "brace")
+		if w != lead and w.action == "brace" and lead.action == "place":
+			# Partners finish the shared staging with the lead instead of
+			# idling for the remainder of its longer place clip.
+			w._action_length = lead._action_length
+			w._animation.speed_scale = w._animation.get_animation(w._animation.current_animation).length / w._action_length
 
 func _finish(entry: Dictionary) -> void:
+	# Freed crew is admitted to its next useful lease on the next tick.
+	_refresh_clock = maxf(_refresh_clock, .25)
 	_clear_storage_target(entry)
 	UnloadingHold.clear(entry)
 	_work_area_wait.erase(entry.job.id)
@@ -2340,6 +2367,7 @@ func _prune_head_return_feedback() -> void:
 func _cancel(entry: Dictionary, reason: String) -> void:
 	var id: String = entry.job.id
 	if not active_jobs.has(id): return
+	_refresh_clock = maxf(_refresh_clock, .25)
 	if reason == "Original work tool released; recover a compatible physical tool before continuing":
 		var original_tool: Variant = entry.job.get("tool")
 		if is_instance_valid(original_tool) and original_tool.get("definition") is Dictionary:
