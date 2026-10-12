@@ -157,6 +157,10 @@ func scan(player: Node3D, can_see: Callable) -> void:
 	# Personal idle scan point (ground ahead, horizon to a side, sky).
 	if not _scan_point.is_finite() or (_key==SCAN_KEY and _hold<=0.0):
 		_scan_point = _new_scan_point(head,forward)
+		if _key==SCAN_KEY:
+			# A new look-around point is a new fixation (eyes saccade to it).
+			serial += 1
+			_hold = .9*_span*_rng.randf_range(.6,1.5)
 	var scan_score := _score(.2,SCAN_KEY,_scan_point,head,forward,head.distance_to(_scan_point),t)
 	if scan_score>best_score:
 		best_score = scan_score; best_key = SCAN_KEY; best_point = _scan_point; best_node = null; best_kind = &"scan"; best_novel = false

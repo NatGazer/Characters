@@ -15,7 +15,7 @@ const Attention := preload("res://LogicObjects/Wako/wako_attention.gd")
 const Voice := preload("res://LogicObjects/Wako/wako_personality_voice.gd")
 const G_MAX := .02
 const G_KNEE := .62
-const STEP_LIMIT := .0033
+const STEP_LIMIT := .0031
 const EYE_REST_POINT := Vector3(0.0, 1.175, -.197)
 const EYE_SIDE := .213
 const STROKE_KINDS := ["assemble","repair","inspect","tool_change","operate"]
@@ -342,11 +342,16 @@ func _advance_gaze(delta: float) -> void:
 	else: _gaze_static += 1
 	var desired := _uv_toward(_track) if _track.is_finite() else Vector2(-.003,0.0)
 	if _sacc_t>=0.0:
+		# A saccade launched in this very call (a refixation hop) starts its
+		# flight next tick; owed stride time never fast-forwards it.
+		if _sacc_t==0.0 and _gaze_debt==0.0 and delta>1.5/120.0: delta = 1.0/120.0
 		_sacc_t += delta
 		var s := clampf(_sacc_t/_sacc_dur,0.0,1.0)
-		gaze = _sacc_from.lerp(desired,s*s*s*(10.0+s*(-15.0+6.0*s)))
+		# Minimum-jerk path; a target that moves during the flight (a turning
+		# body) can never push one tick beyond the continuity bound.
+		gaze = gaze.move_toward(_sacc_from.lerp(desired,s*s*s*(10.0+s*(-15.0+6.0*s))),STEP_LIMIT*1.15*maxf(delta*120.0,1.0))
 		if s>=1.0: _sacc_t = -1.0
-	elif desired.distance_to(_desired)>.0035 and _lod<2:
+	elif desired.distance_to(_desired)>.0035 or gaze.distance_to(desired)>.0045:
 		# A jump that pursuit/VOR cannot follow (teleported target, wrap
 		# behind the body) becomes a catch-up saccade, never a pop.
 		_start_saccade(desired)
@@ -357,7 +362,9 @@ func _advance_gaze(delta: float) -> void:
 			_micro_goal = Vector2(_rng.randf_range(-1.0,1.0),_rng.randf_range(-1.0,1.0)).normalized()*_rng.randf_range(.0003,.0008)
 		_micro = _micro.move_toward(_micro_goal,delta*.03)
 		_micro_goal = _micro_goal.move_toward(Vector2.ZERO,delta*.0015)
-		gaze = (desired+_micro).limit_length(.021)
+		# Fixation (VOR + pursuit + micro-saccades), bounded per update so a
+		# fast body turn never pops the pupil.
+		gaze = gaze.move_toward((desired+_micro).limit_length(.021),STEP_LIMIT*1.15)
 	_desired = desired
 	if gaze.distance_squared_to(_sent_gaze)>.000000015: _dirty = true
 
@@ -368,6 +375,8 @@ func _start_saccade(to_uv: Vector2) -> void:
 	_sacc_dur = maxf(clampf(.021+.0022*degrees,.03,.11),1.875*amplitude/(STEP_LIMIT*120.0))
 	_sacc_from = gaze
 	_sacc_t = 0.0
+	# Time owed to a skipped stride must not fast-forward the new saccade.
+	_gaze_debt = 0.0
 	_micro = Vector2.ZERO
 	_micro_goal = Vector2.ZERO
 	_gaze_static = 0

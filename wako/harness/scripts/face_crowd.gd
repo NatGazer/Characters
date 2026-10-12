@@ -22,6 +22,8 @@ var _last_saccades: Array[int] = []
 var _window_starts: Array[int] = []
 var _window_clock := 0.0
 var _rng := RandomNumberGenerator.new()
+var _gaze_prev := {}
+var _gaze_step_max := 0.0
 
 var service: Node
 
@@ -74,6 +76,8 @@ func _sample(delta: float) -> void:
 	var blinking := 0
 	for i in COUNT:
 		var e: RefCounted = crowd[i].eyes
+		if _gaze_prev.has(i): _gaze_step_max = maxf(_gaze_step_max, e.gaze.distance_to(_gaze_prev[i]))
+		_gaze_prev[i] = e.gaze
 		var key: int = e._want_key
 		keys[key] = int(keys.get(key, 0)) + 1
 		if crowd[i].personality.attention.kind == &"player" and e._want_node and e._want_node.get_ref() == player: watching_player += 1
@@ -113,7 +117,7 @@ func _exit_tree() -> void:
 		uploads += w.eyes.uploads
 		saccades += w.eyes.events.saccade
 		blinks += w.eyes.events.blink
-	print("CROWD samples=%d mean_share_same_target=%.2f max_share=%.2f mean_player_watchers=%.2f/%d max_player_watchers=%d sync_saccade_windows=%d/%d sync_blink_ticks=%d" % [
-		_samples, _same_sum / _samples, _same_max, _player_sum / _samples, COUNT, _player_max, _sync_saccade_windows, _windows, _sync_blink_samples])
+	print("CROWD samples=%d mean_share_same_target=%.2f max_share=%.2f mean_player_watchers=%.2f/%d max_player_watchers=%d sync_saccade_windows=%d/%d sync_blink_ticks=%d max_gaze_step=%.4f" % [
+		_samples, _same_sum / _samples, _same_max, _player_sum / _samples, COUNT, _player_max, _sync_saccade_windows, _windows, _sync_blink_samples, _gaze_step_max])
 	print("CROWD per-Wako avg usec/tick eyes=%.1f personality=%.1f attention_scan=%.1f usec/scan; saccades=%d blinks=%d uploads=%d over %.1fs" % [
 		eyes_usec / COUNT, pers_usec / COUNT, float(scan_usec) / maxf(scans, 1), saccades, blinks, uploads, clock])

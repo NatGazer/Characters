@@ -28,6 +28,8 @@ var _closed := [false, false]
 var _async_blink := false
 var _finite := true
 var _shared_material := false
+var _gaze_prev := {}
+var _gaze_step_max := 0.0
 
 func setup() -> void:
 	service = Props.make_coordinator(self, true)
@@ -63,7 +65,16 @@ func _sample_blinks() -> void:
 		open.append(value)
 	_async_blink = _async_blink or (minf(open[0], open[1]) < .06 and maxf(open[0], open[1]) > .95)
 
+func _sample_gaze_steps() -> void:
+	# The package's head-presentation test bounds the per-tick eye gaze step
+	# (helper._eye_gaze) to .004 UV; saccades are paced to stay below it.
+	for w in wakos + _paused:
+		var g: Vector2 = w._eye_gaze
+		if _gaze_prev.has(w): _gaze_step_max = maxf(_gaze_step_max, g.distance_to(_gaze_prev[w]))
+		_gaze_prev[w] = g
+
 func scenario(delta: float) -> void:
+	if clock > .2: _sample_gaze_steps()
 	if clock > 1.0 and clock < 9.0: _sample_blinks()
 	if clock < .5: return
 	var gun_wako := wakos[1]
@@ -102,6 +113,7 @@ func scenario(delta: float) -> void:
 		_check(posts > 0, "warning posted to the shared attention board (%d)" % posts)
 		_check(_finite and _closed[0] and _closed[1], "paused helpers complete natural blinks with finite uploaded openness")
 		_check(_async_blink, "one helper blinks while the other stays open (shared material, per-instance uniforms)")
+		_check(_gaze_step_max < .004, "per-tick gaze step stays continuous (max %.4f UV < .004)" % _gaze_step_max)
 		_check(_paused[0]._skin_mesh.get_active_material(0) == _paused[1]._skin_mesh.get_active_material(0), "helper skins share one material")
 		print("FACE_CHECK %s %d failures" % ["PASS" if _failures == 0 else "FAIL", _failures])
 		get_tree().quit(0 if _failures == 0 else 1)
