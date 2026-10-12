@@ -5,6 +5,13 @@ extends RefCounted
 const Catalogue = preload("res://Components/Contraptions/part_catalog.gd")
 const GRAVITY := 9.8
 const MAXIMUM_IMPULSE := 40.0
+# A brisk lob: lowest clear apex above the actual head first (flight about
+# .65-.8 s); the original higher lobs remain fallbacks for the same admission.
+const APEX_EXTRAS := [.35, .45, .55, .65, .8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
+# The caught body keeps its exact contact pose, then settles onto the head
+# seat (nearest quarter-turn yaw) over this finite time.
+const SETTLE_SECONDS := .18
+const SEAT_GAP := .03
 
 var worker: RigidBody3D
 var part: RigidBody3D
@@ -28,6 +35,14 @@ var catch_after_momentum := Vector3.ZERO
 var arc_blocker := {}
 var launch_validation_usec := 0
 var _evaluated_progress := -1.0
+var catch_offset := Vector3.ZERO
+var catch_yaw := 0.0
+var _settle: RigidBody3D
+var _settle_clock := 0.0
+var _settle_anchor := Vector3.ZERO
+var _settle_basis := Basis.IDENTITY
+var _seat_anchor := Vector3.ZERO
+var _seat_basis := Basis.IDENTITY
 
 static func eligible(source: Node3D) -> bool:
 	if not is_instance_valid(source) or source.get("definition") == null: return false
@@ -98,6 +113,7 @@ func evaluate(grip: Transform3D) -> void:
 		part.global_transform = Transform3D(_orientation, foot_anchor.to_global(_foot_offset))
 
 func advance(delta: float) -> void:
+	_advance_settle(delta)
 	if state.is_empty() or state == "caught" or state == "failed": return
 	if not is_instance_valid(part) or not part.is_inside_tree() or not worker.is_inside_tree():
 		state = "failed"; reason = "Reserved light part unavailable"; return
@@ -137,21 +153,55 @@ func advance(delta: float) -> void:
 		catch_after_momentum = worker.mass * _velocity(worker)
 		part.remove_collision_exception_with(worker)
 		_restore_damping()
-		part.set_carried(worker.head_anchor, Vector3(0, float(part.definition.size.y) * .5 + .03, 0))
+		# Custody starts at the body's exact contact pose (no snap); the same body
+		# then settles onto the head seat over a finite time.
+		part.set_carried_at_pose(worker.head_anchor)
+		_begin_settle()
 		state = "caught"
 	elif _flight_clock > 2.0 or (_flight_clock > .3 and part.linear_velocity.y < 0.0 and bounds.end.y < head.y - .1):
 		state = "failed"; reason = "Head catch missed; recovering the same loose part"
 
+func _begin_settle() -> void:
+	_settle = part
+	_settle_clock = 0.0
+	var local: Transform3D = part.carried_local_transform()
+	_settle_anchor = local.origin
+	_settle_basis = local.basis.orthonormalized()
+	_seat_anchor = Vector3(0, float(part.definition.size.y) * .5 + SEAT_GAP, 0)
+	# Nearest quarter-turn yaw about the head's up axis; tilt settles level.
+	var forward := _settle_basis.z.slide(Vector3.UP)
+	var yaw := atan2(forward.x, forward.z) if forward.length_squared() > .000001 else 0.0
+	_seat_basis = Basis(Vector3.UP, roundf(yaw / (PI * .5)) * PI * .5)
+	catch_offset = _settle_anchor - _seat_anchor
+	catch_yaw = rad_to_deg(_settle_basis.get_rotation_quaternion().angle_to(_seat_basis.get_rotation_quaternion()))
+
+func _advance_settle(delta: float) -> void:
+	if not is_instance_valid(_settle): return
+	if _settle.get("carrier") != worker.head_anchor or not _settle.is_inside_tree():
+		_settle = null
+		return
+	_settle_clock += delta
+	var blend := smoothstep(0.0, SETTLE_SECONDS, _settle_clock)
+	var basis := Basis(_settle_basis.get_rotation_quaternion().slerp(_seat_basis.get_rotation_quaternion(), blend))
+	_settle.set("_cargo_anchor", _settle_anchor.lerp(_seat_anchor, blend))
+	_settle.set("_cargo_pose_basis", basis)
+	if _settle_clock >= SETTLE_SECONDS: _settle = null
+
+func settling() -> bool:
+	return is_instance_valid(_settle)
+
 func _launch() -> void:
 	var origin := part.global_position
-	# The clip has compressed the cube. Aim at its upright head location after
-	# the release, then catch against the actual evaluated head, never this prediction.
+	# Aim at the head where it will be at the catch. The kick clip compresses
+	# and leans the cube now, but returns it to neutral before the part comes
+	# down (measured: the instantaneous head put the catch 15 cm off-centre,
+	# the neutral head within 5 mm). The catch tests the live head plane only.
 	var neutral: Transform3D = worker._skeleton.global_transform * worker._skeleton.get_bone_global_rest(0)
-	var destination: Vector3 = neutral * Vector3(0,worker.HEAD_OFFSET+float(part.definition.size.y)*.5+.055,0)
+	var destination: Vector3 = neutral * Vector3(0, worker.HEAD_OFFSET + float(part.definition.size.y) * .5 + .055, 0)
 	var velocity := Vector3.ZERO
 	var valid_arc := false
 	var before := _velocity(worker)
-	for extra: float in [.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]:
+	for extra: float in APEX_EXTRAS:
 		var vertical := sqrt(2.0 * GRAVITY * maxf(destination.y + extra - origin.y, .1))
 		var flight := (vertical + sqrt(maxf(vertical * vertical - 2.0 * GRAVITY * (destination.y-origin.y), 0.0))) / GRAVITY
 		velocity = (destination - origin).slide(Vector3.UP) / flight + Vector3.UP * vertical
@@ -219,6 +269,7 @@ func _arc_clear(origin: Vector3, velocity: Vector3, seconds: float) -> bool:
 	return true
 
 func clear() -> void:
+	# A finished pickup leaves an in-progress settle running on the same body.
 	if is_instance_valid(part) and is_instance_valid(worker) and part.is_inside_tree() and worker.is_inside_tree():
 		part.remove_collision_exception_with(worker)
 		if _launched: _restore_damping()

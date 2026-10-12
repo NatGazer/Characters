@@ -160,8 +160,10 @@ func refresh_jobs() -> void:
 			continue
 		_work_area_wait.erase(id)
 		if not yard.reserve_job(job, crew): continue
-		job.light_pickup = false
-		job.head_first_pickup = job.kind in ["build","replace","salvage"]
+		# Solo fetch of a light compatible part (wako_pickup.gd limits: <= 5 kg,
+		# <= .4 m, not a tool or installed) uses the toe toss and head catch.
+		job.light_pickup = crew.size() == 1 and job.kind in ["build","replace","salvage"] and Pickup.eligible(job.part)
+		job.head_first_pickup = job.kind in ["build","replace","salvage"] and not job.light_pickup
 		var entry := {"job": job, "crew": crew, "phase": "fetch" if job.kind in ["build", "replace", "salvage"] else "approach",
 			"elapsed": 0.0, "progress": _resume_progress(job), "pickup": false, "contacts": 0, "complete": false}
 		if yard.staged_job_valid(job,crew):

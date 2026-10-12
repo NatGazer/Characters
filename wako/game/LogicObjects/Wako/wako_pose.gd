@@ -1084,7 +1084,9 @@ func _continue_head_root(sk: Skeleton3D, delta: float) -> void:
 	var after := desired.basis.get_rotation_quaternion().normalized()
 	var relative := before.inverse()*after
 	var angle := 2.0*atan2(Vector3(relative.x,relative.y,relative.z).length(),absf(relative.w))
-	var position: Vector3 = previous.origin.move_toward(desired.origin,delta*.9)
+	# HEAD-LEAP HOOK: brisk root budget only for the gather and touchdown absorb.
+	var root_speed: float = worker.head_leap.root_speed_limit() if worker.head_leap else .9
+	var position: Vector3 = previous.origin.move_toward(desired.origin,delta*root_speed)
 	var rotation := before.slerp(after,minf(delta*6.0/maxf(angle,.00001),1.0)).normalized()
 	_head_root_matches = position.distance_to(desired.origin)<.002 and angle<=delta*6.0+.001
 	sk.set_bone_global_pose(0,sk.global_transform.affine_inverse()*Transform3D(Basis(rotation),position))
