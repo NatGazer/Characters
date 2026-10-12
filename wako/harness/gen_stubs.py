@@ -30,7 +30,8 @@ CONST_OVERRIDES = {
 }
 def const_value(c, path):
     if c in CONST_OVERRIDES: return CONST_OVERRIDES[c]
-    if 'PROFILE' in c or c.endswith('_TABLE') or c.endswith('_KINDS'): return '{}'
+    if c == 'PROFILE': return '"%s"' % os.path.basename(path)[:-3]  # profile ids are compared as strings
+    if 'PROFILES' in c or c.endswith('_TABLE') or c.endswith('_KINDS'): return '{}'
     if c in ('KIND', 'NAME', 'ID'): return '"%s"' % os.path.basename(path)[:-3]
     if c in ('SIZE', 'EXTENTS', 'HALF_EXTENTS'): return 'Vector3(0.3, 0.3, 0.3)'
     if c.endswith('COLOR') or c.endswith('COLOUR'): return 'Color(0.8, 0.8, 0.8)'

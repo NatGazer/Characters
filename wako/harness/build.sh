@@ -23,6 +23,9 @@ for SRC in "$HERE/stubs" "$HERE/stubs_auto"; do
     mkdir -p "$(dirname "$dest")"; cp "$SRC/$rel" "$dest"
   done
 done
+# The package's own regression tests run from their original res:// location.
+mkdir -p "$WORK/.claude/tests"
+rsync -a --delete "$GAME/.claude/tests/" "$WORK/.claude/tests/"
 mkdir -p "$WORK/harness"
 rsync -a --delete "$HERE/scenes/" "$WORK/harness/scenes/"
 rsync -a --delete "$HERE/scripts/" "$WORK/harness/scripts/"
