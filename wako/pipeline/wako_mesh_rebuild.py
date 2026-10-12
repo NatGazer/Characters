@@ -119,13 +119,15 @@ SOLE_Z_CENTER = -0.0070   # original sole bottom
 SOLE_Z_RIM = -0.0050
 
 # Toe (on the face side): 8-sided, root loop on the foot + 2 loops + tip loop + domed tip.
-TOE_TIP_Y = 0.140         # tip loop (mid verts) world y
+TOE_TIP_Y = 0.145         # tip loop (mid verts) world y
 TOE_TIP_Z = 0.025
 TOE_HALF_W = 0.035
 TOE_HALF_H = 0.025
-TOE_CORNER_K = 0.80       # corner pull-in of the rounded-rectangle sections
-TOE_CORNER_BACK = 0.006   # corners sit slightly behind the mid verts (rounded tip edge)
+TOE_CORNER_K = 0.76       # corner pull-in of the rounded-rectangle sections
+TOE_CORNER_BACK = 0.007   # corners sit slightly behind the mid verts (rounded tip edge)
 TOE_NOSE_Y = 0.161        # domed tip (about 6 cm in front of the leg)
+TOE_CAP_SCALE = 0.64      # rounded cap ring between the tip loop and the nose
+TOE_CAP_FORWARD = 0.0105
 # (blend root->tip, outward fullness, dorsal crease drop): a slight neck with a crease on
 # top right after the root, then a fuller pad toward the tip, so the toe reads as a digit.
 TOE_SECTIONS = [(0.30, -0.0015, 0.0040), (0.66, 0.0040, 0.0)]
@@ -463,6 +465,16 @@ class LegDesign:
             self.pos[key] = tip[i]
             tip_keys.append(key)
         rings.append(tip_keys)
+        # a smaller cap ring rounds the tip profile (no pointed nose)
+        cap_keys = []
+        for i in range(8):
+            key = f"TIPC_{i}"
+            q = tip[i] - tip_c
+            self.pos[key] = Vector((tip_c.x + q.x * TOE_CAP_SCALE, tip[i].y + TOE_CAP_FORWARD,
+                                    tip_c.z + q.z * TOE_CAP_SCALE))
+            cap_keys.append(key)
+        rings.append(cap_keys)
+        tip_keys = cap_keys
         self.pos["NOSE"] = Vector((cx, TOE_NOSE_Y, TOE_TIP_Z + 0.001))
         self.toe_rings = rings
         for r in range(len(rings) - 1):
@@ -503,7 +515,7 @@ class LegDesign:
             self.weights[key] = {"foot": 1.0 - TOE_W["TR1"], "toe": TOE_W["TR1"]}
         for key in self.toe_rings[2]:
             self.weights[key] = {"foot": 1.0 - TOE_W["TR2"], "toe": TOE_W["TR2"]}
-        for key in self.toe_rings[3] + ["NOSE"]:
+        for key in self.toe_rings[3] + self.toe_rings[4] + ["NOSE"]:
             self.weights[key] = {"toe": TOE_W["TIP"]}
         for key in (f1[14], f1[2], f2[14], f2[2], "L12", "L22", "L32"):
             add_toe(key, TOE_W["near"])
@@ -551,7 +563,7 @@ class LegDesign:
                     u = ((i - 5) % 8) / 8.0
                     if u < ((base_i - 5) % 8) / 8.0:
                         u += 1.0
-                    uv.append((u, 1.0 - r / 3.0))
+                    uv.append((u, 1.0 - r / float(len(self.toe_rings) - 1)))
                 out.append(tuple(uv))
         return out
 
@@ -720,10 +732,12 @@ def mesh_stats(ob, arm=None):
     for i, p in enumerate(pos):
         kd.insert(p, i)
     kd.balance()
-    sym_pos, sym_w = 0.0, 0.0
+    sym_pos, sym_w, sym_leg = 0.0, 0.0, 0.0
     for i, p in enumerate(pos):
         q, j, d = kd.find(Vector((-p.x, p.y, p.z)))
         sym_pos = max(sym_pos, d)
+        if p.z < BODY_MIN_Z:
+            sym_leg = max(sym_leg, d)
         wi = weights[i]
         wj = {MIRROR_GROUP.get(b, b): x for b, x in weights[j].items()}
         for b in set(wi) | set(wj):
@@ -751,6 +765,7 @@ def mesh_stats(ob, arm=None):
         "max_influences": max_infl, "unweighted_vertices": unweighted,
         "max_weight_sum_error": sum_err,
         "symmetry_max_position_error_m": sym_pos, "symmetry_max_weight_error": sym_w,
+        "symmetry_max_position_error_legs_m": sym_leg,
         "body_vertices_with_nonroot_weight": body_nonroot,
         "leg_vertices_below_0.70_with_root_weight": leg_root,
         "foot_or_toe_weight_above_z0.40": foot_in_body,

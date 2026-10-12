@@ -62,6 +62,7 @@ VIEWS = [  # name, view direction (camera looks along it)
     ("front", (0.0, -1.0, -0.12)),
     ("3/4", (0.62, -0.72, -0.30)),
 ]
+EXTRA_VIEWS = {"rear3/4": (0.62, 0.72, -0.30), "below": (0.25, 0.35, 0.9)}
 PANEL = (426, 360)
 
 
@@ -120,6 +121,10 @@ def render_main(argv):
             opts["keep"] = argv[i + 1]
         elif k == "--export-godot":
             opts["godot"] = argv[i + 1]
+        elif k == "--views":
+            names = argv[i + 1].split(",")
+            allv = dict(VIEWS, **EXTRA_VIEWS)
+            VIEWS[:] = [(n, allv[n]) for n in names]
         elif k == "--no-render":
             opts["no_render"] = True
             i -= 1
