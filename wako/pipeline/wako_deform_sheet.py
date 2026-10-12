@@ -53,6 +53,7 @@ POSES = [
     ("runswing", "run: L hip -35 knee 45 / R hip 55 knee 70", leg(-35, knee=45, ankle=-25), leg(55, knee=70, ankle=5)),
     ("ankle", "ankle: L dorsi +35 / R plantar -35", leg(ankle=35), leg(ankle=-35)),
     ("toecurl", "toe: L grip curl +45 / R lift -45", leg(toe=45), leg(toe=-45)),
+    ("footrest", "close-up: left foot at rest", leg(), leg()),
     ("footclose", "close-up: L toe grip +45, ankle +15", leg(ankle=15, toe=45), leg(toe=-45)),
 ]
 
@@ -104,7 +105,8 @@ def render_main(argv):
     from mathutils import Matrix, Vector
 
     blend, out_dir, prefix = argv[:3]
-    opts = {"label": prefix.upper(), "samples": 24, "poses": None, "keep": None}
+    opts = {"label": prefix.upper(), "samples": 24, "poses": None, "keep": None, "godot": None,
+            "no_render": False}
     i = 3
     while i < len(argv):
         k = argv[i]
@@ -116,6 +118,11 @@ def render_main(argv):
             opts["poses"] = argv[i + 1].split(",")
         elif k == "--keep-panels":
             opts["keep"] = argv[i + 1]
+        elif k == "--export-godot":
+            opts["godot"] = argv[i + 1]
+        elif k == "--no-render":
+            opts["no_render"] = True
+            i -= 1
         i += 2
     bpy.ops.wm.open_mainfile(filepath=os.path.abspath(blend))
     scn = bpy.context.scene
@@ -271,7 +278,7 @@ def render_main(argv):
         aspect = PANEL[0] / PANEL[1]
         cam_data.ortho_scale = max(w, h * aspect) * 1.14 + 0.04
         # leave room for the label bar at the top
-        cy += cam_data.ortho_scale / aspect * 0.045
+        cy += cam_data.ortho_scale / aspect * 0.07
         centre = r * cx + u * cy
         cam.location = centre - f * 6.0
         cam.rotation_euler = f.to_track_quat("-Z", "Y").to_euler()
@@ -284,17 +291,31 @@ def render_main(argv):
     os.makedirs(out_dir, exist_ok=True)
     poses = [p for p in POSES if opts["poses"] is None or p[0] in opts["poses"]]
     rendered = []
+    godot_job = {"poses": []}
     for name, desc, spec_l, spec_r in poses:
         knees = apply_pose(spec_l, spec_r)
         print(f"[wako_deform_sheet] pose {name}: knee heads (armature space) {knees}", flush=True)
         panels = []
+        gpose = {"name": name, "views": [],
+                 "bones": {pb.name: [list(r) for r in pb.matrix] for pb in arm.pose.bones}}
         for vname, vdir in VIEWS:
-            frame(vdir, "left_foot" if name == "footclose" else "full")
-            path = os.path.join(tmp, f"{prefix}_{name}_{vname.replace('/', '')}.png")
-            scn.render.filepath = path
-            bpy.ops.render.render(write_still=True)
+            frame(vdir, "left_foot" if name.startswith("foot") else "full")
+            fname = f"{prefix}_{name}_{vname.replace('/', '')}.png"
+            path = os.path.join(tmp, fname)
+            gpose["views"].append({"file": fname, "location": list(cam.location),
+                                   "forward": list(Vector(vdir).normalized()),
+                                   "ortho_scale": cam_data.ortho_scale})
+            if not opts["no_render"]:
+                scn.render.filepath = path
+                bpy.ops.render.render(write_still=True)
             panels.append({"file": path, "title": f"{opts['label']}  {name}  [{vname}]", "subtitle": desc})
         rendered.append({"name": name, "panels": panels})
+        godot_job["poses"].append(gpose)
+    if opts["godot"]:
+        with open(opts["godot"], "w") as fh:
+            json.dump(godot_job, fh)
+    if opts["no_render"]:
+        return
     sheets = []
     for k in range(0, len(rendered), 2):
         rows = rendered[k:k + 2]

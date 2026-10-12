@@ -119,14 +119,16 @@ SOLE_Z_CENTER = -0.0070   # original sole bottom
 SOLE_Z_RIM = -0.0050
 
 # Toe (on the face side): 8-sided, root loop on the foot + 2 loops + tip loop + domed tip.
-TOE_TIP_Y = 0.127         # tip loop (mid verts) world y
-TOE_TIP_Z = 0.026
-TOE_HALF_W = 0.036
-TOE_HALF_H = 0.027
-TOE_CORNER_K = 0.78       # corner pull-in of the rounded-rectangle sections
-TOE_CORNER_BACK = 0.005   # corners sit slightly behind the mid verts (rounded tip edge)
-TOE_NOSE_Y = 0.147
-TOE_SECTIONS = [(0.36, 0.0030), (0.70, 0.0035)]   # (blend root->tip, outward fullness)
+TOE_TIP_Y = 0.140         # tip loop (mid verts) world y
+TOE_TIP_Z = 0.025
+TOE_HALF_W = 0.035
+TOE_HALF_H = 0.025
+TOE_CORNER_K = 0.80       # corner pull-in of the rounded-rectangle sections
+TOE_CORNER_BACK = 0.006   # corners sit slightly behind the mid verts (rounded tip edge)
+TOE_NOSE_Y = 0.161        # domed tip (about 6 cm in front of the leg)
+# (blend root->tip, outward fullness, dorsal crease drop): a slight neck with a crease on
+# top right after the root, then a fuller pad toward the tip, so the toe reads as a digit.
+TOE_SECTIONS = [(0.30, -0.0015, 0.0040), (0.66, 0.0040, 0.0)]
 
 # --------------------------------------------------------------------------------------
 # Weights (left leg logical bones; right leg mirrors).
@@ -441,7 +443,7 @@ class LegDesign:
                Vector((cx - k * w, yb, TOE_TIP_Z - k * h)), Vector((cx - w, TOE_TIP_Y, TOE_TIP_Z))]
         tip_c = sum(tip, Vector()) / 8.0
         rings = [root]
-        for si, (s, bulge) in enumerate(TOE_SECTIONS):
+        for si, (s, bulge, crease) in enumerate(TOE_SECTIONS):
             keys = []
             for i in range(8):
                 p = self.pos[root[i]].lerp(tip[i], s)
@@ -449,6 +451,8 @@ class LegDesign:
                 out.y = 0.0
                 if out.length > 1e-9:
                     p = p + out.normalized() * bulge
+                if i in (0, 1, 2):          # top row: dorsal crease
+                    p.z -= crease
                 key = f"TR{si + 1}_{i}"
                 self.pos[key] = p
                 keys.append(key)
