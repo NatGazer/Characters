@@ -9,6 +9,8 @@ func _process(_delta: float) -> void:
 	if _quit_frames < 0: return
 	_quit_frames -= 1
 	if _quit_frames <= 0: graceful_quit()
-func graceful_quit() -> void:
+func graceful_quit(code := 0) -> void:
+	# Contraption tests pass their exit status.
 	quitting = true
-	get_tree().quit()
+	print("HARNESS_QUIT code=", code)
+	get_tree().quit(code)
