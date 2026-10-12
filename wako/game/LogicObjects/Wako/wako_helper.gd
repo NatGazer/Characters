@@ -817,6 +817,10 @@ func _move_with_forces(delta: float, keep_evaluated_parent: bool = false) -> voi
 			desired += balance.normalized() * minf(balance.length() - .22, .25) * 1.5
 	var force := (desired - horizontal) * mass * 6.0 * (1.0 - _reaction * 0.7)
 	force = force.slide(ground_normal).limit_length(mass * 9.8 * (1.25 if on_ground else 0.055))
+	# --- BackTool stunt hook: supported forward advance under the airborne tool (forces only; see wako_back_tool.gd stunt_force) ---
+	var stunt_force: Variant = back_tool.stunt_force(horizontal) if back_tool else null
+	if stunt_force is Vector3: force = stunt_force
+	# --- end BackTool stunt hook ---
 	if idle_play and (idle_play.water_support_active() or idle_play.water_ballistic_flight()): force = Vector3.ZERO
 	apply_central_force(force)
 	if on_ground and _ground_body: _ground_body.apply_force(-force, _ground_point - _ground_body.global_position)
@@ -876,7 +880,8 @@ func _update_animation(delta: float) -> void:
 		return
 	var clip := "wk_idle"
 	var playback := 1.0
-	if gait_speed > 0.15 and on_ground:
+	# BackTool stunt hook: the supported advance keeps the idle clip (support sole planted).
+	if gait_speed > 0.15 and on_ground and not (back_tool and back_tool.stunt_owns_gait()):
 		clip = "work/carry" if carrying else "work/run" if gait_speed > 2.5 else "wk_walkcycle"
 		# Each authored half-cycle moves the planted sole back by this distance.
 		# Match that stance velocity to native travel instead of speeding every

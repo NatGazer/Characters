@@ -2199,8 +2199,10 @@ func _on_action_finished(_kind: String, worker: Node) -> void:
 	match String(entry.phase):
 		"tool_change":
 			var tool: Node3D=entry.job.get("tool")
+			# B5: foot, seated or airborne-stow custody of the same body all count,
+			# so the stow stunt may begin in the fitting tail.
 			if not entry.get("tool_ready", false) or not is_instance_valid(tool) \
-				or worker.equipped_tool!=tool or tool.carrier!=worker.tool_anchor:
+				or worker.equipped_tool!=tool or not yard.worker_owns_work_tool(worker, tool):
 				_cancel(entry, "Tool change interrupted; recover the same original tool before continuing")
 				return
 			# A completed same-body fitting gives material transport its own bounded

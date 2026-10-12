@@ -2277,6 +2277,12 @@ func _weight_transfer(sk: Skeleton3D, walking: bool, speed: float, delta: float)
 				pitch = clampf(atan2(local_toward.z,height),-pitch_limit,pitch_limit)*envelope*steadiness
 				evaluated_balance_support_side = side
 				evaluated_balance_support_point = point
+	# --- BackTool stunt hook: support shift, crouch, look-up, catch absorb (see wako_back_tool.gd stunt_pose) ---
+	var stunt: Dictionary = worker.back_tool.stunt_pose(self,sk,evaluated_unbalanced_com) if worker.back_tool else {}
+	if not stunt.is_empty():
+		shift = stunt.shift; roll = stunt.roll; pitch = stunt.pitch
+		evaluated_balance_support_side = stunt.side; evaluated_balance_support_point = stunt.point
+	# --- end BackTool stunt hook ---
 	var blend := 1.0 - exp(-(18.0 if free_expression else 10.0) * delta)
 	_sway_shift = _sway_shift.move_toward(_sway_shift.lerp(shift,blend),.65*delta)
 	_sway_offset = _sway_shift.x

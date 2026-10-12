@@ -3,6 +3,7 @@ extends Node3D
 ## helper contact tracks must not overwrite animations or assume seven bones.
 const Source := preload("res://LogicObjects/Wako/Wako.blend")
 const Worker := preload("res://LogicObjects/Wako/Wako.tscn")
+const HolderVisual := preload("res://LogicObjects/Wako/wako_back_holder_visual.gd")
 var failures := 0
 var checks := 0
 
@@ -102,6 +103,30 @@ func _run() -> void:
 		var body = worker.ragdoll.rig.by_name[name]
 		rounded_physics = rounded_physics and body.shape is SphereShape3D and body.mass > 0.0 and body.inertia > 0.0
 	_check(rounded_physics, "native foot and toe contacts have finite rounded shapes without invisible boot boxes")
+	# Worn backpack: the plate is fitted to this rig's real skin (no floating
+	# fallback), 1 mm off the back face, and the always-visible holder keeps its
+	# eleven material meshes, two native tray sensors and finite 2 kg.
+	var back: RefCounted = worker.back_tool
+	var plate_meshes := 0
+	var plate_sensors := 0
+	for child: Node in back.holder.get_children():
+		if child is MeshInstance3D: plate_meshes += 1
+		elif child is CollisionShape3D and child.shape is BoxShape3D: plate_sensors += 1
+	var measured: float = HolderVisual.measured_back(worker._skin_mesh, worker._skeleton)
+	var seat: MeshInstance3D = back.holder.get_node_or_null("RootSeat")
+	var plate_inner := INF
+	var plate_outer := -INF
+	if seat:
+		for point: Vector3 in seat.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+			var z: float = (seat.transform * point).z
+			plate_inner = minf(plate_inner, z)
+			plate_outer = maxf(plate_outer, z)
+	print("CONTRAPTION_WAKO_ASSET plate fitted=%s back=%.4f outer=%.4f seat_z=%.4f meshes=%d sensors=%d" % [HolderVisual._body_fitted, measured, plate_outer, back.seat_point().z, plate_meshes, plate_sensors])
+	_check(HolderVisual._body_fitted and absf(plate_outer - (measured + HolderVisual.BODY_GAP + HolderVisual.SEAT_SIZE.z)) < .0015
+		and absf(plate_outer - back.PLATE_BACK) < .0015 and back.seat_point().z - plate_outer < .07,
+		"the back plate is fitted 1 mm off the real skin and the seat sits just behind it")
+	_check(plate_meshes == 11 and plate_sensors == 2 and is_equal_approx(back.holder_mass(), 2.0) and back.holder.visible,
+		"the always-visible holder keeps eleven meshes, two tray sensors and 2 kg")
 	var unchanged := not animation.has_animation_library("work")
 	for name: StringName in clips:
 		unchanged = unchanged and animation.get_animation(name).get_track_count() == source_tracks[name]

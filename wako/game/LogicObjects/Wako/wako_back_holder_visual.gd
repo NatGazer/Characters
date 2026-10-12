@@ -6,7 +6,15 @@ extends RefCounted
 const AncientVisual := preload("res://Components/Contraptions/ancient_machine_visual.gd")
 const MAP_SIZE := Vector2i(256,128)
 const SEAT_SIZE := Vector3(.50,.21,.055)
-const SOCKET_SIZE := Vector3(.065,.19,.28)
+# Worn-pack hardware (holder/body frame, +Z back). Each socket leaves the
+# plate's lower edge between the thighs, runs back under the seated shaft to
+# the cradle bar behind the tool; nothing hangs in the thighs' swing planes.
+const SOCKET_SIZE := Vector3(.06,.06,.17)
+const SOCKET_X := .08
+const SOCKET_Z := .25+.085
+const CRADLE_BAR_Y := -.24
+const CRADLE_BAR_Z := .25+.17-.0225
+const MEASURED_BACK := .1992 # Root-rigid skin back face of the current rig.
 static var _seat: ArrayMesh
 static var _socket: ArrayMesh
 static var _maps: Array[ImageTexture] = []
@@ -88,6 +96,29 @@ static func fit_to_body(skin_mesh: MeshInstance3D, skeleton: Skeleton3D) -> bool
 	_body_fitted=true
 	return true
 
+static func measured_back(skin_mesh: MeshInstance3D, skeleton: Skeleton3D) -> float:
+	# Rear-most root-rigid skin inside the plate footprint, in holder axes. A
+	# fallback plate then still sits BODY_GAP off the real back, never floats.
+	if not skin_mesh or not skin_mesh.mesh or not skin_mesh.skin or not skeleton: return MEASURED_BACK
+	var skin: Skin = skin_mesh.skin
+	var root_bind := -1
+	for bind: int in skin.get_bind_count():
+		if skin.get_bind_bone(bind)==0 or skin.get_bind_name(bind)==skeleton.get_bone_name(0):
+			root_bind=bind
+			break
+	if root_bind<0: return MEASURED_BACK
+	var body_from_mesh := Transform3D(skeleton.get_bone_global_rest(0).basis,Vector3.ZERO)*skin.get_bind_pose(root_bind)
+	var back := -INF
+	for surface: int in skin_mesh.mesh.get_surface_count():
+		var arrays := skin_mesh.mesh.surface_get_arrays(surface)
+		if arrays[Mesh.ARRAY_BONES]==null or arrays[Mesh.ARRAY_WEIGHTS]==null: continue
+		var points: PackedVector3Array=arrays[Mesh.ARRAY_VERTEX]
+		for point: Vector3 in points:
+			var local: Vector3 = body_from_mesh*point
+			if absf(local.x)<=SEAT_SIZE.x*.5 and local.y>=SEAT_ORIGIN.y-SEAT_SIZE.y*.5 and local.y<=SEAT_ORIGIN.y+SEAT_SIZE.y*.5:
+				back=maxf(back,local.z)
+	return back if back>.05 and back<.40 else MEASURED_BACK
+
 static func _clip_mount(poly: Array[Vector3], axis: int, boundary: float, direction: float) -> Array[Vector3]:
 	var result: Array[Vector3]=[]
 	for index: int in poly.size():
@@ -105,13 +136,11 @@ static func _append_mount_triangle(vertices: PackedVector3Array, normals: Packed
 
 static func socket_mesh() -> ArrayMesh:
 	if _socket: return _socket
-	# Clip the existing closed bevelled bronze stock into a convex gusset.
-	# In holder axes the upper tongue starts at z=.22, y=-.09; its relieved
-	# front reaches z=.45 at y=-.225. The full original outward face z=.50,
-	# screws and cradle stay put. The captured foot-0 thigh failures
-	# lie ahead of this relief instead of inside the former square column.
-	var inward:=Vector3(0,.23/.135,1.0).normalized()
-	var boundary:=inward.dot(Vector3(0,.040,-.140))
+	# Clip the closed bevelled bronze stock into a tapered gusset: full depth
+	# where it bears on the plate (local -Z), its underside rising toward the
+	# cradle bar (local +Z) so the bracket reads as a cantilever, not a block.
+	var inward:=Vector3(0,.125,-.03).normalized()
+	var boundary:=inward.dot(Vector3(0,-.03,-.04))
 	var original: ArrayMesh=AncientVisual.beveled_box(SOCKET_SIZE)
 	var vertices:=PackedVector3Array(); var normals:=PackedVector3Array()
 	var cut: Array[Vector3]=[]
