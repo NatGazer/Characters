@@ -3,6 +3,7 @@ package app.consistency;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
@@ -11,15 +12,25 @@ import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.widget.TextView;
 
+import java.util.Calendar;
+
 public class MainActivity extends Activity {
 
     private static final String K_TOTAL = "total_ms";   // committed time
     private static final String K_START = "start_ms";   // wall-clock start of open session, 0 = none
+    private static final String K_CONVERTED = "legacy_converted";   // TODO(next update): remove
+
+    // Rolling windows shown under the buttons, top to bottom.
+    private static final int[] STAT_IDS = { R.id.last_day, R.id.last_week, R.id.last_month, R.id.last_year, R.id.last_decade };
+    private static final int[] STAT_FIELD = { Calendar.DAY_OF_YEAR, Calendar.DAY_OF_YEAR, Calendar.MONTH, Calendar.YEAR, Calendar.YEAR };
+    private static final int[] STAT_AMOUNT = { 1, 7, 1, 1, 10 };
+    private static final String[] STAT_LABEL = { "LAST DAY", "LAST WEEK", "LAST MONTH", "LAST YEAR", "LAST DECADE" };
 
     private SharedPreferences prefs;
     private TimerView timer;
     private TextView session;
     private View startBtn, runningRow;
+    private final TextView[] stats = new TextView[STAT_IDS.length];
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean resumed;
 
@@ -39,6 +50,20 @@ public class MainActivity extends Activity {
         session = (TextView) findViewById(R.id.session);
         startBtn = findViewById(R.id.start);
         runningRow = findViewById(R.id.running);
+        for (int i = 0; i < stats.length; i++) stats[i] = (TextView) findViewById(STAT_IDS[i]);
+
+        // TODO(next update): remove. Time recorded before the log existed becomes 10 minutes per day.
+        if (!prefs.getBoolean(K_CONVERTED, false)) {
+            long live = prefs.getLong(K_START, 0);
+            Events.convertLegacyTotal(this, prefs.getLong(K_TOTAL, 0), live != 0 ? live : System.currentTimeMillis());
+            prefs.edit().putBoolean(K_CONVERTED, true).apply();
+        }
+
+        findViewById(R.id.definitions).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, DefinitionsActivity.class));
+            }
+        });
 
         startBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
@@ -54,6 +79,7 @@ public class MainActivity extends Activity {
                 long start = prefs.getLong(K_START, 0);
                 if (start == 0) return;
                 long el = Math.max(0, System.currentTimeMillis() - start);
+                Events.add(MainActivity.this, start, el);
                 prefs.edit()
                         .putLong(K_TOTAL, prefs.getLong(K_TOTAL, 0) + el)
                         .putLong(K_START, 0)
@@ -89,19 +115,25 @@ public class MainActivity extends Activity {
         tick.run();
     }
 
-    /** Updates UI; returns ms until the next visible change, or 0 if idle. */
+    /** Updates UI; returns ms until the next visible change. */
     private long render() {
+        long now = System.currentTimeMillis();
         long total = prefs.getLong(K_TOTAL, 0);
         long start = prefs.getLong(K_START, 0);
         boolean live = start != 0;
-        long el = live ? Math.max(0, System.currentTimeMillis() - start) : 0;
+        long el = live ? Math.max(0, now - start) : 0;
         long shown = total + el;
+
+        for (int i = 0; i < stats.length; i++) {
+            long ms = Events.sumLast(this, STAT_FIELD[i], STAT_AMOUNT[i], now, start);
+            stats[i].setText(clock(ms / 1000) + "   " + STAT_LABEL[i]);
+        }
 
         timer.set(shown / 1000, live);
         startBtn.setVisibility(live ? View.GONE : View.VISIBLE);
         runningRow.setVisibility(live ? View.VISIBLE : View.GONE);
         session.setVisibility(live ? View.VISIBLE : View.INVISIBLE);
-        if (!live) return 0;
+        if (!live) return 1000;   // windows keep sliding while idle
 
         session.setText("+ " + clock(el / 1000) + "   THIS SESSION");
         long d1 = 1000 - (el % 1000);
@@ -109,7 +141,7 @@ public class MainActivity extends Activity {
         return Math.min(d1, d2) + 2;
     }
 
-    private static String clock(long s) {
+    static String clock(long s) {
         long h = s / 3600, m = (s / 60) % 60, sec = s % 60;
         StringBuilder sb = new StringBuilder();
         if (h > 0) sb.append(h).append(':').append(m < 10 ? "0" : "");

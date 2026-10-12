@@ -10,14 +10,31 @@
     android:paddingTop="20dp"
     android:paddingBottom="24dp">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="CONSISTENCY"
-        android:textColor="#4DFFFFFF"
-        android:textSize="12sp"
-        android:textStyle="bold"
-        android:letterSpacing="0.45" />
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="CONSISTENCY"
+            android:textColor="#4DFFFFFF"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.45" />
+
+        <ImageView
+            android:id="@+id/definitions"
+            android:layout_width="32dp"
+            android:layout_height="22dp"
+            android:layout_gravity="end|center_vertical"
+            android:scaleType="center"
+            android:src="@drawable/ic_more"
+            android:alpha="0.22"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Definitions" />
+    </FrameLayout>
 
     <app.consistency.TimerView
         android:id="@+id/timer"
@@ -85,4 +102,37 @@
                 android:text="SUBMIT" />
         </LinearLayout>
     </FrameLayout>
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:orientation="vertical"
+        android:gravity="center_horizontal">
+
+        <TextView
+            android:id="@+id/last_day"
+            style="@style/Stat"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/last_week"
+            style="@style/Stat"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/last_month"
+            style="@style/Stat"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/last_year"
+            style="@style/Stat"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/last_decade"
+            style="@style/Stat"
+            android:textSize="10sp" />
+    </LinearLayout>
 </LinearLayout>
