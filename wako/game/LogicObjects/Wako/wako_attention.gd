@@ -78,10 +78,19 @@ func setup(owner: RigidBody3D) -> void:
 	_span = _rng.randf_range(.75,1.35)
 
 func release() -> void:
+	if _key==0 and not point.is_finite(): return
 	_set_watch(0)
 	point = Vector3.INF
 	node = null
 	kind = &""
+	strength = 0.0
+	serial += 1
+
+func _notification(what: int) -> void:
+	# A freed Wako must not keep counting as a watcher of its last target.
+	if what!=NOTIFICATION_PREDELETE or _key==0 or not _watchers.has(_key): return
+	_watchers[_key] = int(_watchers[_key])-1
+	if int(_watchers[_key])<=0: _watchers.erase(_key)
 
 func _set_watch(key: int) -> void:
 	if _key==key: return

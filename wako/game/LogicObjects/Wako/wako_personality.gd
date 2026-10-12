@@ -303,7 +303,11 @@ func _observe_world() -> void:
 		and _can_see(player.global_position+Vector3.UP*.6,player):
 		_seen_player = weakref(player)
 	# Points of interest reuse this same perception cadence (no extra scan).
-	if attention: attention.scan(_seen_player.get_ref() if _seen_player else null,_can_see)
+	# Working or frightened Wako look at their job/threat; they free the slot.
+	if attention:
+		if worker.current_job_id.is_empty() and worker.fear_time<=0.0 and not is_instance_valid(worker.station):
+			attention.scan(_seen_player.get_ref() if _seen_player else null,_can_see)
+		else: attention.release()
 
 func _live_enemy_core(enemy: Node) -> Node3D:
 	return GunControl.live_hostile_core(enemy)
