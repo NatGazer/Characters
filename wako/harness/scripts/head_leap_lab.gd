@@ -29,6 +29,9 @@ var _part_prev := Transform3D.IDENTITY
 var _reported := false
 var interrupt_at := .42
 var interrupt_state := "outbound"
+var heading := 0.0
+var save_state := "return"
+var save_at := .3
 
 func setup() -> void:
 	for arg: String in OS.get_cmdline_user_args():
@@ -38,6 +41,9 @@ func setup() -> void:
 		if arg.begins_with("--slowmo="): Engine.time_scale = float(arg.trim_prefix("--slowmo="))
 		if arg.begins_with("--interrupt-at="): interrupt_at = float(arg.trim_prefix("--interrupt-at="))
 		if arg.begins_with("--interrupt-state="): interrupt_state = arg.trim_prefix("--interrupt-state=")
+		if arg.begins_with("--heading="): heading = deg_to_rad(float(arg.trim_prefix("--heading=")))
+		if arg.begins_with("--save-state="): save_state = arg.trim_prefix("--save-state=")
+		if arg.begins_with("--save-at="): save_at = float(arg.trim_prefix("--save-at="))
 	var focus := Vector3(0, .75, -.8)
 	match case_name:
 		"solo", "interrupt", "hit", "save":
@@ -64,6 +70,12 @@ func setup() -> void:
 			part = _part("light", Vector3(0, .08, -.42))
 			crew = [spawn_wako(Vector3(0, 1.0, 0), "leap_toss")]
 			focus = Vector3(0, .9, -.2)
+	if heading != 0.0:
+		# Same layout turned about the launch place (direction-invariance check).
+		for node: Node3D in crew + [part]:
+			node.global_position = node.global_position.rotated(Vector3.UP, heading)
+			if node == part: node.rotate_y(heading)
+		focus = focus.rotated(Vector3.UP, heading)
 	cam_target = focus
 	var distance := 3.6 if case_name != "crew" else 4.0
 	cam_target.y += .15
@@ -142,7 +154,7 @@ func scenario(delta: float) -> void:
 			if case_name == "hit" and leap.state == "return" and leap.elapsed >= .22 and not outcome.has("hit"):
 				outcome.hit = {"at_state":"return","elapsed":leap.elapsed,"carried":part.carrier==leader.head_anchor}
 				leader.apply_hit(Vector3(150, 60, 0))
-			if case_name == "save" and leap.state == "return" and leap.elapsed >= .3 and _saved.is_empty():
+			if case_name == "save" and leap.state == save_state and leap.elapsed >= save_at and _saved.is_empty():
 				_save_and_restore(leader)
 				return
 			if leap.state in ["outbound","return"] and "--trace-flight" in OS.get_cmdline_user_args():

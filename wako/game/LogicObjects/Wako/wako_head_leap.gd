@@ -1728,19 +1728,13 @@ func _stunt_tuck(time: float) -> float:
 	# opening to a frog/pike over the head. Return: head-push kick, re-tuck and
 	# open to slightly bent landing legs. Contact and touchdown are curve
 	# samples, so the preflight's last sample covers each held pose.
+	# Every phase joins with zero slope: no one-tick knee/ankle kinks.
 	var u := clampf(time/_flight_seconds,.0,1.0)
 	if _return_phase():
-		if u<.06: return lerpf(TUCK_CONTACT,0.0,smoothstep(.0,.06,u))
-		if u<.25:
-			var rise := (u-.06)/.19
-			return 1.0-pow(1.0-rise,3.0)
-		if u<.5: return 1.0
+		if u<.07: return lerpf(TUCK_CONTACT,0.0,smoothstep(.0,.07,u))
+		if u<.5: return smoothstep(.07,.27,u)
 		return lerpf(1.0,TUCK_TOUCHDOWN,smoothstep(.5,.86,u))
-	if u<.04: return 0.0
-	if u<.16:
-		var rise := (u-.04)/.12
-		return 1.0-pow(1.0-rise,3.0)
-	if u<.5: return 1.0
+	if u<.5: return smoothstep(.03,.18,u)
 	return lerpf(1.0,TUCK_CONTACT,smoothstep(.5,.86,u))
 
 func _planned_leg_points(time: float) -> Array[Vector3]:

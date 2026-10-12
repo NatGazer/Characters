@@ -27,6 +27,9 @@ var m: Array[Dictionary] = []
 var part_before_tick := Transform3D.IDENTITY
 var attach: Dictionary = {}
 var _last_part := Transform3D.IDENTITY
+var _last_knee: Array = []
+var _last_ankle: Array = []
+var continuity := {"knee_step_deg":0.0,"ankle_step_deg":0.0,"boundary":{}}
 
 func watch(members: Array, source: RigidBody3D) -> void:
 	crew = members
@@ -166,6 +169,31 @@ func _physics_process(delta: float) -> void:
 			row.root_dip_m = maxf(row.root_dip_m, _home_root_y[index]-root.origin.y)
 		if state in ["landing","done"]:
 			row.max_tilt_deg = maxf(row.max_tilt_deg, rad_to_deg(acos(clampf(w.global_basis.y.normalized().dot(Vector3.UP),-1.0,1.0))))
+		if state in ["prepare","outbound","contact","return","landing"] and w._pose.evaluated_valid:
+			# Per-tick WORLD knee-plane/ankle steps (gait thresholds 12 / 18 deg),
+			# including the prepare->outbound, contact->return, air->ground handoffs.
+			while _last_knee.size() < (index+1)*2:
+				_last_knee.append(null)
+				_last_ankle.append(null)
+			for side in 2:
+				var thigh: Vector3 = (w._pose.evaluated_knees[side]-w._pose.evaluated_hips[side]).normalized()
+				var foot: Quaternion = w._pose.evaluated_ankles[side].orthonormalized().get_rotation_quaternion()
+				var slot := index*2+side
+				if _last_knee[slot] != null:
+					var knee_step := rad_to_deg(thigh.angle_to(_last_knee[slot]))
+					var ankle_step := rad_to_deg(foot.angle_to(_last_ankle[slot]))
+					if knee_step > continuity.knee_step_deg: continuity.knee_step_at = "%s %.3f" % [state, leap.elapsed]
+					if ankle_step > continuity.ankle_step_deg: continuity.ankle_step_at = "%s %.3f" % [state, leap.elapsed]
+					continuity.knee_step_deg = maxf(continuity.knee_step_deg, knee_step)
+					continuity.ankle_step_deg = maxf(continuity.ankle_step_deg, ankle_step)
+					if changed:
+						var key := _prev_state[index]+">"+state
+						var row_b: Dictionary = continuity.boundary.get(key, {"knee":0.0,"ankle":0.0})
+						row_b.knee = maxf(row_b.knee, knee_step)
+						row_b.ankle = maxf(row_b.ankle, ankle_step)
+						continuity.boundary[key] = row_b
+				_last_knee[slot] = thigh
+				_last_ankle[slot] = foot
 		if airborne and w._pose.evaluated_valid:
 			for side in 2:
 				var hip: Vector3 = w._pose.evaluated_hips[side]
@@ -180,7 +208,7 @@ func _physics_process(delta: float) -> void:
 		_prev_state[index] = state
 
 func report(extra: Dictionary = {}) -> Dictionary:
-	var out := {"events":events,"attach":attach,"toss_probe":toss}
+	var out := {"events":events,"attach":attach,"toss_probe":toss,"continuity":continuity}
 	var rows: Array = []
 	for index in m.size():
 		var row: Dictionary = m[index].duplicate()
