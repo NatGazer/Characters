@@ -560,7 +560,7 @@ func _events(sk: Skeleton3D, delta: float) -> void:
 		else: quiet = true
 
 func _dip(v: float) -> float:
-	return -.022 * smoothstep(.1, 1.0, v) - .04 * smoothstep(1.2, 3.2, v)
+	return -.022 * smoothstep(.1, 1.0, v) - .02 * smoothstep(1.2, 3.2, v)
 
 func _roll_weight() -> float:
 	return smoothstep(.3, 1.2, speed)
@@ -930,6 +930,13 @@ func update_drop(sk: Skeleton3D, root: Transform3D, delta: float) -> void:
 		var hip_rest: Vector3 = sk.get_bone_global_rest(pose._chains[side][0]).origin
 		var hip: Vector3 = sk.global_transform * (root * (rest_inv * hip_rest))
 		hip.y += body_drop
+		if state[side] != PLANTED:
+			# Judge a landing from where the hip will be at contact, not from
+			# here: the run's footfall is ~.4 m ahead now but only ~.27 m then,
+			# so a current-hip test held the whole run ~6 cm too low.
+			var rate: float = maxf(min_rate[side], .001)
+			if state[side] == SWING and moving: rate = maxf(rate, phase_rate / maxf(1.0 - p0[side], .05))
+			hip += velocity.slide(Vector3.UP) * ((1.0 - t[side]) / rate)
 		var reach: float = float(worker._leg_lengths[side]) - .022
 		var horizontal := (hip - ankle).slide(Vector3.UP).length()
 		if horizontal >= reach: continue

@@ -109,14 +109,16 @@ func _sample(delta: float) -> void:
 	_serial = pose.evaluation_serial
 	var s := _bucket()
 	s.ticks += 1
-	if not dump_label.is_empty() and label.begins_with(dump_label):
+	if not dump_label.is_empty() and (dump_label == "*" or label.begins_with(dump_label)):
 		# Pose dump for the strobe plotter (harness/scripts/gait_strobe.py).
 		var root: Transform3D = pose.evaluated_root
 		var line := "POSE %.4f %s %s" % [clock, _v(root.origin), _v(root.basis.y)]
 		for side in 2:
 			var ankle: Vector3 = pose.evaluated_soles[side] - pose.evaluated_ankles[side] * Vector3(0, pose._ankle_height[side], 0)
 			line += " %d %s %s %s %s" % [1 if pose.evaluated_grounded[side] else 0, _v(pose.evaluated_hips[side]), _v(pose.evaluated_knees[side]), _v(ankle), _v(pose.evaluated_soles[side])]
-		print(line)
+		var gs: Variant = pose.get("gait")
+		if gs: line += " drop=%.3f y=%.3f lean=%.3f" % [gs.body_drop, gs.body_y, gs.body_lean]
+		print(line + " " + label.replace(" ", "_"))
 	if not str(wako.tool_pose_blocked).is_empty(): s.tool_blocked += 1
 	var rel: Vector3 = (wako.linear_velocity - wako.ground_velocity).slide(wako.ground_normal)
 	var speed := rel.length()
