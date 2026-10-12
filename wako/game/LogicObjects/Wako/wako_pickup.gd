@@ -5,8 +5,9 @@ extends RefCounted
 const Catalogue = preload("res://Components/Contraptions/part_catalog.gd")
 const GRAVITY := 9.8
 const MAXIMUM_IMPULSE := 40.0
-# A brisk lob: lowest clear apex above the actual head first (flight about
-# .65-.8 s); the original higher lobs remain fallbacks for the same admission.
+# Lowest clear lob first (apex above the head seat); the original higher lobs
+# remain fallbacks for the same admission. Measured with the eye lamp: the
+# cube keepout admits a .74 m apex, .95 s flight (was .98 m, 1.06 s).
 const APEX_EXTRAS := [.35, .45, .55, .65, .8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
 # The caught body keeps its exact contact pose, then settles onto the head
 # seat (nearest quarter-turn yaw) over this finite time.
