@@ -4,9 +4,10 @@ extends RefCounted
 ## a planted sole never treadmills and cadence, stride and duty adapt to speed
 ## (double-support walk -> light run with a flight phase). Each foot is a small
 ## state machine: PLANTED soles keep position AND yaw in their support's local
-## frame; SWING feet follow a min-jerk path to a landing predicted from the
-## helper's own force law; SETTLE steps are short time-driven steps that tidy
-## the stance after a stop, recover a released plant, and turn in place.
+## frame; SWING feet glide (sin^2-ramped, constant-speed middle) to a landing
+## predicted from the helper's own force law, over a look-ahead clearance arc;
+## SETTLE steps are short time-driven steps that tidy the stance after a stop,
+## recover a released plant, and turn in place.
 ## Pure planning: no physics writes. wako_pose.gd solves and publishes legs,
 ## then hands back the requested soles so overrides by other owners are seen.
 const PLANTED := 0
@@ -22,11 +23,11 @@ const SETTLE_YAW := .44         # 25 degrees
 const SANITY_SPEED := 16.0      # m/s; only a NaN/teleport guard, swings may legitimately peak ~11 m/s
 const MAX_STANCE := .52         # stance distance must fit the run-crouch reach
 const STOP_HORIZON := .45
-const COMMIT_T := .8
-const CORRIDOR: Array[float] = [.15, .45, .75]
-const TOOL_STANCE_LEAD := .08
+const COMMIT_T := .8            # swing progress after which the footfall is fixed
+const CORRIDOR: Array[float] = [.15, .45, .75]   # look-ahead ground samples along the swing
+const TOOL_STANCE_LEAD := .08   # a foot-held mallet's stance stays in front of the hip
 const HIP_ABOVE_BODY := .035    # rest hip above the capsule origin: -.85 + 1.0739 - .029 - .16
-const REACH_DROP := .06         # extra crouch the visual root may still add to reach lower ground            # swing progress after which the footfall is fixed
+const REACH_DROP := .06         # extra crouch the visual root may still add to reach lower ground
 
 var pose: SkeletonModifier3D
 var worker: RigidBody3D
@@ -50,6 +51,7 @@ var up := Vector3.UP
 var quiet := false
 var settle_allowed := false
 var hold := false
+var plan_usec := 0              # cost of the last plan() (diagnostics)
 
 # --- feet ---
 var state: Array[int] = [PLANTED, PLANTED]
@@ -91,7 +93,6 @@ var out_basis: Array[Basis] = [Basis.IDENTITY, Basis.IDENTITY]
 var out_planted: Array[bool] = [true, true]
 var out_hit: Array = [{}, {}]
 var out_toe: Array[float] = [0.0, 0.0]
-var out_tool_cap: Array[bool] = [false, false]
 
 # --- body acting (skeleton-space offsets for the root bone) ---
 var locomotion_weight := 0.0
@@ -111,6 +112,10 @@ var _drop_v := 0.0
 var settle_dip := 0.0
 var _rest_foot: Array[Basis] = []
 var _query := PhysicsRayQueryParameters3D.new()
+var _query_key := -1
+var _query_age := 0
+var _plant_hit: Array = [{}, {}]                # cached plant observation (static supports)
+var _plant_hit_age: Array[int] = [0, 0]
 var _space: PhysicsDirectSpaceState3D
 var _toe_axis: Array[Vector3] = []
 
@@ -208,17 +213,13 @@ func _tool_mode() -> bool:
 	# tool's clearance and the finite toe speed (<= 5.4 m/s) without lagging.
 	return worker.tool_foot_occupied()
 
-func _foot_duty(_side: int, _v: float, d: float) -> float:
-	# Per-foot duty hook (both feet share it; tool mode shapes the stride).
-	return d
-
 func _swing_span(v: float, d: float) -> float:
 	# Phase span of a swing: (1-d), shortened by the T_SWING_MAX time floor.
 	if v < .01: return 0.0
 	return minf(1.0 - d, T_SWING_MAX * v / (2.0 * _stride(v)))
 
 func stance_distance(v: float, side: int) -> float:
-	var d := _foot_duty(side, v, _duty(v))
+	var d := _duty(v)
 	return minf(2.0 * _stride(v) * (1.0 - _swing_span(v, d)), MAX_STANCE)
 
 func _predict(tau: float, desired: Vector3) -> Array:
@@ -262,6 +263,7 @@ func _support_alive(side: int) -> Node3D:
 
 func _plant(side: int, hit: Dictionary, point: Vector3, yaw: float) -> void:
 	state[side] = PLANTED
+	_plant_hit[side] = {}
 	t[side] = 0.0
 	stance_age[side] = 0.0
 	foot_yaw[side] = yaw
@@ -373,14 +375,23 @@ func _ground(point: Vector3) -> Dictionary:
 	return hit if not hit.is_empty() and hit.normal.y > .6 else {}
 
 func _refresh_query() -> void:
-	var exclusions: Array[RID] = worker.query_exclusions()
+	# Exclusions only change with carried bodies/ragdoll state: rebuild on a
+	# key change (or every half second), not every tick.
+	var key := 0
 	for body: Variant in [worker.equipped_tool, worker._cargo_source]:
-		if body is CollisionObject3D and is_instance_valid(body) and (body as Node).get("carrier") != null \
-			and body.get("carrier") in [worker.tool_anchor, worker.head_anchor, worker.back_tool.back_anchor if worker.back_tool else null]:
-			exclusions.append((body as CollisionObject3D).get_rid())
-	_query.exclude = exclusions
-	_query.collision_mask = 1
-	_space = worker.get_world_3d().direct_space_state
+		if is_instance_valid(body): key = key * 31 + (body as Object).get_instance_id() + (7 if body.get("carrier") != null else 0)
+	_query_age += 1
+	if key != _query_key or _query_age > 60 or _space == null:
+		_query_key = key
+		_query_age = 0
+		var exclusions: Array[RID] = worker.query_exclusions()
+		for body: Variant in [worker.equipped_tool, worker._cargo_source]:
+			if body is CollisionObject3D and is_instance_valid(body) and (body as Node).get("carrier") != null \
+				and body.get("carrier") in [worker.tool_anchor, worker.head_anchor, worker.back_tool.back_anchor if worker.back_tool else null]:
+				exclusions.append((body as CollisionObject3D).get_rid())
+		_query.exclude = exclusions
+		_query.collision_mask = 1
+		_space = worker.get_world_3d().direct_space_state
 
 # ------------------------------------------------------------------ resync
 func _init_from_published(side: int, sk: Skeleton3D) -> void:
@@ -417,6 +428,7 @@ func reset() -> void:
 # ------------------------------------------------------------------ main
 func plan(sk: Skeleton3D, delta: float, can_settle: bool, hold_feet: bool, lenient := false) -> void:
 	if delta <= 0.0: return
+	var started := Time.get_ticks_usec()
 	up = worker.ground_normal if worker.ground_normal.is_finite() else Vector3.UP
 	hold = hold_feet
 	settle_allowed = can_settle and not hold_feet
@@ -442,6 +454,7 @@ func plan(sk: Skeleton3D, delta: float, can_settle: bool, hold_feet: bool, lenie
 	_events(sk, delta)
 	for side in 2: _foot_output(side, delta)
 	_update_body(delta)
+	plan_usec = Time.get_ticks_usec() - started
 
 func _update_clock(delta: float) -> void:
 	velocity = (worker.linear_velocity - worker.ground_velocity).slide(up)
@@ -484,16 +497,16 @@ func _start_step() -> void:
 		# Tie: the outside foot of the coming turn opens the step.
 		var error := wrapf(yaw_of(direction) - worker._heading, -PI, PI)
 		lead = 1 if error > 0.0 else 0
-	var d := _foot_duty(lead, speed, duty)
+	var d := duty
 	phase = fposmod(d - .5 * lead, 1.0)
 	armed[lead] = true
-	armed[1 - lead] = _local_phase(1 - lead) < _foot_duty(1 - lead, speed, duty)
+	armed[1 - lead] = _local_phase(1 - lead) < duty
 
 func _events(sk: Skeleton3D, delta: float) -> void:
 	var stopping := not moving
 	for side in 2:
 		var p := _local_phase(side)
-		var d := _foot_duty(side, speed, duty)
+		var d := duty
 		match state[side]:
 			PLANTED:
 				stance_age[side] += delta
@@ -640,11 +653,17 @@ func _swing_point(side: int, from: Vector3, land: Vector3, tt: float, previous: 
 	return point
 
 func _foot_output(side: int, delta: float) -> void:
-	out_tool_cap[side] = false
 	if state[side] == PLANTED:
 		var point := _planted_point(side)
-		var hit: Dictionary = _ground(point)
 		var body := _support_alive(side)
+		# A plant on a static body re-observes its column every 6th tick (it
+		# cannot move); moving supports and fresh plants are probed every tick.
+		var hit: Dictionary = _plant_hit[side]
+		_plant_hit_age[side] += 1
+		if hit.is_empty() or not body is StaticBody3D or _plant_hit_age[side] >= 6 or stance_age[side] < .05:
+			hit = _ground(point)
+			_plant_hit[side] = hit
+			_plant_hit_age[side] = 0
 		var same: bool = not hit.is_empty() and (support[side] == null or (body != null and hit.collider == body and hit.rid == support_rid[side]))
 		if not same or absf(hit.normal.dot(point - hit.position)) > .03:
 			# The plant's support vanished/changed under the sole: recover.
@@ -666,12 +685,13 @@ func _foot_output(side: int, delta: float) -> void:
 			if not next_hit.is_empty() and next_hit.collider == body and next_hit.rid == support_rid[side]:
 				point = next_hit.position
 				hit = next_hit
+				_plant_hit[side] = {}
 				local_point[side] = body.to_local(point)
 		point += hit.normal * maxf(-hit.normal.dot(point - hit.position), 0.0)
 		var yaw := _planted_yaw(side)
 		foot_yaw[side] = yaw
 		# Subtle heel-to-toe roll: the heel peels late in a moving stance.
-		var u := clampf(_local_phase(side) / maxf(_foot_duty(side, speed, duty), .05), 0.0, 1.0) if moving else 0.0
+		var u := clampf(_local_phase(side) / maxf(duty, .05), 0.0, 1.0) if moving else 0.0
 		var peel := -.10 * smoothstep(.62, 1.0, u) * _roll_weight()
 		out_sole[side] = point
 		out_basis[side] = _foot_basis(side, yaw, peel, hit.normal)
@@ -746,7 +766,6 @@ func _foot_output(side: int, delta: float) -> void:
 		var cap := (SANITY_SPEED if speed > 2.4 else 5.9) * delta
 		if _is_tool_foot(side):
 			cap = minf(cap, maxf(5.4, speed * 2.4) * delta)
-			out_tool_cap[side] = true
 		if previous.distance_to(point) > cap and _is_tool_foot(side):
 			# The retained tool keeps its original finite toe budget as a plain
 			# per-tick limit (its clearance block re-solves around that sole).
@@ -764,8 +783,10 @@ func _foot_output(side: int, delta: float) -> void:
 	var s := glide(t[side])
 	debug_planned[side] = _curve(side, from, land, t[side])
 	_t_prev[side] = t[side]
-	# Never let a planned sole sink into terrain met on the way.
-	var under: Dictionary = _ground(point)
+	# Never let a planned sole sink into terrain met on the way (probed only
+	# near the ground or over a corridor that rises above the straight line).
+	var low: bool = point.y - maxf(from.y, land.y) < .05 or _clear_lift[side] > 0.0 or not _planar[side] or _is_tool_foot(side)
+	var under: Dictionary = _ground(point) if low else {}
 	var floor_clear := .012 * clampf(minf(t[side] / .12, (1.0 - t[side]) / .12), 0.0, 1.0)
 	if not under.is_empty() and floor_clear > 0.0:
 		var gap: float = under.normal.dot(point - under.position)
@@ -817,7 +838,7 @@ func _foot_output(side: int, delta: float) -> void:
 			var p := _local_phase(side)
 			if not was_swing or (p > .2 and p < .8):
 				if state[1 - side] == PLANTED: phase = fposmod(-.5 * side, 1.0)
-			armed[side] = _local_phase(side) < _foot_duty(side, speed, duty)
+			armed[side] = _local_phase(side) < duty
 
 # ------------------------------------------------------------------ body
 func _update_body(delta: float) -> void:
@@ -875,15 +896,16 @@ func _update_body(delta: float) -> void:
 	for side in 2:
 		if state[side] == SETTLE: settle_dip = minf(settle_dip, -.014 * sin(PI * t[side]))
 
-func acting_root(sk: Skeleton3D, authored: Transform3D, delta: float) -> Transform3D:
+func acting_root(sk: Skeleton3D, authored: Transform3D) -> Transform3D:
 	# Procedural locomotion root, blended in by locomotion_weight. Authored
-	# locomotion clips only contribute while the creature is standing still.
+	# locomotion clips only contribute while the creature is standing still
+	# (so this layer is independent of the clips' own leg/root conventions).
 	var rest := sk.get_bone_rest(0)
 	var w := locomotion_weight
 	var procedural := Transform3D(rest.basis, Vector3(0.0, -.029, 0.0))
 	var root := authored.interpolate_with(procedural, w) if w > .0005 else authored
-	# Offsets (skeleton space; -Z is the face, +X the character's left side
-	# inverted: skeleton -X is the left hip).
+	# Skeleton-space offsets: -Z is the face, -X the character's left hip;
+	# +X rotation tilts the top backward, +Z rotation tilts it left.
 	var drop := body_drop
 	root.origin += Vector3(body_shift * w, (body_y * w) + settle_dip - drop, 0.0)
 	var tilt := Basis(Vector3.UP, body_yaw * w) * Basis(Vector3.RIGHT, -body_lean * w) * Basis(Vector3.BACK, body_roll * w)
@@ -898,7 +920,7 @@ func update_drop(sk: Skeleton3D, root: Transform3D, delta: float) -> void:
 	for side in 2:
 		if state[side] != PLANTED and t[side] < .55: continue
 		# A stance about to lift off is released by the planner, not chased.
-		if state[side] == PLANTED and moving and _local_phase(side) > .7 * _foot_duty(side, speed, duty): continue
+		if state[side] == PLANTED and moving and _local_phase(side) > .7 * duty: continue
 		var target: Vector3 = out_sole[side] if state[side] == PLANTED else landing[side]
 		var ankle: Vector3 = target + Vector3.UP * float(pose._ankle_height[side])
 		var hip_rest: Vector3 = sk.get_bone_global_rest(pose._chains[side][0]).origin

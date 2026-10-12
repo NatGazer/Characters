@@ -248,6 +248,22 @@ func _run(scenario: String) -> void:
 				await _phase("tool_hop", .9)
 				print("TOOL_STATE c=%.2f phase=%s held=%s reason=%s blocked=%s" % [metrics.clock, wako.back_tool.phase, is_instance_valid(wako.equipped_tool) and wako.equipped_tool.get("carrier") == wako.tool_anchor, wako.back_tool.reason, wako.tool_pose_blocked])
 			await _stop("tool_stop")
+		"actions":
+			# Non-gait foot actions use the legacy authored-follow solve: their
+			# knees must also bend toward the face and hand back to the gait.
+			for kind: String in ["place", "brace", "step", "push", "interrupted"]:
+				wako.begin_action(kind)
+				metrics.label = "act_" + kind
+				caption(kind)
+				var guard := 0
+				while not wako.action.is_empty() and guard < 600:
+					await _ticks(1.0 / 120.0)
+					guard += 1
+				await _phase("after_" + kind, .5)
+			wako.fear_time = 1.2
+			await _phase("danger", 1.2)
+			await _go(Vector3.FORWARD, 2.1, "act_start", "act_walk", 1.2)
+			await _stop("act_stop")
 		"showcase":
 			await _go(Vector3.FORWARD, 1.0, "walk 1.0 m/s", "walk 1.0 m/s ", 1.6)
 			await _go(Vector3.FORWARD, 2.1, "jog 2.1 m/s", "jog 2.1 m/s ", 1.2)

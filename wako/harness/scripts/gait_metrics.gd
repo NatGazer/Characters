@@ -52,6 +52,13 @@ func _on_pose_done() -> void:
 	s.perf_sum += dt
 	s.perf_n += 1
 	s.perf_max = maxi(s.perf_max, dt)
+	if (s.perf_samples as Array).size() < 4000: (s.perf_samples as Array).append(dt)
+	var gait_obj: Variant = wako._pose.get("gait")
+	if gait_obj != null and gait_obj.active:
+		s.plan_sum += int(gait_obj.plan_usec)
+		s.plan_n += 1
+		s.plan_max = maxi(s.plan_max, int(gait_obj.plan_usec))
+		if (s.plan_samples as Array).size() < 4000: (s.plan_samples as Array).append(int(gait_obj.plan_usec))
 	# Sample inside the evaluation: supports (moving decks) are at the very
 	# transform the pose used, so support-relative slip is exact.
 	_sample(1.0 / Engine.physics_ticks_per_second)
@@ -68,7 +75,7 @@ func _bucket() -> Dictionary:
 			"stances": [], "slip_max": 0.0, "landings": 0, "ground_ticks": [0, 0], "flight": 0, "moving": 0,
 			"knee_pos": 0, "knee_n": 0, "knee_step": 0.0, "knee_dir_step": 0.0, "knee_step_stance": 0.0,
 			"reach_viol": 0, "land_rel": [], "mid_rel": [], "plan_lag": 0.0, "start_latency": [],
-			"neutral": [], "skates": [], "skate_max": 0.0, "sole_step": 0.0, "tool_blocked": 0, "swing_time": [], "stance_time": [], "min_clear": INF}
+			"neutral": [], "skates": [], "skate_max": 0.0, "sole_step": 0.0, "tool_blocked": 0, "plan_sum": 0, "plan_n": 0, "plan_max": 0, "perf_samples": [], "plan_samples": [], "swing_time": [], "stance_time": [], "min_clear": INF}
 	return _stats[key]
 
 func _support_point(side: int) -> Array:
@@ -229,6 +236,12 @@ func neutral_snapshot() -> Array:
 	_bucket().neutral.append(out)
 	return out
 
+static func _median(a: Array) -> int:
+	if a.is_empty(): return 0
+	var c := a.duplicate()
+	c.sort()
+	return int(c[c.size() / 2])
+
 static func _mean(a: Array) -> float:
 	if a.is_empty(): return NAN
 	var t := 0.0
@@ -263,5 +276,7 @@ func print_report() -> void:
 		line += " sole_step=%.3f" % s.sole_step
 		if int(s.tool_blocked) > 0: line += " tool_blocked=%d" % s.tool_blocked
 		if float(s.min_clear) < INF: line += " min_swing_clear=%.3f" % s.min_clear
-		if int(s.perf_n) > 0: line += " perf_us=%.0f/%d" % [float(s.perf_sum) / s.perf_n, s.perf_max]
+		# Timings: median (robust to preemption on a shared CPU) / mean / max.
+		if int(s.perf_n) > 0: line += " perf_us=%d/%.0f/%d" % [_median(s.perf_samples), float(s.perf_sum) / s.perf_n, s.perf_max]
+		if int(s.plan_n) > 0: line += " plan_us=%d/%.0f/%d" % [_median(s.plan_samples), float(s.plan_sum) / s.plan_n, s.plan_max]
 		print(line)

@@ -675,7 +675,10 @@ func _process_modification_with_delta(delta: float) -> void:
 		var held_lift: float = _held_lift if free_tool and side == worker.tool_foot_side() else 0.0
 		var held_shift: Vector3 = _held_shift if free_tool and side == worker.tool_foot_side() else Vector3.ZERO
 		var target: Vector3 = local_inv * (_targets[side]+hit.normal*held_lift+held_shift) - basis * ankle_to_sole
-		_solve(sk, upper, lower, foot, target, .96 if stance else .68, basis)
+		# Full-weight solves: a partial blend between the imported (old +Z
+		# knee) clip and the face-bent solution would park the knee halfway
+		# round and let a planted sole drift with the clip.
+		_solve(sk, upper, lower, foot, target, 1.0, basis)
 		evaluated_grounded[side] = stance and held_lift < .01
 		if manipulation and side != worker.work_foot_side and stance:
 			worker.stance_point = _targets[side]
@@ -1981,7 +1984,7 @@ func _weight_transfer(sk: Skeleton3D, walking: bool, speed: float, delta: float)
 	# sway below. Work/greeting/balance layers still apply on top of it.
 	var gait_acting: bool = _walking_ik and gait.active
 	if gait_acting:
-		root = gait.acting_root(sk,root,delta)
+		root = gait.acting_root(sk,root)
 		sk.set_bone_global_pose(0,root)
 	evaluated_unbalanced_root = sk.global_transform * root
 	evaluated_unbalanced_com = _posed_center_of_mass(sk)
