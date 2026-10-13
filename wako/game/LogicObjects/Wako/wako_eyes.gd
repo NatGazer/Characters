@@ -206,6 +206,7 @@ var _last_recoil := 0
 var _last_leap := ""
 var _last_back := ""
 var _last_play := ""
+var _owner_cues := {}
 var _last_action := ""
 var _last_job := ""
 var _last_contact := false
@@ -411,6 +412,10 @@ func _blink_wait_until() -> float:
 	var hold := _blink_quiet_until
 	# Never blink into a strike contact or the widen/focus beat of a notice.
 	if worker.action in STROKE_KINDS and worker.action_progress>.44 and worker.action_progress<.62: hold = maxf(hold,_time+.03)
+	# Stunt owners keep the eyes open through their critical beats (a head
+	# flip's drive and push-off, a tool kick and flight, a play launch).
+	for owner: RefCounted in _stunt_owners():
+		if owner.has_method(&"blink_hold") and owner.blink_hold(): hold = maxf(hold,_time+.03)
 	var watch: SkeletonModifier3D = worker.threat_watch
 	if is_instance_valid(watch):
 		if float(watch.notice_widen)>.15 or float(watch.notice_focus)>.05: hold = maxf(hold,_time+.05)
@@ -718,11 +723,12 @@ func _poll_events(elapsed: float) -> void:
 	# Head-first flips.
 	var leap_node: RefCounted = worker.head_leap
 	var leap: String = leap_node.state if leap_node else ""
+	var leap_cues: bool = leap_node and leap_node.has_method(&"face_cue")
 	if leap!=_last_leap:
 		if leap=="prepare":
-			pulse(&"notice",1.0)
+			if not leap_cues: pulse(&"notice",1.0)
 			Attention.post(worker,&"flip",worker.global_position,.65,2.6,worker)
-		elif leap=="contact": pulse(&"squeeze",_squeeze_amount(1.0))
+		elif leap=="contact" and not leap_cues: pulse(&"squeeze",_squeeze_amount(1.0))
 		_last_leap = leap
 	# Back-tool toss and its caught return.
 	var back_node: RefCounted = worker.back_tool
@@ -731,7 +737,7 @@ func _poll_events(elapsed: float) -> void:
 		if back=="flight":
 			Attention.post(worker,&"toss",worker.global_position+Vector3.UP,.6,1.5,worker.equipped_tool if is_instance_valid(worker.equipped_tool) else worker)
 		elif _last_back=="flight" and back=="back":
-			pulse(&"pride",.8)
+			if not (back_node and back_node.has_method(&"face_cue")): pulse(&"pride",.8)
 			_motivated_blink(.6)
 			Attention.post(worker,&"catch",worker.global_position+Vector3.UP*.5,.55,1.2,worker)
 		_last_back = back
@@ -749,6 +755,21 @@ func _poll_events(elapsed: float) -> void:
 		var contact: bool = not play_node._pair.is_empty() and bool(play_node._pair.get("contact",false))
 		if contact and not _last_contact: Attention.post(worker,&"highfive",worker.global_position+Vector3.UP*.3,.6,1.4,worker)
 		_last_contact = contact
+	# Stunt owners name their own expression beats (focus, impact, strain,
+	# phew, pride...); each fresh cue plays once as a pulse.
+	for owner: RefCounted in _stunt_owners():
+		if not owner.has_method(&"face_cue"): continue
+		var cue: StringName = owner.face_cue()
+		var key: int = owner.get_instance_id()
+		if cue==_owner_cues.get(key,&""): continue
+		_owner_cues[key] = cue
+		match cue:
+			&"": pass
+			&"focus": pulse(&"notice",.7)
+			&"impact": pulse(&"squeeze",_squeeze_amount(1.0))
+			&"strain": pulse(&"squeeze",_squeeze_amount(.6))
+			&"phew": pulse(&"relief",.8)
+			_: if PULSES.has(cue): pulse(cue,.8)
 	# Useful work: a fresh reservation is noticed before the body departs;
 	# an interruption worries; completion is handled by the personality.
 	var job: String = worker.current_job_id
@@ -892,6 +913,14 @@ func _choose_gaze(elapsed: float) -> void:
 	if back and back.phase=="flight" and is_instance_valid(worker.equipped_tool):
 		_look_at(Vector3.INF,worker.equipped_tool.get_instance_id(),worker.equipped_tool)
 		return
+	for owner: RefCounted in _stunt_owners():
+		if not owner.has_method(&"gaze_target"): continue
+		var lead: Variant = owner.gaze_target()
+		if lead is Vector3 and lead.is_finite():
+			# The contact point before a dive, the landing spot on the return,
+			# a toss's planned apex and seat: new places are new fixations.
+			_look_at(lead,_point_key(lead,owner.get_instance_id()%997))
+			return
 	var leap: RefCounted = worker.head_leap
 	if leap and leap.active() and is_instance_valid(leap.part) and not leap.contacted:
 		_look_at(Vector3.INF,leap.part.get_instance_id(),leap.part)
@@ -1017,6 +1046,14 @@ func _nearest_peer() -> Node3D:
 			best = peer
 			best_distance = distance
 	return best
+
+## Stunt/play owners that may lead the face (any of gaze_target, face_cue,
+## blink_hold). Missing owners and older owners without the hooks are skipped.
+func _stunt_owners() -> Array[RefCounted]:
+	var owners: Array[RefCounted] = []
+	for owner: Variant in [worker.head_leap, worker.back_tool, worker.idle_play]:
+		if owner is RefCounted: owners.append(owner)
+	return owners
 
 func _point_key(point: Vector3, salt: int) -> int:
 	# Same coarse location (.4 m cells) = same fixation; a new cell = saccade.
