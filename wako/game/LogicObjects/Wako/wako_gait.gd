@@ -36,7 +36,7 @@ const FOOT_GAP := .20           # sole centres across the heading; the shins are
 const LAUNCH_HOLD := .065       # weight goes onto the support foot before the first lift
 const PEEL_RATE := 10.0         # rad/s: a stop drops a peeled heel quickly, never in one tick
 const PEEL_PUSH_RATE := 22.0    # rad/s: the push-off heel rise keeps up with a running hip
-const PEEL_CAP := .36           # rad: deepest push-off heel rise (the toe pad stays planted)
+const PEEL_CAP := .3            # rad: deepest push-off heel rise (the toe pad stays planted)
 const DROP_SPEED := .6          # m/s: the reach crouch eases in at crests and edges (no hiccup)
 const FOOT_HALF_LENGTH := .09   # skinned sole extent ahead/behind the sole point
 const FOOT_HALF_WIDTH := .075
@@ -173,6 +173,23 @@ var body_drop := 0.0
 var _drop_v := 0.0
 var settle_dip := 0.0
 var _settle_v := 0.0
+# Rest layer while standing (breathing, weight shifts): never sprung by the
+# locomotion weight, faded by its own weight so any owner change is smooth.
+var rest_y := 0.0
+var rest_pitch := 0.0
+var rest_roll := 0.0
+var rest_shift := 0.0
+var _rest_w := 0.0
+var _rest_wv := 0.0
+var _breath := 0.0
+var _rest_clock := 0.0
+var _rest_next := 2.4
+var _rest_count := 0
+var _rest_side := 1.0
+var _lean_s := 0.0              # rest weight-shift spring
+var _lean_sv := 0.0
+var _follow_t := 0.0            # stop follow-through: livelier lean spring
+var _turn_t := -1.0             # turn-in-place anticipation
 var absorb := 0.0               # visual suspension: cancels capsule bumps the planted legs would take in a tick
 var _absorb_v := 0.0
 var _body_y := INF
@@ -406,8 +423,10 @@ func _slope_shift() -> Vector3:
 
 func _track(v: float) -> float:
 	# Feet converge toward the midline as speed rises (narrower than the
-	# hips), which is what makes the side-to-side sway and waddle earned.
-	var w := HIP_X * lerpf(lerpf(1.0, .75, smoothstep(.2, 1.0, v)), .55, smoothstep(1.7, 2.9, v))
+	# hips), which is what makes the side-to-side sway and waddle earned. A
+	# run keeps ~.37 m between the soles: narrower read as braided legs from
+	# the front three-quarter view.
+	var w := HIP_X * lerpf(lerpf(1.0, .75, smoothstep(.2, 1.0, v)), .78, smoothstep(1.7, 2.9, v))
 	if carry: w = maxf(w, HIP_X * .85) * 1.08
 	elif _tool_mode(): w = maxf(w, HIP_X * .9)
 	return w
@@ -515,8 +534,10 @@ func defer_contact(side: int, offset: Vector3, knee_pop := false) -> bool:
 	# back by the knee rate limit while the body fell): it keeps reaching.
 	if excess < .004 and not (knee_pop and _contact_delay[side] < 8): return false
 	var first := _contact_delay[side] == 0
-	var shrinking := first or excess < _defer_excess[side] - .0004
-	var wait: bool = (shrinking and _contact_delay[side] < 8 and behind < .12) or (_contact_delay[side] < 3 and excess < .03) or (knee_pop and _contact_delay[side] < 8)
+	# Closing at >= 1.5 mm a tick (the crouch or the body coming toward it);
+	# a slower close would hover the foot for many ticks.
+	var closing := first or excess < _defer_excess[side] - .0015
+	var wait: bool = (closing and _contact_delay[side] < 8 and behind < .12) or (_contact_delay[side] < 2 and excess < .03) or (knee_pop and _contact_delay[side] < 8)
 	if wait:
 		var body := _support_alive(side)
 		state[side] = kind
@@ -533,7 +554,7 @@ func defer_contact(side: int, offset: Vector3, knee_pop := false) -> bool:
 		_drop[side] = _drop_planted[side]
 		if debug_log: print("GAIT defer side=%d excess=%.3f behind=%.3f delay=%d" % [side, excess, behind, _contact_delay[side]])
 		return true
-	if moving and not hold and not _caught_up[side] and excess > .015 and not _drop_planted[side]:
+	if moving and not hold and not _caught_up[side] and excess > .006 and not _drop_planted[side]:
 		# Catch-up: the foot stays airborne a few more ticks and re-targets a
 		# reachable footfall from the predicted hip (the old curve's offset
 		# fades out, so it never jumps).
@@ -755,6 +776,14 @@ func release(delta: float, hard := false) -> void:
 		absorb = 0.0
 		_absorb_v = 0.0
 		_body_y = INF
+		_rest_w = 0.0
+		_rest_wv = 0.0
+		_lean_s = 0.0
+		_lean_sv = 0.0
+		rest_y = 0.0
+		rest_pitch = 0.0
+		rest_roll = 0.0
+		rest_shift = 0.0
 		squash = 0.0
 		_squash_amp = 0.0
 		_brake_time = 0.0
@@ -789,6 +818,7 @@ func release(delta: float, hard := false) -> void:
 	absorb = ab.x
 	_absorb_v = ab.y
 	_body_y = INF
+	_update_rest(delta)
 	_update_squash(delta)
 	var d := spring(body_drop, _drop_v, 0.0, 9.0, delta)
 	_drop_v = clampf(d.y, -DROP_SPEED, DROP_SPEED)
@@ -797,7 +827,7 @@ func release(delta: float, hard := false) -> void:
 
 func acting() -> bool:
 	# Whether acting_root still has anything to show (also while releasing).
-	return active or locomotion_weight > .001 or body_drop > .0005 or absf(settle_dip) > .0005 or absf(squash) > .0005 or absf(absorb) > .0005
+	return active or locomotion_weight > .001 or body_drop > .0005 or absf(settle_dip) > .0005 or absf(squash) > .0005 or absf(absorb) > .0005 or _rest_w > .002
 
 # ------------------------------------------------------------------ main
 func plan(sk: Skeleton3D, delta: float, can_settle: bool, hold_feet: bool, lenient := false) -> void:
@@ -870,7 +900,6 @@ func _update_clock(delta: float) -> void:
 	phase = fposmod(phase + phase_rate * delta, 1.0)
 	_recent_speed = maxf(speed, _recent_speed - delta * 2.5)
 	if moving and not was_moving: _start_step()
-	if debug_log and OS.get_environment("CLOCKDBG") != "": print("CLOCK z=%.3f phase=%.3f rate=%.3f moving=%s speed=%.2f hs=%.3f states=%s t=%s hold=%s" % [worker.global_position.z, phase, phase_rate, moving, speed, half_stride, state, t, hold])
 
 func _start_step() -> void:
 	# Launch: the foot farther behind the requested motion steps first.
@@ -963,7 +992,12 @@ func _events(delta: float) -> void:
 				# an ordinary swing from where the clock is (no re-phase).
 				if due or (over and p > .7 * d):
 					var first := moving_age < .12
-					_lift_off(side, SWING, 1.0 / (T_FIRST_SWING if first else T_SWING_MAX), _base_lift(side))
+					if _no_intent > 0.0:
+						# A braking step (the request has ended) is low and quick, not
+						# the full run's prancing heel tuck.
+						_lift_off(side, SWING, 1.0 / .22, _base_lift(side) * lerpf(.45, 1.0, smoothstep(.8, 2.6, speed)))
+					else:
+						_lift_off(side, SWING, 1.0 / (T_FIRST_SWING if first else T_SWING_MAX), _base_lift(side))
 				else:
 					# Never drag a plant past reach: release it now and re-phase so
 					# the alternation continues from this very step.
@@ -1053,7 +1087,7 @@ func _base_lift(side: int) -> float:
 	if _is_tool_foot(side): return .075
 	# A visible knee drive: ~10 cm clearance walking, a high heel tuck running.
 	# A run tucks the heel to ~85 deg of knee fold, not a whipping 95.
-	var l := lerpf(.125, .165, smoothstep(1.2, 3.2, speed))
+	var l := lerpf(.125, .15, smoothstep(1.2, 3.2, speed))
 	return l * .6 if carry else l
 
 func _peel_max() -> float:
@@ -1136,11 +1170,15 @@ func _landing_target(side: int, t_rem: float) -> void:
 		var other := 1 - side
 		var anchor: Vector3 = _planted_point(other) if state[other] == PLANTED else landing[other]
 		var outward := -1.0 if side == 0 else 1.0
+		# A partner that has only just lifted (a run's flight, a turning deck)
+		# is still near its lift-off point when this foot lands: keep clear of
+		# where it is as well as of where it is going.
+		var near: Vector3 = out_sole[other] if state[other] != PLANTED and t[other] < .35 and t_rem < .08 else anchor
 		# The push is bounded: in a hard turn on a rotating deck an unbounded
 		# one threw the footfall far sideways (behind the hip).
-		for k in 2:
-			var right := Basis(Vector3.UP, heading if k == 0 else float(worker._heading)) * Vector3.RIGHT
-			var gap := (point - anchor).slide(Vector3.UP).dot(right) * outward
+		for k in 4:
+			var right := Basis(Vector3.UP, heading if k % 2 == 0 else float(worker._heading)) * Vector3.RIGHT
+			var gap := (point - (anchor if k < 2 else near)).slide(Vector3.UP).dot(right) * outward
 			if gap < FOOT_GAP: point += right * outward * minf(FOOT_GAP - gap, .14)
 		_lt_point = point
 		_lt_heading = heading
@@ -1588,7 +1626,6 @@ func _swing_output(side: int, delta: float) -> void:
 	if delta > 0.0 and _t_prev[side] >= 0.0 and speed <= 2.4:
 		var ceiling := 5.9 * delta
 		if previous.distance_to(point) > ceiling: point = previous.move_toward(point, ceiling)
-	if debug_log and OS.get_environment("CLOCKDBG") != "" and t[side] < .2: print("SWING side=%d t=%.3f point=%s from=%s land=%s raise=%.4f lift=%.3f clear=%.3f bump=%.3f peel0=%.3f" % [side, t[side], str(point), str(from), str(land), raise, lift[side], _clear_lift[side], _bump(t[side]), _peel0[side]])
 	foot_yaw[side] = yaw
 	var normal := start_normal[side].slerp(landing_normal[side], s).normalized() if start_normal[side].dot(landing_normal[side]) < .9999 else landing_normal[side]
 	var tt := t[side]
@@ -1639,7 +1676,7 @@ func _swing_output(side: int, delta: float) -> void:
 		if _contact_delay[side] == 0:
 			# Weight arriving: the last step of a stop and each settle hop
 			# squash the cube a little (secondary motion, not physics).
-			if was_swing and not moving: _start_squash(lerpf(.012, .026, smoothstep(.6, 2.5, _recent_speed)), .14)
+			if was_swing and not moving: _start_squash(lerpf(.018, .03, smoothstep(.6, 2.5, _recent_speed)), .26)
 			elif not was_swing and not moving: _start_squash(.014, .12)
 			elif was_swing and _reversing() > .5: _start_squash(.018, .12)
 		if moving and not hold:
@@ -1723,7 +1760,8 @@ func _update_squash(delta: float) -> void:
 	# not a one-tick drop), recovers over the rest.
 	_squash_t += delta
 	var s := clampf(_squash_t / maxf(_squash_len, .01), 0.0, 1.0)
-	squash = -_squash_amp * (smoothstep(0.0, .3, s) * (1.0 - smoothstep(.3, 1.0, s))) if s < 1.0 else 0.0
+	# Compress, recover, then a small rebound above rest before settling.
+	squash = (-_squash_amp * smoothstep(0.0, .3, s) * (1.0 - smoothstep(.3, .72, s)) + .22 * _squash_amp * sin(PI * clampf((s - .55) / .45, 0.0, 1.0))) if s < 1.0 else 0.0
 
 func _reversing() -> float:
 	# 0..1: requested travel points back against the current motion.
@@ -1743,7 +1781,10 @@ func _update_body(delta: float) -> void:
 	# The stop's follow-through (lean overshoot) is still locomotion acting:
 	# hold the weight until it has settled, or it would be faded away unseen.
 	var settling := absf(body_lean) > .012 or absf(_lean_v) > .08
-	var target_weight := 1.0 if (moving or swinging or speed > .3 or settling) else 0.0
+	# Turning in place is acting too (lead, bank, wind-up, hop): shown, not
+	# faded out to the authored idle root.
+	var turning := absf(wrapf(worker._idle_heading - worker._heading, -PI, PI)) > .08 or state[0] == SETTLE or state[1] == SETTLE or absf(_yaw_s) > .02
+	var target_weight := 1.0 if (moving or swinging or speed > .3 or settling or turning) else 0.0
 	var w := spring(locomotion_weight, _lw_v, target_weight, 9.0, delta)
 	locomotion_weight = clampf(w.x, 0.0, 1.0)
 	_lw_v = w.y
@@ -1806,11 +1847,18 @@ func _update_body(delta: float) -> void:
 	else: _brake_time = maxf(_brake_time - delta, 0.0)
 	if _brake_time > 0.0 and v < .4 and body_lean > -.025 and _lean_v > 0.0:
 		# The skid is over and the cube swings back upright: it carries on
-		# past upright, nose-down, and settles (follow-through).
-		_lean_v += 1.45 * (.5 if carry else (.2 if tool else 1.0)) * steady
+		# past upright, nose-down (~8 deg), rocks back once and settles over
+		# two damped swings (~2.4 Hz): a "whoa!" stop, not a statue.
+		_lean_v += 3.0 * (.5 if carry else (.2 if tool else 1.0)) * steady
 		_brake_time = 0.0
-	var zeta := .45
-	var omega := 11.5
+		_follow_t = .9
+	_follow_t = maxf(_follow_t - delta, 0.0)
+	# Climbs lean into the hill, descents sit back a little.
+	if moving:
+		var grade := -up.dot(forward)
+		lean_target += clampf(grade * (.36 if grade > 0.0 else .15), -.07, .16) * (.5 if carry else 1.0)
+	var zeta := .45 if _follow_t <= 0.0 else .36
+	var omega := 11.5 if _follow_t <= 0.0 else 15.0
 	_lean_v += (omega * omega * (lean_target - body_lean) - 2.0 * zeta * omega * _lean_v) * delta
 	body_lean += _lean_v * delta
 	# Sway over the stance foot, waddle roll toward it and a hip twist that
@@ -1827,15 +1875,27 @@ func _update_body(delta: float) -> void:
 	_shift_v = s.y
 	# Bank into turns and roll onto the launch support foot.
 	var bank := .5 * atan(v * clampf(worker.turn_rate, -6.0, 6.0) / 9.8)
+	# Turning in place banks into the turn too (~3.5 deg), not a turntable.
+	bank += clampf(float(worker.turn_rate) * .035, -.065, .065) * (1.0 - smoothstep(.3, 1.0, v))
 	var roll_target := clampf(bank, -.095, .095) * steady - .05 * support_sign * launch
 	var r := spring(_roll_s, _roll_v, roll_target, 16.0, delta)
 	_roll_s = r.x
 	_roll_v = r.y
-	# The cube's eyes lead a turn toward the requested heading (<= 8 deg).
-	var yaw_target := clampf(wrapf(worker._idle_heading - worker._heading, -PI, PI) * .35, -.14, .14) * (.5 if carry else 1.0)
-	var yw := spring(_yaw_s, _yaw_v, yaw_target, 12.0, delta)
-	_yaw_s = yw.x
-	_yaw_v = yw.y
+	# The cube's eyes lead a turn toward the requested heading (<= 8 deg
+	# travelling, ~12 standing); a lightly underdamped spring, so the cube
+	# overshoots the new heading a few degrees and settles. A turn begun
+	# from a stand first winds up the other way for a moment (anticipation).
+	var heading_error := wrapf(worker._idle_heading - worker._heading, -PI, PI)
+	var lead := lerpf(.21, .14, smoothstep(.2, 1.0, v))
+	var yaw_target := clampf(heading_error * .35, -lead, lead) * (.5 if carry else 1.0)
+	if v < .25 and absf(heading_error) > .35 and _turn_t < 0.0 and not carry:
+		_turn_t = 0.0
+		_yaw_v -= signf(heading_error) * 1.1
+	if _turn_t >= 0.0:
+		_turn_t += delta
+		if absf(heading_error) < .1 or v > .6: _turn_t = -1.0
+	_yaw_v += (144.0 * (yaw_target - _yaw_s) - 2.0 * .55 * 12.0 * _yaw_v) * delta
+	_yaw_s += _yaw_v * delta
 	_publish_totals()
 	# Settle steps hop: a quick gather at push-off, a small rise in the air.
 	var hop := 0.0
@@ -1843,10 +1903,39 @@ func _update_body(delta: float) -> void:
 		if state[side] == SETTLE:
 			var tt := t[side]
 			hop = minf(hop, -.022 * pow(sin(PI * clampf(tt / .4, 0.0, 1.0)), 2.0) + .012 * pow(sin(PI * clampf((tt - .3) / .7, 0.0, 1.0)), 2.0))
+	# The turn's wind-up dips the cube ~1.5 cm for ~70 ms.
+	if _turn_t >= 0.0 and _turn_t < .08: hop = minf(hop, -.015)
 	var sd := spring(settle_dip, _settle_v, hop, 30.0, delta)
 	settle_dip = sd.x
 	_settle_v = sd.y
 	_update_absorb(delta)
+	_update_rest(delta)
+
+func _update_rest(delta: float) -> void:
+	# Standing still is never a statue: a slow breath (~.42 Hz: the root
+	# rises ~6 mm and the top tips back ~.8 deg on the inhale) and every
+	# 2-4 s a weight shift onto one foot (~1.5 deg roll, ~1.2 cm over it).
+	# Deterministic (no RNG), so tests and replays see the same motion.
+	var standing := active and quiet and not moving and state[0] == PLANTED and state[1] == PLANTED and not hold and settle_allowed
+	var w := spring(_rest_w, _rest_wv, 1.0 if standing else 0.0, 4.0 if standing else 10.0, delta)
+	_rest_w = clampf(w.x, 0.0, 1.0)
+	_rest_wv = w.y
+	_breath = fposmod(_breath + .42 * delta, 1.0)
+	var inhale := sin(TAU * _breath)
+	if standing:
+		_rest_clock += delta
+		if _rest_clock >= _rest_next:
+			_rest_clock = 0.0
+			_rest_count += 1
+			_rest_side = -_rest_side
+			_rest_next = 2.0 + 2.0 * fposmod(sin(float(_rest_count) * 12.9898) * 43758.5453, 1.0)
+	var ls := spring(_lean_s, _lean_sv, _rest_side * (1.0 if standing else 0.0), 3.2, delta)
+	_lean_s = ls.x
+	_lean_sv = ls.y
+	rest_y = .006 * inhale * _rest_w
+	rest_pitch = -.014 * inhale * _rest_w
+	rest_roll = .026 * _lean_s * _rest_w
+	rest_shift = -.012 * _lean_s * _rest_w
 
 func _update_absorb(delta: float) -> void:
 	# The native capsule drops or bumps several cm in a tick at block edges,
@@ -1912,8 +2001,8 @@ func acting_root(sk: Skeleton3D, authored: Transform3D) -> Transform3D:
 	# (lifting the root by that hip's drop): the swing-side hip sinks instead,
 	# so the stance leg stays long rather than buckling under the roll.
 	var roll_lift := HIP_X * absf(sin(_roll_osc))
-	root.origin += Vector3(body_shift * w, (body_y + body_bob + roll_lift) * w + settle_dip + squash - body_drop + absorb, 0.0)
-	var tilt := Basis(Vector3.UP, body_yaw * w) * Basis(Vector3.RIGHT, -(body_lean + body_nod) * w) * Basis(Vector3.BACK, body_roll * w)
+	root.origin += Vector3(body_shift * w + rest_shift, (body_y + body_bob + roll_lift) * w + settle_dip + squash - body_drop + absorb + rest_y, 0.0)
+	var tilt := Basis(Vector3.UP, body_yaw * w) * Basis(Vector3.RIGHT, -(body_lean + body_nod) * w - rest_pitch) * Basis(Vector3.BACK, body_roll * w + rest_roll)
 	root.basis = (tilt * root.basis).orthonormalized()
 	return root
 
@@ -1949,7 +2038,6 @@ func update_drop(sk: Skeleton3D, root: Transform3D, delta: float) -> void:
 			var rate: float = maxf(min_rate[side], .001)
 			if state[side] == SWING and moving: rate = maxf(rate, _phase_swing_rate(side))
 			var t_rem := (1.0 - t[side]) / rate
-			if debug_log and OS.get_environment("CLOCKDBG") != "": print("HIPPRED side=%d t=%.2f hip_y=%.3f drop=%.3f rise=%.3f t_rem=%.3f ph=%.3f ph_c=%.3f off_now=%.3f off_c=%.3f" % [side, t[side], hip.y - body_drop, body_drop, hip_rise_at_contact(side, t_rem), t_rem, _act_phase, _act_phase + phase_rate * t_rem, _hip_offset(side, _act_phase), _hip_offset(side, _act_phase + phase_rate * t_rem)])
 			# Along the ground: a descent brings the hip down by contact too
 			# (judged level it asked for a 20 cm crouch on a 25 deg slope).
 			hip += _along_ground() * t_rem + Vector3.UP * hip_rise_at_contact(side, t_rem)
@@ -1957,7 +2045,7 @@ func update_drop(sk: Skeleton3D, root: Transform3D, delta: float) -> void:
 		var horizontal := (hip - ankle).slide(Vector3.UP).length()
 		if horizontal >= reach: continue
 		var vertical := hip.y - ankle.y
-		if debug_log and vertical - sqrt(reach * reach - horizontal * horizontal) > float(OS.get_environment("DROPDBG") if OS.get_environment("DROPDBG") != "" else "0.1"):
+		if debug_log and vertical - sqrt(reach * reach - horizontal * horizontal) > .1:
 			print("GAIT drop need z=%.2f side=%d state=%d t=%.2f need=%.3f target=%s hip=%s horiz=%.3f drop=%.3f" % [worker.global_position.z, side, state[side], t[side], vertical - sqrt(reach * reach - horizontal * horizontal), str(target), str(hip), horizontal, body_drop])
 		need = maxf(need, vertical - sqrt(reach * reach - horizontal * horizontal))
 	need = clampf(need, 0.0, .2)

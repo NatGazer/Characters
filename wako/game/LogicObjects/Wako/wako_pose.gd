@@ -1718,11 +1718,15 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 	_step_lifts[side] = 0.0 if planted else gait._clear_lift[side]
 	_step_ahead[side] = _step_lifts[side]
 	_target_valid[side] = planted and not hit.is_empty() and hit.collider is Node3D
+	# A planted sole publishes its contact point, not the heel-peeled sole
+	# shown during push-off (the toe pad stays where it planted); the sole is
+	# then "grounded" only while it is really within 2 cm of that plant.
+	var plant: Vector3 = sole-gait._roll_off[side] if planted else sole
 	if _target_valid[side]:
 		_support[side] = weakref(hit.collider)
 		_support_rids[side] = hit.rid
-		_support_local[side] = hit.collider.to_local(sole)
-	_targets[side] = sole
+		_support_local[side] = hit.collider.to_local(plant)
+	_targets[side] = plant
 	var tool_foot: bool = worker.tool_foot_occupied() and side==worker.tool_foot_side()
 	var held_lift: float = _held_lift if tool_foot else 0.0
 	var held_shift: Vector3 = _held_shift if tool_foot else Vector3.ZERO
@@ -2508,7 +2512,9 @@ func _default_pole(sk: Skeleton3D, side: int) -> Vector3:
 	var root := sk.get_bone_global_pose(0)
 	var face: Vector3 = (sk.global_basis*(root.basis*Vector3.BACK)).normalized()
 	var outward: Vector3 = (sk.global_basis*(root.basis*(Vector3.RIGHT if side==0 else Vector3.LEFT))).normalized()
-	var wanted := (face+outward*POLE_SPLAY).normalized()
+	# Running knees splay a little wider (two clear pistons from the front).
+	var splay: float = POLE_SPLAY+(.13*gait.run_weight*gait.locomotion_weight if gait and gait.active else 0.0)
+	var wanted := (face+outward*splay).normalized()
 	var frame := Engine.get_physics_frames()
 	if int(_pole_frame[side])!=frame:
 		var base: Vector3 = _pole_out[side]
