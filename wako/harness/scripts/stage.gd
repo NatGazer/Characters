@@ -105,6 +105,9 @@ func scenario(_delta: float) -> void:
 func _process(delta: float) -> void:
 	frame += 1
 	if is_instance_valid(cam_follow):
-		cam_target = cam_target.lerp(cam_follow.global_position + Vector3(0, 0.1, 0), 1.0 - exp(-cam_smooth * delta)) if frame > 2 else cam_follow.global_position
+		# Lead by velocity/smoothing so a steady run stays centred (no lag).
+		var lead := Vector3.ZERO
+		if cam_follow is RigidBody3D: lead = (cam_follow as RigidBody3D).linear_velocity.slide(Vector3.UP) / cam_smooth
+		cam_target = cam_target.lerp(cam_follow.global_position + Vector3(0, 0.1, 0) + lead, 1.0 - exp(-cam_smooth * delta)) if frame > 2 else cam_follow.global_position
 	camera.global_position = cam_target + cam_offset
 	camera.look_at(cam_target, Vector3.UP)

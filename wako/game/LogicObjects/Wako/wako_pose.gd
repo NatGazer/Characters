@@ -2,6 +2,11 @@ extends SkeletonModifier3D
 ## Named leg chains: stance foot support and ankle/toe manipulation after authored animation.
 const LegGeometry = preload("res://Components/Contraptions/shared_leg_geometry.gd")
 const MassGeometry = preload("res://Components/Contraptions/rolling_balance.gd")
+const Gait = preload("res://LogicObjects/Wako/wako_gait.gd")
+# Knee pole splay: knees point at the face and slightly outward.
+const POLE_SPLAY := .12
+const GAIT_RELEASE_BLEND := .16  # s: another owner's legs blend in from the gait's last joints
+const POLE_TURN_RATE := 12.0
 # Existing negative phase resets also cancel a missed landing; no saved state.
 const WALK_PENDING_LANDING := -2.0
 
@@ -39,6 +44,9 @@ var evaluated_valid := false
 var evaluated_basis := Basis.IDENTITY
 var evaluation_serial := 0
 var _gait_rotations: Dictionary = {}
+var _gait_release_rotations: Dictionary = {}
+var _gait_release_age := INF
+var _brake_handoff_age := -1.0  # s: an action begun mid-run waits for the gait's braking steps
 var _head_gait_continuation := false
 var _head_gait_rotations: Dictionary = {}
 var _head_gait_settle_time := 0.0
@@ -83,10 +91,19 @@ var _held_lift := 0.0
 var _held_lift_time := 0.0
 var _held_shift := Vector3.ZERO
 var _walk_rest_feet: Array[Basis] = []
-var _walk_swing_start: Array[Vector3] = [Vector3.ZERO,Vector3.ZERO]
 var _walk_swing_phase := [-1.0,-1.0]
-var _walk_swing_landing: Array[Vector3] = [Vector3.ZERO,Vector3.ZERO]
 var _walking_ik := false
+# Ordinary locomotion planner (clock, swings, plants, settle steps, acting).
+var gait: RefCounted
+var _gait_sides := [false, false]
+# Deterministic leg twist: rest frame (segment, rest face) per leg bone.
+var _rest_bone_basis: Dictionary = {}
+var _rest_frame_inv: Dictionary = {}
+# Default knee pole per leg (WORLD), advanced once per physics frame.
+var _pole_out: Array[Vector3] = [Vector3.INF, Vector3.INF]
+var _pole_base: Array[Vector3] = [Vector3.INF, Vector3.INF]
+var _pole_frame := [-10, -10]
+var _sway_roll_state := 0.0
 # One ordinary idle turn step owns a real lifted sole; all work/stunt owners
 # retain their original targets. Native support remains the spring/capsule.
 var _pivot_side := -1
@@ -98,7 +115,6 @@ var _pivot_start_local := Vector3.ZERO
 var _pivot_support: WeakRef
 var _pivot_local := Vector3.ZERO
 var _pivot_rid := RID()
-var _pivot_next_side := 0
 var _pivot_return_side := -1
 var _pivot_work_side := -1
 var _stopped_turn_pose_ready := false
@@ -133,6 +149,14 @@ func _ready() -> void:
 		_chains.append([sk.find_bone(names[0]), sk.find_bone(names[1]), sk.find_bone(names[2])])
 		_toes.append(sk.find_bone(names[3]))
 		_walk_rest_feet.append(sk.get_bone_global_rest(_chains[-1][2]).basis)
+		for index in 2:
+			var bone: int = _chains[-1][index]
+			var child: int = _chains[-1][index+1]
+			var rest := sk.get_bone_global_rest(bone)
+			_rest_bone_basis[bone] = rest.basis
+			_rest_frame_inv[bone] = _leg_frame(sk.get_bone_global_rest(child).origin-rest.origin,Vector3.FORWARD).transposed()
+	gait = Gait.new()
+	gait.setup(self,sk)
 
 func _process_modification_with_delta(delta: float) -> void:
 	if not is_instance_valid(worker):
@@ -183,15 +207,18 @@ func _process_modification_with_delta(delta: float) -> void:
 		_interrupted_previous_target = Vector3.INF
 		_sway_offset = 0.0
 		_sway_roll = 0.0
+		_sway_roll_state = 0.0
 		_sway_shift = Vector3.ZERO
 		_sway_pitch = 0.0
 		_motion_velocity_valid = false
 		_motion_intent = false
 		_motion_start_age = 0.0
 		evaluated_balance_support_side = -1
+		gait.reset()
 		return
 	var sk := get_skeleton()
 	if sk and worker.head_leap and worker.head_leap.evaluate_airborne(self,sk):
+		gait.reset()
 		_pivot_side = -1
 		_pivot_return_side = -1
 		_pivot_work_side = -1
@@ -207,6 +234,9 @@ func _process_modification_with_delta(delta: float) -> void:
 				_head_joint_rotations[bone] = (sk.global_basis*sk.get_bone_global_pose(bone).basis).get_rotation_quaternion().normalized()
 		return
 	if not sk or not worker.on_ground:
+		# Ordinary locomotion that runs off an edge keeps its own flying legs
+		# (tuck, then reach for the ground) instead of an authored clip pose.
+		var fly: bool = sk != null and _air_allowed() and gait.air(delta)
 		_head_work_continuation = false
 		_head_work_settle = 0.0
 		_head_ground_continuation = false
@@ -246,12 +276,15 @@ func _process_modification_with_delta(delta: float) -> void:
 		_interrupted_previous_target = Vector3.INF
 		_sway_offset = 0.0
 		_sway_roll = 0.0
+		_sway_roll_state = 0.0
 		_sway_shift = Vector3.ZERO
 		_sway_pitch = 0.0
 		_motion_velocity_valid = false
 		_motion_intent = false
 		_motion_start_age = 0.0
 		evaluated_balance_support_side = -1
+		if fly: _air_legs(sk)
+		else: gait.reset()
 		if sk and worker.ragdoll: worker.ragdoll.remember_pose()
 		return
 	# Only this same native-contact Head lease acquires the work handoff.
@@ -393,8 +426,42 @@ func _process_modification_with_delta(delta: float) -> void:
 	var walking: bool = not native_peer_stance and worker.action.is_empty() and worker._animation.current_animation in ["wk_walkcycle", "work/carry", "work/run"]
 	# Ordinary terrain travel and its idle landing own Cartesian sole targets.
 	# Head and foot actions retain their separate captured-pose handoffs.
+	var was_walking_ik := _walking_ik
 	_walking_ik = worker.action.is_empty() and (head_prepare or (not _head_gait_continuation and _work_release.is_empty() and worker._animation.current_animation in ["wk_idle","wk_walkcycle","work/carry","work/run"]))
+	# An action begun while the body still slides from a run (native braking
+	# takes ~.5 m from 3.4 m/s) would drag its planted clip feet along the
+	# ground: the gait keeps the legs for its braking steps (at most .6 s;
+	# never for foot work, head, back-tool or tool owners, whose own entry
+	# solves start from the published legs) and then hands over through the
+	# usual release blend.
+	var braking: bool = was_walking_ik and not _walking_ik and gait.active and worker.on_ground and not worker.action.is_empty() \
+		and not manipulation and not worker.feet_work_active() and not worker.tool_foot_occupied() and not head_prepare \
+		and not _head_ground_continuation and not _head_work_continuation and not _head_gait_continuation and _work_release.is_empty() \
+		and not (worker.head_leap and worker.head_leap.active()) and not (worker.back_tool and (worker.back_tool.busy() or worker.back_tool.pose_owned()))
+	if braking:
+		var slide: float = (worker.linear_velocity-worker.ground_velocity).slide(worker.ground_normal).length()
+		braking = slide > .8 if _brake_handoff_age < 0.0 else _brake_handoff_age < .6 and (slide > .1 or gait.state[0] != Gait.PLANTED or gait.state[1] != Gait.PLANTED)
+	if braking:
+		_brake_handoff_age = maxf(_brake_handoff_age,0.0)+delta
+		_walking_ik = true
+	else: _brake_handoff_age = -1.0
+	if was_walking_ik and not _walking_ik and evaluated_valid:
+		# The gait can hand its legs over mid-stride (an action begins on
+		# arrival or interrupts): remember its last joints for a short blend.
+		_gait_release_rotations.clear()
+		for side in 2:
+			_gait_release_rotations[side] = [evaluated_soles[side], evaluated_ankles[side].get_rotation_quaternion()]
+		_gait_release_age = 0.0
 	_update_travel_pole_handoff(delta)
+	_gait_sides = [false, false]
+	if _walking_ik:
+		# Head preparation/landing and a peer's native half-turn keep their
+		# plants; the planner then only finishes swings already in the air.
+		var hold_feet: bool = head_prepare or _head_ground_continuation or native_peer_stance
+		gait.plan(sk,delta,_settle_allowed(),hold_feet,_head_work_continuation)
+	# Another owner took the legs: the locomotion acting fades out instead of
+	# vanishing in one tick (and a resume continues from what is left).
+	else: gait.release(delta)
 	if walking or worker.action in ["place","brace"] or supported_head_pickup:
 		if not _gait_handoff_active: _gait_handoff_velocity = [Vector3.ZERO,Vector3.ZERO]
 		_gait_handoff_active = true
@@ -642,7 +709,10 @@ func _process_modification_with_delta(delta: float) -> void:
 		var held_lift: float = _held_lift if free_tool and side == worker.tool_foot_side() else 0.0
 		var held_shift: Vector3 = _held_shift if free_tool and side == worker.tool_foot_side() else Vector3.ZERO
 		var target: Vector3 = local_inv * (_targets[side]+hit.normal*held_lift+held_shift) - basis * ankle_to_sole
-		_solve(sk, upper, lower, foot, target, .96 if stance else .68, basis)
+		# Full-weight solves: a partial blend between the imported (old +Z
+		# knee) clip and the face-bent solution would park the knee halfway
+		# round and let a planted sole drift with the clip.
+		_solve(sk, upper, lower, foot, target, 1.0, basis)
 		evaluated_grounded[side] = stance and held_lift < .01
 		if manipulation and side != worker.work_foot_side and stance:
 			worker.stance_point = _targets[side]
@@ -720,6 +790,8 @@ func _process_modification_with_delta(delta: float) -> void:
 				_project_sole_above_terrain(sk,side,local_inv,delta)
 				if _gait_handoff_active and evaluated_valid: _blend_gait_handoff(sk,side,local_inv,speed,delta)
 	else: _gait_rotations.clear()
+	if not _walking_ik and _gait_release_age < GAIT_RELEASE_BLEND:
+		_blend_gait_release(sk,manipulation,delta)
 	_blend_work_release(sk,delta)
 	if free_tool and not _head_gait_continuation and not _work_release.is_empty():
 		# The captured fitting sole follows a moving rig after the earlier
@@ -995,7 +1067,8 @@ func _process_modification_with_delta(delta: float) -> void:
 		evaluated_knees[side] = sk.global_transform * sk.get_bone_global_pose(_chains[side][1]).origin
 		evaluated_ankles[side] = sk.global_basis * sk.get_bone_global_pose(_chains[side][2]).basis
 		evaluated_soles[side] = sk.global_transform * (sk.get_bone_global_pose(_chains[side][2]) * Vector3(0, _ankle_height[side], 0))
-		evaluated_grounded[side] = evaluated_grounded[side] and evaluated_soles[side].distance_to(_targets[side]) < .10
+		# Gait plants publish support only for a sole actually on its plant.
+		evaluated_grounded[side] = evaluated_grounded[side] and evaluated_soles[side].distance_to(_targets[side]) < (.02 if _gait_sides[side] else .10)
 		if work_support and side != worker.work_foot_side and not evaluated_grounded[side]:
 			# No work completion may claim the old plant while this sole is still
 			# moving toward its newly observed supported location.
@@ -1365,12 +1438,6 @@ func _walk_ground(point: Vector3) -> Dictionary:
 	var hit := worker.get_world_3d().direct_space_state.intersect_ray(_terrain_query)
 	return hit if not hit.is_empty() and hit.normal.y>.6 else {}
 
-func _walk_swing_progress(t: float) -> float:
-	# Ease only the departure and landing; the middle visibly travels forward.
-	const EDGE := .12
-	if t<EDGE: return t*t/(2.0*EDGE*(1.0-EDGE))
-	if t>1.0-EDGE: return 1.0-(1.0-t)*(1.0-t)/(2.0*EDGE*(1.0-EDGE))
-	return (t-EDGE*.5)/(1.0-EDGE)
 
 func _stopped_turn_allowed() -> bool:
 	return worker.on_ground and _walking_ik and evaluated_valid and worker.action.is_empty() \
@@ -1383,24 +1450,34 @@ func _stopped_turn_allowed() -> bool:
 		and not (worker.back_tool and (worker.back_tool.busy() or worker.back_tool.pose_owned() or worker.back_tool.recovering())) \
 		and not (worker.idle_play and (not worker.idle_play.state.is_empty() or worker.idle_play.physical_recovery_pending()))
 
+func _settle_allowed() -> bool:
+	# Ordinary free stance: settle/turn steps may lift a sole. Every captured
+	# work/head/back/gun/idle-play owner keeps its own plants, and so does a
+	# frightened stop (the danger clip takes the legs as the body settles: a
+	# settle step it interrupted was left skating along with the cube).
+	return worker.on_ground and evaluated_valid and worker.action.is_empty() and worker.fear_time <= 0.0 \
+		and not is_instance_valid(worker.equipped_gun) \
+		and not _head_ground_continuation and not _head_work_continuation and not _head_gait_continuation \
+		and not _head_landing_continuation and _work_release.is_empty() and _work_entry.is_empty() \
+		and not _travel_tool_handoff \
+		and not (worker.head_leap and worker.head_leap.active()) \
+		and not (worker.back_tool and (worker.back_tool.busy() or worker.back_tool.pose_owned() or worker.back_tool.recovering())) \
+		and not (worker.portable_gun and worker.portable_gun.handoff_active()) \
+		and not (worker.idle_play and (worker.idle_play.state not in ["","run"] or worker.idle_play.physical_recovery_pending()))
+
 func stopped_turn_limit() -> float:
-	if not _stopped_turn_allowed(): return 6.0
-	# The facing rig must not rotate past an old planted foot. Ease the
-	# heading as that real footprint narrows, then resume after its step.
-	# This bounds visual heading only; original body force/speed is intact.
-	var margin := INF
+	# Helper heading cap while standing. Settle steps follow the heading, so
+	# the cube turns briskly and only slows as a planted leg nears its reach.
+	if not gait or not gait.active or not _settle_allowed(): return 6.0
+	# The hips never twist far past a planted foot (braided shins): the turn
+	# waits for the next step, which lands turned into the new heading.
+	if gait.moving: return gait.turn_limit(6.0)
+	var limit: float = gait.turn_limit(3.4)
 	for side in 2:
-		var sign: float = -1.0 if side==0 else 1.0
-		margin=minf(margin,(evaluated_soles[side]-worker.global_position).dot(worker._model.global_basis.x)*sign)
-	var limit: float = 3.0*smoothstep(.025,.13,margin)
-	for side in 2:
-		if side==_pivot_side or not evaluated_grounded[side]: continue
-		# Facing also moves a supported hip around its old world plant. Leave
-		# room for the finite gather/settle instead of stretching that other
-		# sole off the floor while the stepping foot is still lowering.
+		if gait.state[side] != Gait.PLANTED or not evaluated_grounded[side]: continue
 		var ankle: Vector3 = evaluated_soles[side]-evaluated_ankles[side]*Vector3(0,_ankle_height[side],0)
 		var spare: float = worker._leg_lengths[side]-.012-evaluated_hips[side].distance_to(ankle)
-		limit=minf(limit,3.0*smoothstep(.012,.030,spare))
+		limit = minf(limit,.6+3.6*smoothstep(.0,.035,spare))
 	return limit
 
 func _update_stopped_turn(sk: Skeleton3D, delta: float) -> void:
@@ -1417,78 +1494,9 @@ func _update_stopped_turn(sk: Skeleton3D, delta: float) -> void:
 		elif _pivot_return_side==worker.work_foot_side:
 			_pivot_return_side=-1
 		return
-	if _pivot_side>=0:
-		var owner: Object = _pivot_support.get_ref() if _pivot_support else null
-		if not owner is Node3D or not owner.is_inside_tree() or owner.is_queued_for_deletion() or not _pivot_rid.is_valid():
-			_cancel_stopped_turn(true)
-			return
-		_pivot_age+=delta
-		var landing: Vector3 = owner.to_global(_pivot_local)
-		if _pivot_age>=.025+_pivot_duration and _preceding_grounded[_pivot_side] and evaluated_soles[_pivot_side].distance_to(landing)<.001:
-			_pivot_next_side=1-_pivot_side
-			_pivot_side=-1
-		return
-	if not (_preceding_grounded[0] and _preceding_grounded[1] and _target_valid[0] and _target_valid[1]): return
-	var error: float = wrapf(worker._idle_heading-worker._heading,-PI,PI)
-	var lead: float = clampf(error,-.42,.42)
-	var selected := -1
-	var selected_hit: Dictionary = {}
-	var distance := .055
-	# Publish quiet only when this original scan actually proves BOTH feet
-	# need no placement. Completing one pivot returns before this scan.
-	_stopped_turn_pose_ready = true
-	for order in 2:
-		var side: int = (_pivot_next_side+order)%2
-		var hip: Vector3 = sk.global_transform*sk.get_bone_global_pose(_chains[side][0]).origin
-		# The authored standing ankles lie below their own hips. Predict a
-		# short part of the actual requested turn, never a completed half-turn.
-		var offset: Vector3 = (hip-worker.global_position).slide(worker.ground_normal)
-		var point: Vector3 = worker.global_position+offset.rotated(worker.ground_normal,lead)
-		# Quiet idle needs no extra terrain rays. Only an actual displaced
-		# footprint or requested turn can ask for a fresh landing observation.
-		if (point-evaluated_soles[side]).slide(worker.ground_normal).length()<=distance: continue
-		_stopped_turn_pose_ready = false
-		var hit := _walk_ground(point)
-		if hit.is_empty() or not hit.collider is Node3D: continue
-		var normal: Vector3 = (sk.global_basis.inverse()*hit.normal).normalized()
-		var rest: Basis = _walk_rest_feet[side]
-		var basis := Basis(Quaternion(-rest.y.normalized(),normal))*rest
-		var ankle: Vector3 = hit.position-sk.global_basis*basis*Vector3(0,_ankle_height[side],0)
-		if hip.distance_to(ankle)>worker._leg_lengths[side]-.012: continue
-		var gap: float = evaluated_soles[side].distance_to(hit.position)
-		if gap>distance:
-			distance=gap
-			selected=side
-			selected_hit=hit
-	if selected<0: return
-	_pivot_side=selected
-	_pivot_age=0.0
-	_pivot_start=evaluated_soles[selected]
-	var original_support: Object = _support[selected].get_ref()
-	_pivot_start_support=weakref(original_support)
-	_pivot_start_local=original_support.to_local(_pivot_start) if original_support is Node3D else _pivot_start
-	_pivot_support=weakref(selected_hit.collider)
-	_pivot_rid=selected_hit.rid
-	_pivot_local=selected_hit.collider.to_local(selected_hit.position)
-	# A brief gather, fast passage and ease-out contact share the original
-	# finite Cartesian speed. Long old strides take enough time to return.
-	_pivot_duration=clampf(distance/1.10,.16,.36)
-
-func _stopped_turn_target(side: int) -> Dictionary:
-	if side!=_pivot_side: return {}
-	var owner: Object = _pivot_support.get_ref() if _pivot_support else null
-	if not owner is Node3D or not owner.is_inside_tree() or owner.is_queued_for_deletion(): return {}
-	var landing: Vector3 = owner.to_global(_pivot_local)
-	var t: float = clampf((_pivot_age-.025)/_pivot_duration,0.0,1.0)
-	var progress: float = _walk_swing_progress(t)
-	var original_support: Object = _pivot_start_support.get_ref() if _pivot_start_support else null
-	var start: Vector3 = original_support.to_global(_pivot_start_local) if original_support is Node3D and original_support.is_inside_tree() else _pivot_start
-	var desired: Vector3 = start.lerp(landing,progress)+worker.ground_normal*pow(sin(PI*t),2.0)*.055
-	var hit := _walk_ground(desired)
-	if hit.is_empty() or hit.collider!=owner or hit.rid!=_pivot_rid:
-		_cancel_stopped_turn(true)
-		return {}
-	return {"desired":desired,"hit":hit,"t":t,"landing":landing}
+	# Quiet only when the gait's own stance scan proves both soles need no
+	# settle step (it replaced the old single idle pivot, incl. turning).
+	_stopped_turn_pose_ready = gait.active and gait.quiet and _preceding_grounded[0] and _preceding_grounded[1]
 
 func _cancel_stopped_turn(support_lost: bool) -> void:
 	if _pivot_side>=0:
@@ -1609,250 +1617,213 @@ func _continue_cancelled_pivot(sk: Skeleton3D, delta: float, manipulation: bool)
 	_support_local[side]=hit.collider.to_local(hit.position) if hit.collider is Node3D else Vector3.ZERO
 	_pivot_start_local=owner.to_local(hit.position)
 
-func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, walking: bool, speed: float, phase: float, delta: float) -> void:
+func _air_allowed() -> bool:
+	# Only a plain locomotion flight: actions, a foot-held tool, head/back
+	# owners, idle play and water keep their own airborne presentation.
+	return worker.action.is_empty() and not worker.tool_foot_occupied() \
+		and not (worker.head_leap and worker.head_leap.active()) \
+		and not (worker.back_tool and (worker.back_tool.busy() or worker.back_tool.pose_owned())) \
+		and not (worker.idle_play and (worker.idle_play.state not in ["","run"] or worker.idle_play.water_support_active() or worker.idle_play.physical_recovery_pending()))
+
+func _air_legs(sk: Skeleton3D) -> void:
+	# Solve the flying legs the gait planned (Gait.air): same face-bent
+	# two-link solve and fading acting root as on the ground.
+	if gait.acting(): sk.set_bone_global_pose(0,gait.acting_root(sk,sk.get_bone_global_pose(0)))
+	var local_inv := sk.global_transform.affine_inverse()
+	for side in 2:
+		var chain: Array = _chains[side]
+		var basis: Basis = sk.global_basis.inverse()*gait.out_basis[side]
+		_solve(sk,chain[0],chain[1],chain[2],local_inv*gait.out_sole[side]-basis*Vector3(0,_ankle_height[side],0),1.0,basis)
+		if _toes[side] >= 0:
+			var rest := sk.get_bone_rest(_toes[side]).basis.get_rotation_quaternion()
+			var wanted := (Quaternion(gait._toe_axis[side],gait.out_toe[side])*rest).normalized()
+			sk.set_bone_pose_rotation(_toes[side],sk.get_bone_pose_rotation(_toes[side]).slerp(wanted,maxf(gait.locomotion_weight,.5)))
+
+func _blend_gait_release(sk: Skeleton3D, manipulation: bool, delta: float) -> void:
+	# Owners without their own joint handoff (step, push, pull, ...) read
+	# authored clip feet: entered mid-stride that is a one-tick knee snap. Ease
+	# their soles in from the gait's last published soles over
+	# GAIT_RELEASE_BLEND and re-solve the same face-bent leg (a Cartesian
+	# blend, so a sole both owners plant at the same spot never dips). Owners
+	# that already filter from _gait_rotations, and a manipulated work foot,
+	# keep their own continuity.
+	_gait_release_age += delta
+	var filtered: bool = worker.action in ["","interrupted","place","brace"]
+	var w := smoothstep(0.0, GAIT_RELEASE_BLEND, _gait_release_age)
+	var local_inv := sk.global_transform.affine_inverse()
+	for side in 2:
+		if filtered or (manipulation and side == worker.work_foot_side) or not _gait_release_rotations.has(side): continue
+		var chain: Array = _chains[side]
+		var released: Array = _gait_release_rotations[side]
+		var foot_pose := sk.get_bone_global_pose(chain[2])
+		var offset := Vector3(0,_ankle_height[side],0)
+		var owner_sole: Vector3 = sk.global_transform*(foot_pose*offset)
+		var sole: Vector3 = (released[0] as Vector3).lerp(owner_sole,w)
+		var basis: Basis = sk.global_basis.inverse()*Basis((released[1] as Quaternion).slerp((sk.global_basis*foot_pose.basis).get_rotation_quaternion(),w))
+		_solve(sk,chain[0],chain[1],chain[2],local_inv*sole-basis*offset,1.0,basis)
+	if _gait_release_age >= GAIT_RELEASE_BLEND: _gait_release_rotations.clear()
+
+func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walking: bool, _speed: float, _phase: float, delta: float) -> void:
+	# Ordinary locomotion: the gait planner owns the sole, its yaw/roll and the
+	# plant/support bookkeeping; this solves the finite leg and publishes it.
 	var chain: Array = _chains[side]
 	var hip: Vector3 = sk.global_transform*sk.get_bone_global_pose(chain[0]).origin
-	var foot_phase := fposmod(phase+side*.5,1.0)
-	var holding_tool: bool = worker.tool_foot_occupied()
-	# Free feet use the existing gait-handoff travel envelope; a retained full
-	# tool keeps its original slower finite Cartesian budget.
-	var sole_step: float = minf(.045,delta*5.4) if holding_tool else minf(.075,delta*maxf(speed*2.2+.4,1.2))
-	# A full retained tool keeps the original finite toe speed. At a run its
-	# foot spends more of the cycle in a lower swing instead of hurrying.
-	var swing_begin := lerpf(.5,.24,smoothstep(2.1,3.2,speed)) if holding_tool else .5
-	var finish_landing: bool = walking and not holding_tool and not worker.carrying and not (worker.head_leap and worker.head_leap.active())
-	var ordinary_free_gait: bool = finish_landing and not _head_ground_continuation and not _head_work_continuation \
-		and not _head_gait_continuation and _work_release.is_empty() \
-		and not (worker.back_tool and (worker.back_tool.pose_owned() or worker.back_tool.recovering())) \
-		and not (worker.idle_play and worker.idle_play.physical_recovery_pending())
-	var responsive_swing: bool = ordinary_free_gait and worker.action.is_empty() and not _head_landing_continuation \
-		and _interrupted_handoff_side<0 and _work_entry.is_empty() and not _travel_tool_handoff and not _travel_pole_handoff \
-		and not (worker.idle_play and worker.idle_play.state not in ["","run"])
-	if _walk_swing_phase[side] == WALK_PENDING_LANDING and not finish_landing: _walk_swing_phase[side] = -1.0
-	var velocity: Vector3 = (worker.linear_velocity-worker.ground_velocity).slide(worker.ground_normal)
-	var direction: Vector3 = velocity.normalized() if velocity.length_squared()>.01 else (-worker._model.global_basis.z).slide(worker.ground_normal).normalized()
-	var stance_distance: float = .40 if worker.carrying else .50 if worker._animation.current_animation=="work/run" else .46
-	if responsive_swing and evaluated_valid:
-		if _walk_swing_phase[side]>=0.0:
-			# Finish this same released step if its actual plant required an early lift.
-			swing_begin = minf(swing_begin,_walk_swing_phase[side])
-		elif _walk_swing_phase[side]!=WALK_PENDING_LANDING and _preceding_grounded[side] and _target_valid[side]:
-			var opposite_plant: bool = _preceding_grounded[1-side] and _target_valid[1-side]
-			var running_flight: bool = worker._animation.current_animation=="work/run" and worker.on_ground
-			var actual_plant: Vector3 = evaluated_soles[side]+worker.ground_velocity*delta
-			# A real held plant must release before the hip pulls it beyond its
-			# half-stride. Walking keeps the opposite plant; native running may fly.
-			if (opposite_plant or running_flight) and (actual_plant-hip).dot(direction)<-stance_distance*.55:
-				# At native 120 Hz and the original 3x/.6s travel cap, a
-				# wrapped phase advances at most .042. This minimum stance
-				# guarantees the next wrap reaches the original landing branch.
-				swing_begin = minf(swing_begin,maxf(foot_phase,.12))
-	var swing: bool = walking and speed>.18 and foot_phase>=swing_begin and _walk_swing_phase[side] != WALK_PENDING_LANDING
-	var cycle_seconds: float = worker._animation.current_animation_length/maxf(worker._animation.speed_scale,.01)
-	var support: Object = _support[side].get_ref()
-	var previous: Vector3 = evaluated_soles[side]+worker.ground_velocity*delta if evaluated_valid else sk.global_transform*(sk.get_bone_global_pose(chain[2])*Vector3(0,_ankle_height[side],0))
-	var desired := previous
-	var hit: Dictionary = {}
-	var pivot: Dictionary = _stopped_turn_target(side)
-	if not pivot.is_empty():
-		desired=pivot.desired
-		hit=pivot.hit
-		swing=true
-		_target_valid[side]=false
-		_walk_swing_phase[side]=-1.0
-		_plant_weights[side]=1.0-smoothstep(0.0,.12,pivot.t) if pivot.t<.5 else smoothstep(.88,1.0,pivot.t)
-		if pivot.t>=1.0:
-			swing=false
-			desired=pivot.landing
-			_support[side]=weakref(hit.collider)
-			_support_rids[side]=hit.rid
-			_support_local[side]=hit.collider.to_local(desired)
-			_target_valid[side]=true
-	elif swing:
-		var starting: bool = _walk_swing_phase[side]<0.0
-		if _walk_swing_phase[side]<0.0:
-			_walk_swing_start[side] = support.to_global(_support_local[side]) if _target_valid[side] and support is Node3D else previous
-			_walk_swing_phase[side] = maxf(foot_phase,swing_begin)
-			_walk_swing_landing[side] = hip+velocity*cycle_seconds*(1.0-foot_phase)+direction*stance_distance*.5
-		var remaining: float = cycle_seconds*(1.0-foot_phase)
-		var landing: Vector3 = hip+velocity*remaining+direction*stance_distance*.5
-		var landing_hit := _walk_ground(landing)
-		if not landing_hit.is_empty():
-			# The final sole already follows the unchanged Cartesian travel cap.
-			# A second target filter makes the free foot chase yesterday's turn.
-			_walk_swing_landing[side] = landing_hit.position if starting or ordinary_free_gait else _walk_swing_landing[side].lerp(landing_hit.position,1.0-exp(-30.0*delta))
-		var t := clampf((foot_phase-_walk_swing_phase[side])/maxf(1.0-_walk_swing_phase[side],.01),0.0,1.0)
-		# The released free foot must overtake the native hip during its swing,
-		# rather than spending half of that swing behind the old plant. Keep
-		# the same landing, duration and finite sole/reach/riser checks below.
-		var curve_t: float = t
-		if responsive_swing:
-			curve_t = t+.16*sin(PI*t)
-		var lift := .075 if holding_tool else lerpf(.09,.14,smoothstep(2.1,3.2,speed))
-		var rise := maxf((_walk_swing_landing[side]-_walk_swing_start[side]).dot(worker.ground_normal),0.0)
-		desired = _walk_swing_start[side].lerp(_walk_swing_landing[side],_walk_swing_progress(curve_t))+worker.ground_normal*pow(sin(PI*curve_t),2.0)*(lift+rise*.45)
-		hit = _walk_ground(desired)
-		_target_valid[side] = false
-		_plant_weights[side] = 1.0-smoothstep(0.0,.14,t) if t<.5 else smoothstep(.90,1.0,t)
-	else:
-		if _walk_swing_phase[side]>=0.0:
-			# Land from the actual preceding swing, including an early stop.
-			desired = previous
-			_walk_swing_phase[side] = WALK_PENDING_LANDING if finish_landing else -1.0
-			_target_valid[side] = false
-		if _walk_swing_phase[side] == WALK_PENDING_LANDING:
-			# Finish the same missed swing toward its real native landing. Pure
-			# lowering in the old column lets native travel pull this sole behind.
-			# A missed airborne landing can become stale as the native body turns.
-			# Retarget that same released foot before its old point trails a whole
-			# half-stride; a planted sole never enters this path.
-			if ordinary_free_gait and (_walk_swing_landing[side]-hip).dot(direction)<-stance_distance*.5:
-				var current_landing := _walk_ground(hip+direction*stance_distance*.5)
-				if not current_landing.is_empty(): _walk_swing_landing[side] = current_landing.position
-			var landing_hit := _walk_ground(_walk_swing_landing[side])
-			var offset: Vector3 = evaluated_ankles[side]*Vector3(0,_ankle_height[side],0)
-			var landing_reach: float = worker._leg_lengths[side]-.012
-			var waiting_for_descent := false
-			if not landing_hit.is_empty():
-				var separation: Vector3 = landing_hit.position-offset-hip
-				# Captured Head/Back returns retain their original endpoint owners.
-				var ordinary_landing: bool = not _head_ground_continuation and not _head_work_continuation \
-					and not (worker.back_tool and (worker.back_tool.pose_owned() or worker.back_tool.recovering())) \
-					and not (worker.idle_play and worker.idle_play.physical_recovery_pending())
-				if separation.length()>landing_reach and ordinary_landing:
-					var landing_height: float = landing_hit.normal.dot(separation)
-					if landing_height < -landing_reach:
-						# During a native descent no ground point can be reached yet.
-						# Keep lateral guidance airborne, but release an expired step
-						# once its original half-stride lies behind the actual hip.
-						waiting_for_descent = (landing_hit.position-hip).dot(direction)>=-stance_distance*.5
-			if not landing_hit.is_empty() and (hip.distance_to(landing_hit.position-offset)<=landing_reach or waiting_for_descent):
-				# The original lowering and reachable-sole clamps below still own
-				# vertical motion; this never publishes an elevated foot as planted.
-				var along: Vector3 = (landing_hit.position-previous).slide(landing_hit.normal)
-				desired = previous+along.limit_length(sole_step)
-			else:
-				_walk_swing_phase[side] = -1.0
-		if _target_valid[side] and support is Node3D:
-			desired = support.to_global(_support_local[side])
-			hit = _walk_ground(desired)
-			if not hit.is_empty() and (hit.collider != support or hit.rid != _support_rids[side]): _target_valid[side] = false
-			if not hit.is_empty() and _target_valid[side] and worker.idle_play and worker.idle_play.get("upside_down") and worker.idle_play.upside_down.owns_lower_stance():
-				# A braced real foot can slide on its SAME floor as the finite
-				# lower body recoils. Reuse the original reach and sole-speed
-				# budgets before extension would lift that plant off the floor.
-				var rest: Basis=_walk_rest_feet[side]
-				var normal: Vector3=(sk.global_basis.inverse()*hit.normal).normalized()
-				var plant_basis:=Basis(Quaternion(-rest.y.normalized(),normal))*rest
-				var reachable:=_reachable_plant(sk,side,desired,plant_basis,hit.normal)
-				var next: Vector3=previous.move_toward(reachable,sole_step)
-				var next_hit:=_walk_ground(next)
-				if not next_hit.is_empty() and next_hit.collider==support and next_hit.rid==_support_rids[side] and next_hit.normal.y>.97:
-					desired=next_hit.position; hit=next_hit
-					_support_local[side]=support.to_local(desired)
-		else:
-			# A released sole ahead of the current hip can finish lowering in
-			# its own native column. Guiding it forward again delays that plant.
-			if ordinary_free_gait and _walk_swing_phase[side] != WALK_PENDING_LANDING and (previous-hip).dot(direction)<0.0:
-				var current_landing := _walk_ground(hip+direction*stance_distance*.5)
-				if not current_landing.is_empty():
-					var along: Vector3 = (current_landing.position-previous).slide(current_landing.normal)
-					desired = previous+along.limit_length(sole_step)
-			hit = _walk_ground(desired)
-			if not hit.is_empty():
-				if not walking:
-					# A wide last stride may not fit the taller idle hip. Return the
-					# released sole toward a reachable point on its real support.
-					var rest: Basis = _walk_rest_feet[side]
-					var normal: Vector3 = (sk.global_basis.inverse()*hit.normal).normalized()
-					var standing_basis := Basis(Quaternion(-rest.y.normalized(),normal))*rest
-					var reachable := _reachable_plant(sk,side,hit.position,standing_basis,hit.normal)
-					desired = desired.move_toward(reachable,delta*.9)
-					hit = _walk_ground(desired)
-					if hit.is_empty(): return
-				# Stop lowering stays in Cartesian space; a plant is published only
-				# when the actual sole reaches the observed physical support.
-				desired = desired.move_toward(hit.position,delta*1.25)
-				if desired.distance_to(hit.position)<.003:
-					desired = hit.position
-					_support[side] = weakref(hit.collider)
-					_support_rids[side] = hit.rid
-					if hit.collider is Node3D: _support_local[side] = hit.collider.to_local(desired)
-					_target_valid[side] = true
-		_plant_weights[side] = 1.0
-	if hit.is_empty():
-		_target_valid[side] = false
-		evaluated_grounded[side] = false
-		return
-	# A Cartesian speed limit must not be followed by an instant upward
-	# projection onto a newly crossed riser. Raise in the actual lower column
-	# before advancing over that top; native support and reach stay unchanged.
-	if evaluated_valid:
-		var rise: float = hit.normal.dot(hit.position-previous)
-		if rise>.0001:
-			var beneath := _walk_ground(previous)
-			if not beneath.is_empty() and hit.normal.dot(hit.position-beneath.position)>.025:
-				desired = previous+hit.normal*minf(rise,sole_step)
-				hit = beneath
-				_target_valid[side] = false
-	_terrain_points[side] = hit.position
-	_sole_normals[side] = hit.normal
-	desired += hit.normal*maxf(-hit.normal.dot(desired-hit.position),0.0)
-	var rest := _walk_rest_feet[side]
-	var normal: Vector3 = (sk.global_basis.inverse()*hit.normal).normalized()
-	var basis := Basis(Quaternion(-rest.y.normalized(),normal))*rest
-	# At a descending edge the native hip can still be above the old tread.
-	# Keep the same lateral sole column and wait for the finite leg to reach
-	# the lower terrain; that airborne return must never publish a new plant.
-	var ankle_offset: Vector3 = sk.global_basis*basis*Vector3(0,_ankle_height[side],0)
-	var hip_to_ankle: Vector3 = desired-ankle_offset-hip
-	var horizontal: Vector3 = hip_to_ankle.slide(hit.normal)
-	var reach: float = worker._leg_lengths[side]-.012
-	if horizontal.length_squared()<reach*reach:
-		var lowest := -sqrt(reach*reach-horizontal.length_squared())
-		desired += hit.normal*maxf(lowest-hit.normal.dot(hip_to_ankle),0.0)
-	if evaluated_valid:
-		# A free swing can cross a real rack/deck edge after its tool is seated
-		# on the back. Keep that downward return finite as well as upward steps,
-		# limiting the actual reachable sole rather than restoring a new curve.
-		var limited: Vector3 = previous.move_toward(desired,sole_step) if holding_tool else _bounded_head_sole(sk,side,previous,desired,basis,sole_step)
-		if limited.distance_squared_to(desired)>1e-12:
-			desired = limited
-			hit = _walk_ground(desired)
-			if hit.is_empty(): return
-			# The requested curve can already lie beyond a thin rack while its
-			# bounded intermediate step still enters that rack's higher column.
-			# Test this actual column before projecting, and lift outside the
-			# riser with the same finite budget instead of jumping onto its top.
-			var rise: float = hit.normal.dot(hit.position-previous)
-			if rise>.0001:
-				var beneath := _walk_ground(previous)
-				if not beneath.is_empty() and hit.normal.dot(hit.position-beneath.position)>.025:
-					desired = previous+hit.normal*minf(rise,sole_step)
-					hit = beneath
-					_target_valid[side] = false
-			desired += hit.normal*maxf(-hit.normal.dot(desired-hit.position),0.0)
-			_terrain_points[side] = hit.position
-			_sole_normals[side] = hit.normal
-	var head_cargo: bool = worker.carrying and is_instance_valid(worker._cargo_source) and worker.head_leap and worker.head_leap.contacted and worker.head_leap.part==worker._cargo_source
-	if evaluated_valid and (_head_ground_continuation or head_cargo):
-		# The same actual Head-held source retains its landing's finite sole
-		# budget after full pose convergence hands ordinary carrying gait back.
-		desired = _bounded_head_sole(sk,side,evaluated_soles[side],desired,basis,minf(.045,delta*5.4))
-	if hit.normal.dot(desired-hit.position)>.0001: _target_valid[side] = false
-	if not swing and _target_valid[side] and _walk_swing_phase[side] == WALK_PENDING_LANDING: _walk_swing_phase[side] = -1.0
-	_targets[side] = desired
-	var held_lift: float = _held_lift if worker.tool_foot_occupied() and side==worker.tool_foot_side() else 0.0
-	var held_shift: Vector3 = _held_shift if worker.tool_foot_occupied() and side==worker.tool_foot_side() else Vector3.ZERO
-	var ankle: Vector3 = local_inv*(desired+hit.normal*held_lift+held_shift)-basis*Vector3(0,_ankle_height[side],0)
-	_solve(sk,chain[0],chain[1],chain[2],ankle,1.0,basis)
-	for bone: int in [chain[0],chain[1]]: _gait_rotations[bone] = sk.get_bone_pose_rotation(bone)
-	evaluated_grounded[side] = not swing and _target_valid[side] and held_lift<.01
-	if worker.tool_foot_occupied() and side==worker.tool_foot_side():
+	var sole: Vector3 = gait.out_sole[side]
+	var hit: Dictionary = gait.out_hit[side]
+	var planted: bool = gait.out_planted[side]
+	var world_basis: Basis = gait.out_basis[side]
+	var basis := sk.global_basis.inverse()*world_basis
+	var ankle_offset: Vector3 = world_basis*Vector3(0,_ankle_height[side],0)
+	if planted and gait.stance_age[side] < .001:
+		var contact_offset: Vector3 = sole-ankle_offset-hip
+		# A contact the shown knee is still far from (the swing's knee rate limit
+		# held it back while the body dropped) keeps reaching instead of popping.
+		var knee_gap: float = absf(gait.knee_flex(side,contact_offset.length())-gait.knee_prev[side]) if is_finite(gait.knee_prev[side]) else 0.0
+		if (contact_offset.length()>worker._leg_lengths[side]-.014 or knee_gap>deg_to_rad(10.0)) and gait.defer_contact(side,contact_offset,knee_gap):
+			planted = false
+			hit = {}
+	if not planted:
+		gait.validate_landing(side,hip)
+		# An airborne sole keeps its own column and rises until the leg can
+		# reach it (down-steps, descents); clamping along the leg would drag
+		# it back toward the hip. Planted soles stay exact or are re-planned.
+		# A swing keeps a little knee flex (no whip through full extension),
+		# eased in from the stance's own reach so the lift-off knee folds
+		# continuously instead of jumping to the swing margin and holding.
+		var t_swing: float = gait.t[side]
+		var reach: float = worker._leg_lengths[side]-.012-.018*smoothstep(0.0,.3,t_swing)*(1.0-smoothstep(.7,1.0,t_swing))
+		var hip_to_ankle: Vector3 = sole-ankle_offset-hip
+		var horizontal := hip_to_ankle.slide(Vector3.UP)
+		if horizontal.length_squared()<reach*reach:
+			sole.y += maxf(-sqrt(reach*reach-horizontal.length_squared())-hip_to_ankle.y,0.0)
+		if t_swing>.5 and gait.landing[side].y<gait._swing_start(side).y-.05:
+			# Stepping down: late in the swing the leg reaches forward and down
+			# for the lower tread (knee <= ~75 deg) instead of holding the heel
+			# folded up high and stabbing down, wherever the ground under the
+			# reaching sole is clear (past the edge).
+			var cap: float = lerpf(PI,deg_to_rad(75.0),smoothstep(.5,.75,t_swing))
+			var reach_to: Vector3 = sole-ankle_offset-hip
+			var reach_span: float = reach_to.length()
+			if reach_span>.001 and gait.knee_flex(side,reach_span)>cap:
+				var stretched: Vector3 = hip+reach_to/reach_span*gait.knee_span(side,cap)+ankle_offset
+				# The whole foot must be past the edge: its sole point and both
+				# ends (toe and heel) clear the ground under them.
+				if gait.foot_clear(stretched,gait.foot_along(side,world_basis),.015): sole = stretched
+		# An airborne foot straightens its knee at most ~9 deg a tick (the
+		# planned arc can ask for more as the leg nears extension: a whip). A
+		# contact the limited knee has not reached yet keeps reaching (deferred
+		# below), so the plant is still exact. Extension is always limited (it
+		# only keeps the sole nearer the hip); the fold only over clear ground.
+		var previous_flex: float = gait.knee_prev[side]
+		if is_finite(previous_flex):
+			var to: Vector3 = sole-ankle_offset-hip
+			var span: float = to.length()
+			var flex: float = gait.knee_flex(side,span)
+			var limit: float = deg_to_rad(9.0)
+			if span>.001 and flex<previous_flex-limit:
+				sole = hip+to/span*gait.knee_span(side,previous_flex-limit)+ankle_offset
+			elif span>.001 and flex>previous_flex+limit and gait.t[side]<.75:
+				# The lift-off fold is eased the same way, but only where the eased
+				# foot still clears the ground under it (never pressed into a rise).
+				# A planned climb onto a riser folds deliberately faster (16 deg).
+				var fold_limit: float = limit
+				if not gait._planar[side] and gait.landing[side].y>gait._swing_start(side).y+.08: fold_limit = deg_to_rad(16.0)
+				var eased: Vector3 = hip+to/span*gait.knee_span(side,previous_flex+fold_limit)+ankle_offset
+				var along: Vector3 = gait.foot_along(side,world_basis)
+				if gait.foot_clear(eased,along): sole = eased
+				else:
+					# A riser met late (a wall climbed at a run) needs a faster fold:
+					# only as much faster as keeps the sole clear of it, not the whole
+					# re-planned arc in one tick.
+					var lo: float = previous_flex+fold_limit
+					var hi: float = flex
+					for i in 4:
+						var mid: float = (lo+hi)*.5
+						if gait.foot_clear(hip+to/span*gait.knee_span(side,mid)+ankle_offset,along): hi = mid
+						else: lo = mid
+					sole = hip+to/span*gait.knee_span(side,hi)+ankle_offset
+		if evaluated_valid and gait.speed<=2.4:
+			# Walking feet keep the gait's calm speed ceiling here too, so the
+			# easing above never adds a catch-up jump on top of a fast swing.
+			var shown: Vector3 = evaluated_soles[side]+worker.ground_velocity*delta
+			# A foot-held tool's sole is shown with its clearance lift/shift on
+			# top: limit from the sole the gait asked for, or that bounded lift
+			# would ratchet the swing up a little more every tick.
+			if worker.tool_foot_occupied() and side==worker.tool_foot_side() and gait.shown_sole[side].is_finite():
+				shown = gait.shown_sole[side]+worker.ground_velocity*delta
+			sole = shown+(sole-shown).limit_length(maxf(5.8*delta,.001))
+	elif gait.stance_age[side] < .001:
+		# A contact made this tick is planted only where this hip can really
+		# put the sole: slide it toward the hip on its own support if the
+		# predicted footfall ended up beyond reach (steep descents).
+		var reach: float = worker._leg_lengths[side]-.010
+		var offset: Vector3 = sole-ankle_offset-hip
+		if offset.length()>reach and absf(offset.y)<reach:
+			var horizontal := offset.slide(Vector3.UP).limit_length(sqrt(reach*reach-offset.y*offset.y))
+			# At most a few centimetres: a longer slide is a visible teleport
+			# (the leg is then shown a little short of the plant instead).
+			var flat_offset := offset.slide(Vector3.UP)
+			horizontal = flat_offset+(horizontal-flat_offset).limit_length(.035)
+			var closer: Dictionary = gait._ground(Vector3(hip.x+horizontal.x,sole.y,hip.z+horizontal.z)+ankle_offset)
+			if not closer.is_empty() and closer.collider is Node3D:
+				hit = closer
+				sole = closer.position
+				gait.replant(side,closer,sole)
+	if evaluated_valid and _head_ground_continuation:
+		# Head landing/preparation keeps its finite sole budget.
+		sole = _bounded_head_sole(sk,side,evaluated_soles[side],sole,basis,minf(.045,delta*5.4))
+	if not hit.is_empty():
+		_terrain_points[side] = hit.position
+		_sole_normals[side] = hit.normal
+	_walk_swing_phase[side] = -1.0 if planted else gait.t[side]
+	_plant_weights[side] = 1.0 if planted else 0.0
+	# Legacy riser-anticipation fields now report the planner's look-ahead
+	# obstacle lift for this swing (0 while planted).
+	_step_lifts[side] = 0.0 if planted else gait._clear_lift[side]
+	_step_ahead[side] = _step_lifts[side]
+	_target_valid[side] = planted and not hit.is_empty() and hit.collider is Node3D
+	# A planted sole publishes its contact point, not the heel-peeled sole
+	# shown during push-off (the toe pad stays where it planted); the sole is
+	# then "grounded" only while it is really within 2 cm of that plant.
+	var plant: Vector3 = sole-gait._roll_off[side] if planted else sole
+	if _target_valid[side]:
+		_support[side] = weakref(hit.collider)
+		_support_rids[side] = hit.rid
+		_support_local[side] = hit.collider.to_local(plant)
+	_targets[side] = plant
+	var tool_foot: bool = worker.tool_foot_occupied() and side==worker.tool_foot_side()
+	var held_lift: float = _held_lift if tool_foot else 0.0
+	var held_shift: Vector3 = _held_shift if tool_foot else Vector3.ZERO
+	var normal: Vector3 = hit.normal if not hit.is_empty() else Vector3.UP
+	var requested: Vector3 = sole+normal*held_lift+held_shift
+	if tool_foot and evaluated_valid:
+		# The retained tool's own owners may have held this foot elsewhere
+		# (a whole-tool return); resuming from there keeps the tool foot's
+		# finite toe budget instead of snapping the knee in one tick.
+		var shown_prev: Vector3 = evaluated_soles[side]+worker.ground_velocity*delta
+		requested = shown_prev+(requested-shown_prev).limit_length(maxf(5.4*delta,.001))
+	_solve(sk,chain[0],chain[1],chain[2],local_inv*requested-basis*Vector3(0,_ankle_height[side],0),1.0,basis)
+	_gait_rotations[chain[0]] = sk.get_bone_pose_rotation(chain[0])
+	_gait_rotations[chain[1]] = sk.get_bone_pose_rotation(chain[1])
+	# The knee the gait's own sole asks for: a foot-held tool's bounded
+	# clearance lift/shift on top is not part of the swing/contact pose the
+	# rate limits and the contact deferral compare against.
+	gait.knee_prev[side] = gait.knee_flex(side,(sole-ankle_offset-hip).length())
+	evaluated_grounded[side] = planted and _target_valid[side] and held_lift<.01
+	gait.requested[side] = requested
+	gait.shown_sole[side] = sole
+	_gait_sides[side] = true
+	if _toes[side] < 0: return
+	if tool_foot:
 		var toe := sk.get_bone_global_pose(_toes[side])
 		var axis: Vector3 = (-worker._model.global_basis.z*.75+Vector3.UP*.65).normalized()
 		toe.basis = Basis(Quaternion(toe.basis.y.normalized(),(sk.global_basis.inverse()*axis).normalized()))*toe.basis
 		sk.set_bone_global_pose(_toes[side],toe)
+	elif gait.locomotion_weight > .001:
+		# Toe push-off curl and mid-swing extension, independent of the clips.
+		var rest := sk.get_bone_rest(_toes[side]).basis.get_rotation_quaternion()
+		var wanted := (Quaternion(gait._toe_axis[side],gait.out_toe[side])*rest).normalized()
+		sk.set_bone_pose_rotation(_toes[side],sk.get_bone_pose_rotation(_toes[side]).slerp(wanted,gait.locomotion_weight))
 
 func _blend_gait_handoff(sk: Skeleton3D, side: int, local_inv: Transform3D, speed: float, delta: float, desired_sole := Vector3.INF) -> void:
 	var chain: Array = _chains[side]
@@ -2173,10 +2144,20 @@ func _weight_transfer(sk: Skeleton3D, walking: bool, speed: float, delta: float)
 	var roll := 0.0
 	var pitch := 0.0
 	var root := sk.get_bone_global_pose(0)
+	# The gait owns locomotion acting (crouch, bob, lean, shift, bank, eye
+	# lead): it replaces the clip's root while travelling and the old walking
+	# sway below. Work/greeting/balance layers still apply on top of it.
+	var gait_acting: bool = _walking_ik and gait.active
+	# While another owner takes over (or hands back), the same procedural
+	# root keeps fading by its own weight, so neither switch pops the cube.
+	var gait_shown: bool = gait.acting()
+	if gait_shown:
+		root = gait.acting_root(sk,root)
+		sk.set_bone_global_pose(0,root)
 	evaluated_unbalanced_root = sk.global_transform * root
 	evaluated_unbalanced_com = _posed_center_of_mass(sk)
 	evaluated_balance_support_side = -1
-	if walking:
+	if walking and not gait_acting:
 		var support := Vector2(float(_plant_weights[0]) if _target_valid[0] else 0.0, float(_plant_weights[1]) if _target_valid[1] else 0.0)
 		var bias := (support.y - support.x) / maxf(support.x + support.y, .01)
 		var strength := smoothstep(.18, .8, speed)
@@ -2217,7 +2198,7 @@ func _weight_transfer(sk: Skeleton3D, walking: bool, speed: float, delta: float)
 	if requested and not _motion_intent: _motion_start_age = 0.0
 	elif requested: _motion_start_age += delta
 	_motion_intent = requested
-	if free_expression and not (worker.threat_watch and worker.threat_watch.weight>.001):
+	if free_expression and not gait_acting and not (worker.threat_watch and worker.threat_watch.weight>.001):
 		var forward: Vector3 = (-sk.global_basis.z).slide(worker.ground_normal).normalized()
 		var drive := clampf(acceleration.dot(forward),-8.0,8.0)
 		var anticipation := smoothstep(0.0,.04,_motion_start_age)*(1.0-smoothstep(.07,.13,_motion_start_age)) if requested else 0.0
@@ -2283,19 +2264,25 @@ func _weight_transfer(sk: Skeleton3D, walking: bool, speed: float, delta: float)
 				evaluated_balance_support_point = point
 	var blend := 1.0 - exp(-(18.0 if free_expression else 10.0) * delta)
 	_sway_shift = _sway_shift.move_toward(_sway_shift.lerp(shift,blend),.65*delta)
-	_sway_offset = _sway_shift.x
-	_sway_roll = lerpf(_sway_roll, roll, blend)
+	_sway_roll_state = lerpf(_sway_roll_state, roll, blend)
 	_sway_pitch = lerpf(_sway_pitch, pitch, blend)
+	# Published totals include the gait's own lateral shift and roll.
+	var gait_weight: float = gait.locomotion_weight if gait_shown else 0.0
+	_sway_offset = _sway_shift.x + gait.body_shift*gait_weight
+	_sway_roll = _sway_roll_state + gait.body_roll*gait_weight
 	# Bounded translation and tilt precede the same finite leg solves. Their
 	# soles/tools remain on real targets; head fixtures follow this evaluated
 	# cube. Upright support still belongs to the existing native capsule, so
 	# this posed mass estimate is visual balance, not a new COM force solver.
 	root.origin += _sway_shift
-	root.basis = Basis(Vector3.RIGHT,_sway_pitch) * Basis(Vector3.BACK,_sway_roll) * root.basis
+	root.basis = Basis(Vector3.RIGHT,_sway_pitch) * Basis(Vector3.BACK,_sway_roll_state) * root.basis
 	if solo_expression or greeting_expression:
 		root = _supported_solo_root(sk,root,delta,back_stowed)
 	elif back_stowed and free_expression:
 		root = _clear_back_motion_root(sk,root,delta)
+	if gait_acting:
+		gait.update_drop(sk,root,delta)
+		root = gait.constrain_root(sk,root,delta)
 	sk.set_bone_global_pose(0, root)
 
 func _supported_solo_root(sk: Skeleton3D, wanted: Transform3D, delta: float, back_stowed: bool) -> Transform3D:
@@ -2491,14 +2478,12 @@ func _solve(sk: Skeleton3D, a: int, b: int, c: int, target: Vector3, weight: flo
 	var to := target - hip
 	if to.length_squared() < 0.00001 or l1 < 0.01 or l2 < 0.01:
 		return
-	# The authored rig bends in its root's forward plane. An animated hip-to-knee
-	# vector can reverse when projected against an older planted sole, snapping
-	# the knee to the other side for a frame during a stride. Keep the rig pole.
-	var pole := sk.get_bone_global_pose(0).basis * Vector3.FORWARD
-	if _walking_ik or _travel_pole_handoff:
-		# The actual eye face is model -Z; Bone's imported Z axis is reversed.
-		var forward: Vector3 = _travel_poles[0 if a==_chains[0][0] else 1] if _travel_pole_handoff else -worker._model.global_basis.z
-		pole = sk.global_basis.inverse()*forward
+	# Every state bends its knees toward the eye face (model -Z, which is the
+	# root's BACK since the imported Bone is turned 180 degrees), splayed a
+	# little outward. External owners below still replace it.
+	var pole := _default_pole(sk,0 if a==_chains[0][0] else 1)
+	if _travel_pole_handoff:
+		pole = sk.global_basis.inverse()*_travel_poles[0 if a==_chains[0][0] else 1]
 	if WORK_TIMING.has(worker.action):
 		# These six authored work clips face the same direction as the eyes.
 		# Transport the preceding actual knee plane through the existing finite
@@ -2538,23 +2523,40 @@ func _solve(sk: Skeleton3D, a: int, b: int, c: int, target: Vector3, weight: flo
 	var solution := LegGeometry.two_link(hip, target, l1, l2, pole, .015, .012, Vector3.FORWARD)
 	var knee: Vector3 = solution.knee
 	var endpoint: Vector3 = solution.foot
-	var qa := Quaternion((bxf.origin - hip).normalized(), (knee - hip).normalized())
-	axf.basis = Basis(Quaternion.IDENTITY.slerp(qa, weight)) * axf.basis
-	sk.set_bone_global_pose(a, axf)
-	# Re-read after the upper joint, retaining both bone lengths.
-	bxf = sk.get_bone_global_pose(b)
-	cxf = sk.get_bone_global_pose(c)
-	var qb := Quaternion((cxf.origin - bxf.origin).normalized(), (endpoint - bxf.origin).normalized())
-	bxf.basis = Basis(Quaternion.IDENTITY.slerp(qb, weight)) * bxf.basis
-	sk.set_bone_global_pose(b, bxf)
-	if (_head_ground_continuation or _head_work_continuation) and evaluated_valid:
-		var side: int = 0 if a==_chains[0][0] else 1
+	# The knee hinge is the bend-plane normal for BOTH segments: a fixed
+	# mapping of each bone's rest frame (segment, rest face) onto (segment,
+	# knee bend direction) gives a deterministic twist, no skin wrap.
+	var leg_axis: Vector3 = endpoint-hip
+	var bend: Vector3 = (knee-hip).slide(leg_axis.normalized()) if leg_axis.length_squared()>1e-8 else pole
+	if bend.length_squared()<1e-8: bend = pole.slide(leg_axis.normalized()) if leg_axis.length_squared()>1e-8 else pole
+	var continuation: bool = (_head_ground_continuation or _head_work_continuation) and evaluated_valid
+	if not continuation and _rest_frame_inv.has(a) and _rest_frame_inv.has(b):
+		# Partial weights slerp from the current (authored) frame toward the
+		# same deterministic target, so twist never comes from the clip alone.
+		var upper_target := _deterministic_basis(a,knee-hip,bend)
+		axf.basis = upper_target if weight>=.999 else Basis(axf.basis.get_rotation_quaternion().slerp(upper_target.get_rotation_quaternion(),weight))
+		sk.set_bone_global_pose(a, axf)
+		bxf = sk.get_bone_global_pose(b)
+		var lower_target := _deterministic_basis(b,endpoint-knee,bend)
+		bxf.basis = lower_target if weight>=.999 else Basis(bxf.basis.get_rotation_quaternion().slerp(lower_target.get_rotation_quaternion(),weight))
+		sk.set_bone_global_pose(b, bxf)
+	else:
+		var qa := Quaternion((bxf.origin - hip).normalized(), (knee - hip).normalized())
+		axf.basis = Basis(Quaternion.IDENTITY.slerp(qa, weight)) * axf.basis
+		sk.set_bone_global_pose(a, axf)
+		# Re-read after the upper joint, retaining both bone lengths.
+		bxf = sk.get_bone_global_pose(b)
+		cxf = sk.get_bone_global_pose(c)
+		var qb := Quaternion((cxf.origin - bxf.origin).normalized(), (endpoint - bxf.origin).normalized())
+		bxf.basis = Basis(Quaternion.IDENTITY.slerp(qb, weight)) * bxf.basis
+		sk.set_bone_global_pose(b, bxf)
+	if continuation and _rest_frame_inv.has(a) and _rest_frame_inv.has(b):
 		var upper_axis: Vector3 = (sk.global_basis*(knee-hip)).normalized()
 		var lower_axis: Vector3 = (sk.global_basis*(endpoint-knee)).normalized()
-		var authored_upper := Quaternion(_head_authored_upper_axes[side],upper_axis)
-		var authored_lower := Quaternion(authored_upper*_head_authored_lower_axes[side],lower_axis)
-		var wanted_upper: Basis = Basis(authored_upper)*_head_authored_upper[side]
-		var wanted_lower: Basis = Basis(authored_lower*authored_upper)*_head_authored_lower[side]
+		# Head continuations keep their finite joint budget but now recover
+		# toward the same deterministic twist the ordinary solve publishes.
+		var wanted_upper: Basis = sk.global_basis*_deterministic_basis(a,knee-hip,bend)
+		var wanted_lower: Basis = sk.global_basis*_deterministic_basis(b,endpoint-knee,bend)
 		# Rotating the upper segment around its solved axis does not move the
 		# knee. Preserve the lower WORLD frame while that upper twist recovers.
 		var lower_pose := sk.get_bone_global_pose(b)
@@ -2566,3 +2568,49 @@ func _solve(sk: Skeleton3D, a: int, b: int, c: int, target: Vector3, weight: flo
 	foot_pose.basis = foot_basis
 	sk.set_bone_global_pose(c, foot_pose)
 
+
+static func _leg_frame(segment: Vector3, forward: Vector3) -> Basis:
+	# Orthonormal right-handed frame: Y along the segment, Z toward the bend.
+	var y := segment.normalized()
+	var z := forward.slide(y)
+	if z.length_squared()<1e-8: z = (Vector3.FORWARD if absf(y.z)<.9 else Vector3.UP).slide(y)
+	z = z.normalized()
+	return Basis(y.cross(z),y,z)
+
+func _deterministic_basis(bone: int, segment: Vector3, bend: Vector3) -> Basis:
+	# Rest frame (rest segment, rest face -Z) -> solved frame (segment, bend).
+	var rotation: Basis = _leg_frame(segment,bend)*Basis(_rest_frame_inv[bone])
+	return (rotation*Basis(_rest_bone_basis[bone])).orthonormalized()
+
+func _default_pole(sk: Skeleton3D, side: int) -> Vector3:
+	# Face pole, continuous across owner changes: start from the published knee
+	# plane whenever another owner solved the last frame, then turn toward the
+	# face (outward first if it was bent the other way) at a finite rate.
+	var root := sk.get_bone_global_pose(0)
+	var face: Vector3 = (sk.global_basis*(root.basis*Vector3.BACK)).normalized()
+	var outward: Vector3 = (sk.global_basis*(root.basis*(Vector3.RIGHT if side==0 else Vector3.LEFT))).normalized()
+	# Running knees splay a little wider (two clear pistons from the front).
+	var splay: float = POLE_SPLAY+(.13*gait.run_weight*gait.locomotion_weight if gait and gait.active else 0.0)
+	var wanted := (face+outward*splay).normalized()
+	var frame := Engine.get_physics_frames()
+	if int(_pole_frame[side])!=frame:
+		var base: Vector3 = _pole_out[side]
+		if int(_pole_frame[side])!=frame-1 or not base.is_finite():
+			base = wanted
+			if evaluated_valid:
+				var ankle: Vector3 = evaluated_soles[side]-evaluated_ankles[side]*Vector3(0,_ankle_height[side],0)
+				var axis: Vector3 = ankle-evaluated_hips[side]
+				var offset: Vector3 = (evaluated_knees[side]-evaluated_hips[side]).slide(axis.normalized()) if axis.length_squared()>1e-6 else Vector3.ZERO
+				if offset.length()>.01: base = offset.normalized()
+		_pole_base[side] = base
+		_pole_frame[side] = frame
+	var from: Vector3 = _pole_base[side]
+	var goal := outward if from.dot(wanted)<-.3 else wanted
+	var angle := from.angle_to(goal)
+	var step := minf(angle,POLE_TURN_RATE*maxf(_head_pose_delta,1.0/120.0))
+	var result := from
+	if angle>.00001:
+		var turn_axis := from.cross(goal)
+		result = from.rotated(turn_axis.normalized(),step).normalized() if turn_axis.length_squared()>1e-10 else goal
+	_pole_out[side] = result
+	return sk.global_basis.inverse()*result
