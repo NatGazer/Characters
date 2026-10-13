@@ -980,7 +980,10 @@ func _update_clock(delta: float) -> void:
 	moving_age = moving_age + delta if moving else 0.0
 	if moving and not was_moving: moving_age = 0.0
 	half_stride = _stride(speed)
-	duty = _duty(speed)
+	# A flight already under way finishes as a run: the duty does not rise
+	# past the walk line while both feet are still in the air.
+	var aloft := state[0] != PLANTED and state[1] != PLANTED and not airborne
+	duty = minf(_duty(speed), maxf(duty, .48)) if aloft and duty < .49 else _duty(speed)
 	if 2.0 * half_stride * duty > MAX_STANCE: half_stride = MAX_STANCE * .5 / duty
 	run_weight = 0.0 if carry else smoothstep(1.7, 2.9, speed)
 	var any_swing := state[0] == SWING or state[1] == SWING
@@ -1135,8 +1138,11 @@ func _events(delta: float) -> void:
 
 func _may_fly() -> bool:
 	# Running flight needs a run duty, free feet and ground that is not steep,
-	# here or where the airborne feet are landing (no bound onto a ramp).
+	# here or where the airborne feet are landing (no bound onto a ramp). A
+	# braking body (request ended, or decelerating hard) steps down into a
+	# walk instead: its flight would only end below the run duty.
 	return duty < .49 and not worker.tool_foot_occupied() and not carry and up.y > .966 \
+		and _no_intent <= 0.0 and (speed < .3 or accel.dot(velocity / speed) > -5.0) \
 		and (state[0] == PLANTED or landing_normal[0].y > .966) and (state[1] == PLANTED or landing_normal[1].y > .966)
 
 func _hurry(side: int) -> void:
