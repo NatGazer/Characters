@@ -722,10 +722,13 @@ func _retrieval_watch(delta: float, bt: RefCounted) -> void:
 			var a2 := _leg_angles(bt, int(bt._foot_side))
 			m.return_max_thigh_abduction = maxf(float(m.get("return_max_thigh_abduction", -INF)), float(a2.thigh_abduction))
 			_dense_tool()
+			# Clearance to the support plane under the Wako (slope-aware).
 			var low := INF
 			var xf := tool.global_transform
-			for i in range(0, _dense_pts.size(), 3): low = minf(low, (xf * _dense_pts[i]).y)
-			m.return_min_tool_floor = minf(float(m.get("return_min_tool_floor", INF)), low - _ground_y)
+			var gp: Vector3 = wako._ground_point
+			var gn: Vector3 = wako.ground_normal.normalized()
+			for i in range(0, _dense_pts.size(), 3): low = minf(low, gn.dot(xf * _dense_pts[i] - gp))
+			m.return_min_tool_floor = minf(float(m.get("return_min_tool_floor", INF)), low)
 	if _t.has("action_begin"): _t.action_begin_seen = true
 
 func _on_stage(from: String, to: String, bt: RefCounted) -> void:

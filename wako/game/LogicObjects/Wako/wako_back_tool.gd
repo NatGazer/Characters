@@ -285,6 +285,7 @@ var _deferred_recoil := ""
 var _recoil_seen := 0
 var _deferred_kind := "interrupted"
 var _home_extension_done := false
+var _extension_exhausted := false # The budgeted home-extension search found no clear candidate.
 var _deferred_reaction := 0.0
 var _retrieval_retry := 0.0
 var _catch_trim := 0.0
@@ -656,6 +657,11 @@ func advance(delta: float) -> void:
 		reason = "The original tool acquired another carrier"
 		return
 	if not worker.is_available():
+		# Explicit decision, every phase alike (seated, reaching, drawing or on
+		# the way home): a knock-down / ragdoll sheds the tool. The U-cradles
+		# carry it but do not lock it, and a tumbling body cannot keep a 1 m
+		# tool on its back or toe. The same instance is released loose at its
+		# actual pose under the release guard (no body penetration).
 		drop("Dropped the same tool while falling")
 		return
 	var pose: SkeletonModifier3D = worker._pose
@@ -741,6 +747,10 @@ func evaluated(pose: SkeletonModifier3D, sk: Skeleton3D, delta: float) -> void:
 	if phase == "return" and not _return_search.is_empty():
 		# Hold the actual grip while the budgeted return search finishes.
 		_continue_return_search()
+		if _extension_exhausted:
+			_extension_exhausted = false
+			_finish_return_now(pose,sk)
+			return
 		if phase != "return": return
 		if not _return_search.is_empty() or _waypoints.is_empty():
 			_drive_toe(pose,sk,delta,_toe,_toe_in_ankle,_toe)
@@ -883,19 +893,25 @@ func _finish_return(pose: SkeletonModifier3D,sk: Skeleton3D) -> void:
 		if home.origin.is_finite() and (_toe.origin.distance_to(home.origin) > .01 or _turn(_toe.basis.get_rotation_quaternion(),home.basis.get_rotation_quaternion()) > .05):
 			# Direct, then over a raised midpoint (a long pickaxe head swings
 			# clear of the support leg and the floor above the straight line).
-			var up: Vector3 = worker.ground_normal
+			# Searched in the same budgeted sample chunks as the way home (the
+			# toe holds the carry meanwhile); none clear: custody resumes here.
+			var routes: Array = []
 			for lift: float in [0.0,.06,.12,.18]:
-				var points: Array[Transform3D] = [home]
-				if lift > 0.0:
-					var mid := _interp(_toe,home,.5)
-					mid.origin += up*lift
-					points = [mid,home]
-				if _path_clear(_toe,points):
-					_accept_return_route(points,0)
-					_set_stage("home")
-					_route_fast = false
-					return
-			if plan_debug: print("CONTRAPTION_BACK_TOOL home_extension_refused ",last_path_failure)
+				if lift == 0.0:
+					routes.append([home])
+					continue
+				var mid := _interp(_toe,home,.5)
+				mid.origin += worker.ground_normal*lift
+				routes.append([mid,home])
+			_return_search = {"routes":routes,"index":0,"home":home,"ticks":0,"extension":true}
+			_continue_return_search()
+			if _extension_exhausted:
+				_extension_exhausted = false
+				_finish_return_now(pose,sk)
+			return
+	_finish_return_now(pose,sk)
+
+func _finish_return_now(pose: SkeletonModifier3D,sk: Skeleton3D) -> void:
 	phase = "foot"
 	_set_stage("")
 	_route_fast = false
@@ -2483,6 +2499,10 @@ func _stunt_arc_clear(origin: Transform3D,velocity: Vector3,omega: Vector3,secon
 	var previous := origin
 	var spin := omega.length()
 	var axis := omega/spin if spin > .000001 else Vector3.UP
+	if native:
+		# Spin-aware: at most ~7 deg of turn (a few cm of head travel) between
+		# native samples, so a fast twirl cannot skip a thin obstacle.
+		count = maxi(count,ceili(spin*seconds/.12))
 	var reach := Vector3(tool.definition.size).length()*.5+.75
 	# The body as it will be: this stunt's transient lean/crouch eased out
 	# (the same settled frame the ballistic aims at), advancing under the tool.
@@ -2954,8 +2974,8 @@ func _continue_return_search() -> void:
 		if ok:
 			var points: Array[Transform3D] = []
 			for item: Transform3D in route: points.append(item)
-			_stunt_metrics.return_route = int(_return_search.index)-1
-			var fallback_route: bool = _return_search.has("fallback") and int(_return_search.index)-1 >= int(_return_search.fallback)
+			if not _return_search.has("extension"): _stunt_metrics.return_route = int(_return_search.index)-1
+			var fallback_route: bool = _return_search.has("extension") or (_return_search.has("fallback") and int(_return_search.index)-1 >= int(_return_search.fallback))
 			if fallback_route:
 				_set_stage("home")
 				_route_fast = false
@@ -2964,6 +2984,11 @@ func _continue_return_search() -> void:
 			_return_search.clear()
 			return
 		if plan_debug and same_request.has("path_refusal"): print("CONTRAPTION_BACK_TOOL draw_refused route=",int(_return_search.index)-1," seg=",seg," ",_draw_refusal_note(same_request))
+	if _return_search.has("extension"):
+		if plan_debug: print("CONTRAPTION_BACK_TOOL home_extension_refused ",last_path_failure)
+		_return_search.clear()
+		_extension_exhausted = true
+		return
 	if not _return_search.has("fallback"):
 		# Every draw route refused: the original (slower) rear routes join the
 		# same budgeted search instead of running synchronously in one tick.
