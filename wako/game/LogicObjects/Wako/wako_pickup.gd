@@ -9,10 +9,13 @@ const MAXIMUM_IMPULSE := 40.0
 # remain fallbacks for the same admission. Measured with the eye lamp: the
 # cube keepout admits a .74 m apex, .95 s flight (was .98 m, 1.06 s).
 const APEX_EXTRAS := [.35, .45, .55, .65, .8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
-# The caught body keeps its exact contact pose, then settles onto the head
-# seat (nearest quarter-turn yaw) over this finite time.
-const SETTLE_SECONDS := .18
-const SEAT_GAP := .03
+# The catch happens only when the part's real collision bottom reaches the
+# actual roof plane within the next tick. The caught body keeps its exact
+# contact pose; only the residual (< one tick of travel vertically, the small
+# horizontal/yaw offset) settles onto the roof seat over this finite time.
+const SETTLE_SECONDS := .12
+const SEAT_GAP := .0001
+const CONTACT_SLACK := .001
 
 var worker: RigidBody3D
 var part: RigidBody3D
@@ -44,6 +47,10 @@ var _settle_anchor := Vector3.ZERO
 var _settle_basis := Basis.IDENTITY
 var _seat_anchor := Vector3.ZERO
 var _seat_basis := Basis.IDENTITY
+var _contact_points := PackedVector3Array()
+var _idle_head := Transform3D(Basis.IDENTITY, Vector3.INF)
+var _settle_speed := 0.0
+var catch_gap := INF
 
 static func eligible(source: Node3D) -> bool:
 	if not is_instance_valid(source) or source.get("definition") == null: return false
@@ -60,6 +67,10 @@ func begin(source: RigidBody3D) -> void:
 	clear()
 	part = source
 	state = "reaching"
+	_contact_points = collision_points(source)
+	# The settled head the toss will come back to (the Wako is idle and
+	# facing the part when the pickup begins).
+	_idle_head = _head_frame()
 	_orientation = source.global_basis.orthonormalized()
 	# Curl the toe onto the top edge, then lift the clamped block clear before
 	# releasing it. Trying to put an upturned toe below a floor-level block
@@ -134,17 +145,23 @@ func advance(delta: float) -> void:
 	if not worker.on_ground:
 		state = "failed"; reason = "Lost footing during catch; recover the loose part"; return
 	var bounds: AABB = part.global_transform * Catalogue.bounds_of(part.definition)
-	var bottom := Vector3(bounds.get_center().x, bounds.position.y, bounds.get_center().z)
-	var head: Vector3 = _head_point()
+	var head_frame := _head_frame()
+	var head: Vector3 = head_frame.origin
+	var normal := head_frame.basis.y
 	var relative := _velocity(part) - _velocity(worker)
-	catch_error = bottom.distance_to(head + Vector3.UP * .03)
-	var gap := bottom.y-head.y
-	var next_gap := gap + relative.y*delta - .5*GRAVITY*delta*delta
-	# Sweep the descending bottom against the upper-face contact plane before
-	# the next native step penetrates it. The existing assisted catch settles
-	# at most one bounded tick plus 2.5cm onto the head fixture, not from afar.
-	var crosses_head := gap >= .054 and gap <= .12 and next_gap <= .055
-	if _flight_clock > .15 and relative.y < -.1 and relative.y > -7.5 and crosses_head and Vector2(bottom.x-head.x,bottom.z-head.z).length() < .16:
+	# The part's REAL collision bottom above the actual roof plane, and the
+	# footprint centre over the head, both in the evaluated head frame.
+	var footprint := _footprint(head_frame.affine_inverse()*part.global_transform)
+	var gap: float = footprint.position.y
+	var centre := Vector2(footprint.get_center().x, footprint.get_center().z)
+	catch_error = Vector3(centre.x, gap, centre.y).length()
+	var closing := relative.dot(normal)
+	# Catch on the tick before the bottom would cross the roof: the remaining
+	# gap is at most one tick of travel plus a millimetre (no catch from afar).
+	var reach := maxf(-closing, 0.0)*delta + .5*GRAVITY*delta*delta + CONTACT_SLACK
+	if _flight_clock > .15 and closing < -.1 and closing > -7.5 and gap <= reach and gap >= -CONTACT_SLACK*4.0 and centre.length() < .16:
+		catch_gap = gap
+		_settle_speed = -closing
 		# Catch impulse transfers the incoming body's momentum to the enlarged
 		# carrier mass exactly once. This is the existing assisted head fixture.
 		var momentum := part.mass * relative
@@ -155,7 +172,7 @@ func advance(delta: float) -> void:
 		part.remove_collision_exception_with(worker)
 		_restore_damping()
 		# Custody starts at the body's exact contact pose (no snap); the same body
-		# then settles onto the head seat over a finite time.
+		# then settles its sub-tick residual onto the roof seat.
 		part.set_carried_at_pose(worker.head_anchor)
 		_begin_settle()
 		state = "caught"
@@ -168,11 +185,14 @@ func _begin_settle() -> void:
 	var local: Transform3D = part.carried_local_transform()
 	_settle_anchor = local.origin
 	_settle_basis = local.basis.orthonormalized()
-	_seat_anchor = Vector3(0, float(part.definition.size.y) * .5 + SEAT_GAP, 0)
 	# Nearest quarter-turn yaw about the head's up axis; tilt settles level.
 	var forward := _settle_basis.z.slide(Vector3.UP)
 	var yaw := atan2(forward.x, forward.z) if forward.length_squared() > .000001 else 0.0
 	_seat_basis = Basis(Vector3.UP, roundf(yaw / (PI * .5)) * PI * .5)
+	# The seat puts the real collision bottom on the roof (head anchor plane)
+	# and centres the footprint over the head: only the residual moves.
+	var seated := _footprint(Transform3D(_seat_basis, Vector3.ZERO))
+	_seat_anchor = Vector3(-seated.get_center().x, -seated.position.y + SEAT_GAP, -seated.get_center().z)
 	catch_offset = _settle_anchor - _seat_anchor
 	catch_yaw = rad_to_deg(_settle_basis.get_rotation_quaternion().angle_to(_seat_basis.get_rotation_quaternion()))
 
@@ -184,7 +204,16 @@ func _advance_settle(delta: float) -> void:
 	_settle_clock += delta
 	var blend := smoothstep(0.0, SETTLE_SECONDS, _settle_clock)
 	var basis := Basis(_settle_basis.get_rotation_quaternion().slerp(_seat_basis.get_rotation_quaternion(), blend))
-	_settle.set("_cargo_anchor", _settle_anchor.lerp(_seat_anchor, blend))
+	var anchor := _settle_anchor.lerp(_seat_anchor, blend)
+	# The sub-tick drop onto the roof continues the incoming speed and stops
+	# with one constant deceleration (no stall, no float); the horizontal and
+	# yaw residual eases in over SETTLE_SECONDS.
+	var residual := _settle_anchor.y - _seat_anchor.y
+	if residual > 0.0 and _settle_speed > .1:
+		var stop := 2.0 * residual / _settle_speed
+		var time := minf(_settle_clock, stop)
+		anchor.y = _settle_anchor.y - (_settle_speed * time - _settle_speed * _settle_speed * time * time / (4.0 * residual))
+	_settle.set("_cargo_anchor", anchor)
 	_settle.set("_cargo_pose_basis", basis)
 	if _settle_clock >= SETTLE_SECONDS: _settle = null
 
@@ -193,19 +222,33 @@ func settling() -> bool:
 
 func _launch() -> void:
 	var origin := part.global_position
-	# Aim at the head where it will be at the catch. The kick clip compresses
-	# and leans the cube now, but returns it to neutral before the part comes
-	# down (measured: the instantaneous head put the catch 15 cm off-centre,
-	# the neutral head within 5 mm). The catch tests the live head plane only.
+	# Aim at the head where it will be at the catch: the settled idle roof
+	# captured before the kick (the kick clip compresses and leans the cube
+	# now, but the Wako is idle again when the part comes down). The part's
+	# real collision bottom is aimed a little above that roof; the catch still
+	# tests the live roof plane only.
+	var aim: Transform3D = _idle_head if _idle_head.origin.is_finite() else _head_frame()
+	# The unchanged arc admission keeps the part above the padded NEUTRAL cube;
+	# aim above the higher of that roof and the idle roof, then let it fall.
 	var neutral: Transform3D = worker._skeleton.global_transform * worker._skeleton.get_bone_global_rest(0)
-	var destination: Vector3 = neutral * Vector3(0, worker.HEAD_OFFSET + float(part.definition.size.y) * .5 + .055, 0)
+	var roof := maxf(aim.origin.y, (neutral * Vector3(0, worker.HEAD_OFFSET, 0)).y)
+	var seated := _footprint(Transform3D(_orientation, Vector3.ZERO))
+	var destination := Vector3(aim.origin.x - seated.get_center().x, roof - seated.position.y + .045, aim.origin.z - seated.get_center().z)
 	var velocity := Vector3.ZERO
 	var valid_arc := false
 	var before := _velocity(worker)
+	var contact_height := aim.origin.y - seated.position.y
 	for extra: float in APEX_EXTRAS:
 		var vertical := sqrt(2.0 * GRAVITY * maxf(destination.y + extra - origin.y, .1))
 		var flight := (vertical + sqrt(maxf(vertical * vertical - 2.0 * GRAVITY * (destination.y-origin.y), 0.0))) / GRAVITY
-		velocity = (destination - origin).slide(Vector3.UP) / flight + Vector3.UP * vertical
+		# The part keeps falling from the admitted end point to the live roof:
+		# lead the aim by the horizontal travel of that last drop.
+		var arrival := absf(vertical - GRAVITY * flight)
+		var drop := maxf(destination.y - contact_height, 0.0)
+		var late := (sqrt(arrival * arrival + 2.0 * GRAVITY * drop) - arrival) / GRAVITY
+		var across := (destination - origin).slide(Vector3.UP)
+		var aimed := across - across / flight * late
+		velocity = aimed / flight + Vector3.UP * vertical
 		if (velocity-before).length() * part.mass > MAXIMUM_IMPULSE: continue
 		if _arc_clear(origin, velocity, flight): valid_arc = true; break
 	if not valid_arc:
@@ -287,6 +330,65 @@ func _head_point() -> Vector3:
 		var root: Transform3D = worker.global_transform * worker._pose.evaluated_worker.affine_inverse() * worker._pose.evaluated_root
 		return root * Vector3(0,worker.HEAD_OFFSET,0)
 	return worker.head_anchor.global_position
+
+## Eye target for the face system: the part through grip, toss and flight,
+## then the head seat while it settles.
+func gaze_target() -> Variant:
+	if state in ["reaching","held","flight"] and is_instance_valid(part): return part.global_position
+	if state == "caught" and settling(): return _head_frame().origin
+	return null
+
+func _head_frame() -> Transform3D:
+	# The evaluated cube at its roof (the head cargo plane), orthonormal.
+	var root: Transform3D = worker.head_anchor.global_transform
+	if worker._pose.evaluated_valid:
+		root = worker.global_transform * worker._pose.evaluated_worker.affine_inverse() * worker._pose.evaluated_root
+		root.origin += root.basis * Vector3(0, worker.HEAD_OFFSET, 0)
+	return root.orthonormalized()
+
+func _footprint(frame_from_part: Transform3D) -> AABB:
+	# Bounds of the part's enabled collision support points in another frame.
+	var points := _contact_points if not _contact_points.is_empty() else collision_points(part)
+	if points.is_empty():
+		var box: AABB = frame_from_part * Catalogue.bounds_of(part.definition)
+		return box
+	var result := AABB(frame_from_part * points[0], Vector3.ZERO)
+	for point: Vector3 in points: result = result.expand(frame_from_part * point)
+	return result
+
+static func collision_points(body: CollisionObject3D) -> PackedVector3Array:
+	# Support points of every enabled collision shape, in the body's frame.
+	var points := PackedVector3Array()
+	if not is_instance_valid(body): return points
+	for owner: int in body.get_shape_owners():
+		if body.is_shape_owner_disabled(owner): continue
+		var local: Transform3D = body.shape_owner_get_transform(owner)
+		for index in body.shape_owner_get_shape_count(owner):
+			for point: Vector3 in _shape_points(body.shape_owner_get_shape(owner, index)): points.append(local * point)
+	return points
+
+static func _shape_points(shape: Shape3D) -> PackedVector3Array:
+	var points := PackedVector3Array()
+	if shape is BoxShape3D:
+		var half: Vector3 = shape.size * .5
+		for x: float in [-1.0, 1.0]:
+			for y: float in [-1.0, 1.0]:
+				for z: float in [-1.0, 1.0]: points.append(Vector3(x, y, z) * half)
+	elif shape is ConvexPolygonShape3D:
+		points.append_array(shape.points)
+	elif shape is CylinderShape3D or shape is CapsuleShape3D or shape is SphereShape3D:
+		var radius: float = shape.radius
+		var half_height: float = 0.0 if shape is SphereShape3D else shape.height * .5 - (radius if shape is CapsuleShape3D else 0.0)
+		for step in 16:
+			var angle := TAU * step / 16.0
+			for y: float in [-half_height, half_height]: points.append(Vector3(cos(angle) * radius, y, sin(angle) * radius))
+		if not shape is CylinderShape3D:
+			points.append(Vector3(0, -half_height - radius, 0))
+			points.append(Vector3(0, half_height + radius, 0))
+	elif shape:
+		var box: AABB = shape.get_debug_mesh().get_aabb()
+		for corner in 8: points.append(box.get_endpoint(corner))
+	return points
 
 func _velocity(body: RigidBody3D) -> Vector3:
 	# Node getters publish at force integration. Impulses have already updated

@@ -7,6 +7,7 @@ extends Node
 const GRAVITY := 9.8
 const FORCE_CAP := 2.0 * GRAVITY
 const ANGULAR_CAP := 24.0
+const Motion := preload("res://harness/scripts/head_leap_motion.gd")
 
 var crew: Array = []
 var part: RigidBody3D
@@ -30,6 +31,10 @@ var _last_part := Transform3D.IDENTITY
 var _last_knee: Array = []
 var _last_ankle: Array = []
 var continuity := {"knee_step_deg":0.0,"ankle_step_deg":0.0,"boundary":{}}
+# Per-tick trace rows (all members) for the derived motion metrics and plots.
+var rows: Array = []
+var trace_path := ""
+var _start_cube: Array[Basis] = []
 
 func watch(members: Array, source: RigidBody3D) -> void:
 	crew = members
@@ -46,6 +51,7 @@ func watch(members: Array, source: RigidBody3D) -> void:
 		_launch_com.append(Vector3.ZERO)
 		_contact_basis.append(Basis.IDENTITY)
 		_start_basis.append(Basis.IDENTITY)
+		_start_cube.append(Basis.IDENTITY)
 		m.append({"rotation_out_deg":0.0,"rotation_return_deg":0.0,"net_out_deg":0.0,"net_return_deg":0.0,
 			"max_knee_flexion_deg":0.0,"max_knee_flexion_out_deg":0.0,"max_knee_flexion_return_deg":0.0,
 			"apex_out_m":-INF,"apex_return_m":-INF,"peak_assist_ms2":0.0,"peak_assist_N":0.0,"assist_cap_N":0.0,
@@ -110,6 +116,7 @@ func _physics_process(delta: float) -> void:
 			if state == "prepare":
 				_home_com[index] = com
 				_start_basis[index] = w.global_basis
+				_start_cube[index] = w._pose.evaluated_root.basis.orthonormalized()
 				var root: Transform3D = w._pose.evaluated_root
 				_home_root_y[index] = root.origin.y
 				_home_origin_y[index] = w.global_position.y
@@ -203,13 +210,59 @@ func _physics_process(delta: float) -> void:
 				row.max_knee_flexion_deg = maxf(row.max_knee_flexion_deg, flex)
 				if state == "return": row.max_knee_flexion_return_deg = maxf(row.max_knee_flexion_return_deg, flex)
 				else: row.max_knee_flexion_out_deg = maxf(row.max_knee_flexion_out_deg, flex)
+		if state in ["prepare","outbound","contact","return","landing"] or (state in ["done","failed"] and t-float(events.get("%d:%s" % [index,state],t)) < .6):
+			rows.append(_row(index, w, leap, state, v, omega, com, delta))
 		_prev_v[index] = v
 		_prev_w[index] = omega
 		_prev_state[index] = state
 
+func _row(index: int, w: RigidBody3D, leap: RefCounted, state: String, v: Vector3, omega: Vector3, com: Vector3, delta: float) -> Dictionary:
+	var pose = w._pose
+	var cube: Transform3D = w.global_transform*pose.evaluated_worker.affine_inverse()*pose.evaluated_root if pose.evaluated_valid else w.global_transform
+	var up := cube.basis.y.normalized()
+	var axis: Vector3 = leap._outbound_axis.normalized()
+	# Signed visual cube rotation about the flip axis since the start of prepare.
+	var relative: Basis = cube.basis.orthonormalized()*_start_cube[index].inverse()
+	var q := relative.get_rotation_quaternion()
+	var turn := 2.0*atan2(Vector3(q.x,q.y,q.z).dot(axis),q.w)
+	var face: Vector3 = (cube.basis*leap._face_root()).normalized() if leap._hip_root.size()==2 else -w._model.global_basis.z
+	var down := -up
+	var knees := []
+	var hips := []
+	var points := []
+	var reach := 0.0
+	var lowest := INF
+	for side in 2:
+		var hip: Vector3 = pose.evaluated_hips[side]
+		var knee: Vector3 = pose.evaluated_knees[side]
+		var ankle: Vector3 = pose.evaluated_soles[side]-pose.evaluated_ankles[side]*Vector3(0,pose._ankle_height[side],0)
+		var thigh := (knee-hip).normalized()
+		var shin := (ankle-knee).normalized()
+		knees.append(rad_to_deg(thigh.angle_to(shin)))
+		hips.append(rad_to_deg(atan2(thigh.dot(face),thigh.dot(down))))
+		var sole_down: Vector3 = (pose.evaluated_ankles[side]*Vector3.UP).normalized()
+		# Foot pitch against the ground (0 = flat sole, >0 = heel lifted/pointed).
+		points.append(rad_to_deg(sole_down.angle_to(Vector3.DOWN)))
+		reach = maxf(reach,maxf((knee-com).length(),(pose.evaluated_soles[side]-com).length()))
+		lowest = minf(lowest,pose.evaluated_soles[side].y)
+		# The evaluated toe joint (skeleton reads between modifiers are stale).
+		if side < leap._toe_ankle.size(): lowest = minf(lowest,(ankle+pose.evaluated_ankles[side]*leap._toe_ankle[side]).y)
+	var gap := INF
+	if is_instance_valid(part) and not leap.contacted:
+		gap = (cube*leap._head_touch_local-(part.global_transform*leap.contact_local)).dot(leap.contact_normal)
+	var gaze: Variant = leap.gaze_target()
+	return {"i":index,"t":snappedf(t,.0001),"st":state,"el":snappedf(leap.elapsed,.0001),
+		"com":[com.x,com.y,com.z],"v":[v.x,v.y,v.z],"w":omega.length(),"wa":omega.dot(axis),
+		"pitch":rad_to_deg(acos(clampf(up.dot(Vector3.UP),-1.0,1.0))),"turn":rad_to_deg(turn),
+		"body_pitch":rad_to_deg(acos(clampf(w.global_basis.y.normalized().dot(Vector3.UP),-1.0,1.0))),
+		"knee":knees,"hip":hips,"point":points,"reach":reach,"root":[cube.origin.x,cube.origin.y,cube.origin.z],
+		"low":lowest,"gap":gap if is_finite(gap) else null,"ground":w.on_ground,
+		"part":[part.global_position.x,part.global_position.y,part.global_position.z] if is_instance_valid(part) else null,
+		"gaze":[gaze.x,gaze.y,gaze.z] if gaze is Vector3 else null}
+
 func report(extra: Dictionary = {}) -> Dictionary:
 	var out := {"events":events,"attach":attach,"toss_probe":toss,"continuity":continuity}
-	var rows: Array = []
+	var member_rows: Array = []
 	for index in m.size():
 		var row: Dictionary = m[index].duplicate()
 		var ticks: int = row._return_ticks
@@ -235,7 +288,14 @@ func report(extra: Dictionary = {}) -> Dictionary:
 		row.reason = crew[index].head_leap.reason if is_instance_valid(crew[index]) else ""
 		var leap: RefCounted = crew[index].head_leap if is_instance_valid(crew[index]) else null
 		if leap and "flight_stats" in leap: row.controller = leap.flight_stats
-		rows.append(row)
-	out.members = rows
+		member_rows.append(row)
+	out.members = member_rows
+	# Heavy/shared loads touch down slower: the free-fall tail is 0.15 s.
+	var heavy: bool = crew.size() > 1 or (is_instance_valid(crew[0]) and not crew[0].head_leap._small_stock_timing())
+	out.motion = Motion.summarize(self.rows, crew.size(), .15 if heavy else .18)
+	if not trace_path.is_empty():
+		var file := FileAccess.open(trace_path, FileAccess.WRITE)
+		if file:
+			for row: Dictionary in self.rows: file.store_line(JSON.stringify(row))
 	out.merge(extra, true)
 	return out

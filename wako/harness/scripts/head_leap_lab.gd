@@ -24,6 +24,7 @@ var _attached := false
 var _finished_at := -1.0
 var _saved: Dictionary = {}
 var _restored: RigidBody3D
+var _restored_all: Array = []
 var _toss: Dictionary = {}
 var _part_prev := Transform3D.IDENTITY
 var _reported := false
@@ -34,8 +35,13 @@ var save_state := "return"
 var save_at := .3
 var crew_gap := 1.0
 var gap := 1.35
+var trace_path := ""
+var push_kind := "toward"
+var push_at := .5
 
 func setup() -> void:
+	# The lab reads the controller's per-tick force/torque statistics.
+	HeadLeap.profile_stats = true
 	for arg: String in OS.get_cmdline_user_args():
 		if arg.begins_with("--case="): case_name = arg.trim_prefix("--case=")
 		if arg.begins_with("--view="): view = arg.trim_prefix("--view=")
@@ -48,9 +54,12 @@ func setup() -> void:
 		if arg.begins_with("--save-at="): save_at = float(arg.trim_prefix("--save-at="))
 		if arg.begins_with("--crew-gap="): crew_gap = float(arg.trim_prefix("--crew-gap="))
 		if arg.begins_with("--gap="): gap = float(arg.trim_prefix("--gap="))
+		if arg.begins_with("--trace="): trace_path = arg.trim_prefix("--trace=")
+		if arg.begins_with("--push="): push_kind = arg.trim_prefix("--push=")
+		if arg.begins_with("--push-at="): push_at = float(arg.trim_prefix("--push-at="))
 	var focus := Vector3(0, .75, -.8)
 	match case_name:
-		"solo", "interrupt", "hit", "save":
+		"solo", "interrupt", "hit", "save", "push":
 			part = _part("bracket", Vector3(0, .15, -(gap+.15)))
 			crew = [spawn_wako(Vector3(0, 1.0, 0), "leap_solo")]
 		"large":
@@ -58,7 +67,7 @@ func setup() -> void:
 			part = _part("generator", Vector3(0, .325, -(gap+.475)))
 			crew = [spawn_wako(Vector3(0, 1.0, 0), "leap_large")]
 			focus = Vector3(0, .8, -1.0)
-		"crew":
+		"crew", "crew_save", "crew_interrupt":
 			# 32 kg cut armour plate (1.2 m face): one shared two-Wako job.
 			part = _part("armor", Vector3(0, .075, -(crew_gap+.6)))
 			crew = [spawn_wako(Vector3(-.49, 1.0, 0), "leap_crew_a"), spawn_wako(Vector3(.49, 1.0, 0), "leap_crew_b")]
@@ -71,7 +80,11 @@ func setup() -> void:
 			crew = [spawn_wako(Vector3(0, 1.0, 0), "leap_obstacle")]
 			focus = Vector3(0, .9, -.9)
 		"toss":
-			part = _part("light", Vector3(0, .08, -.42))
+			part = _part("light", Vector3(0, .11, -.42))
+			# The harness eye-lamp visual is a smaller stub than the real 0.22 m
+			# collision box: render the collision box itself (render-only).
+			for node: Node in part.find_children("*", "MeshInstance3D", true, false): node.visible = false
+			_ensure_visual(part)
 			crew = [spawn_wako(Vector3(0, 1.0, 0), "leap_toss")]
 			focus = Vector3(0, .9, -.2)
 	if heading != 0.0:
@@ -88,6 +101,7 @@ func setup() -> void:
 		"34": cam_offset = Vector3(distance*.68, 1.15, distance*.68)
 		"front": cam_offset = Vector3(.4, .6, -distance)
 	probe = Probe.new()
+	probe.trace_path = trace_path
 	add_child(probe)
 	probe.watch(crew, part)
 
@@ -137,7 +151,9 @@ func scenario(delta: float) -> void:
 			for w: RigidBody3D in crew: w.face_point(Vector3(w.global_position.x, part.global_position.y, part.global_position.z) if crew.size() > 1 else part.global_position)
 			caption("%s · settling" % case_name)
 			if clock < 1.6 or not crew.all(_settled) or part.linear_velocity.length() > .05: return
+			var started := Time.get_ticks_usec()
 			var blocker: String = HeadLeap.begin_group(part, crew)
+			outcome.begin_group_ms = (Time.get_ticks_usec()-started)/1000.0
 			attempts += 1
 			if not blocker.is_empty():
 				refusals.append(blocker)
@@ -152,13 +168,20 @@ func scenario(delta: float) -> void:
 			var leap: RefCounted = leader.head_leap
 			caption("%s · %s %.2fs" % [case_name, leap.state, leap.elapsed])
 			# Coordinator stand-ins: cancel / external hit / save during flight.
-			if case_name == "interrupt" and leap.state == interrupt_state and leap.elapsed >= interrupt_at and not outcome.has("interrupted"):
+			_watch_safety()
+			if case_name == "push" and leap.state == "outbound" and leap.elapsed >= push_at and not outcome.has("pushed"):
+				# The stock is knocked mid-dive: toward the incoming head, or sideways.
+				var impulse := Vector3(0, 2.2, 1.6) if push_kind == "toward" else Vector3(2.0, .5, 0)
+				impulse = impulse.rotated(Vector3.UP, heading)*2.0*part.mass
+				outcome.pushed = {"kind":push_kind,"elapsed":leap.elapsed,"impulse":[impulse.x,impulse.y,impulse.z]}
+				part.apply_central_impulse(impulse)
+			if case_name in ["interrupt","crew_interrupt"] and leap.state == interrupt_state and leap.elapsed >= interrupt_at and not outcome.has("interrupted"):
 				outcome.interrupted = {"at_state":leap.state,"elapsed":leap.elapsed,"carrier_before":str(part.carrier)}
 				leap.abort("Harness: coordinator cancelled the job mid-flight")
 			if case_name == "hit" and leap.state == "return" and leap.elapsed >= .22 and not outcome.has("hit"):
 				outcome.hit = {"at_state":"return","elapsed":leap.elapsed,"carried":part.carrier==leader.head_anchor}
 				leader.apply_hit(Vector3(150, 60, 0))
-			if case_name == "save" and leap.state == save_state and leap.elapsed >= save_at and _saved.is_empty():
+			if case_name in ["save","crew_save"] and leap.state == save_state and leap.elapsed >= save_at and _saved.is_empty():
 				_save_and_restore(leader)
 				return
 			if leap.state in ["outbound","return"] and "--trace-flight" in OS.get_cmdline_user_args():
@@ -180,7 +203,10 @@ func scenario(delta: float) -> void:
 					"tilt_deg":rad_to_deg(acos(clampf(leap._actual_root().basis.y.normalized().dot(-leap.contact_normal),-1.0,1.0))),
 					"v":leader.linear_velocity.length(),"omega":leader.angular_velocity.length(),"t":probe.t}
 				var before := part.global_transform
-				if HeadLeap.attach_group(part, crew):
+				var attach_started := Time.get_ticks_usec()
+				var attached: bool = HeadLeap.attach_group(part, crew)
+				outcome.attach_group_ms = (Time.get_ticks_usec()-attach_started)/1000.0
+				if attached:
 					_attached = true
 					var after := part.global_transform
 					info.part_displacement_mm = before.origin.distance_to(after.origin)*1000.0
@@ -198,34 +224,92 @@ func scenario(delta: float) -> void:
 				if clock-_finished_at > 1.2: _finish(leap.state)
 		"restored":
 			caption("save · restored native body %.2fs" % stage_clock)
-			if is_instance_valid(_restored):
-				var down: bool = _restored.ragdoll and _restored.ragdoll.is_down()
+			var upright := 0
+			for restored: RigidBody3D in _restored_all:
+				if not is_instance_valid(restored): continue
+				var down: bool = restored.ragdoll and restored.ragdoll.is_down()
 				outcome.restored_down_ticks = int(outcome.get("restored_down_ticks",0)) + (1 if down else 0)
-				if not down and _restored.is_available() and _restored.on_ground and not outcome.has("restored_upright_s"):
-					outcome.restored_upright_s = stage_clock
-			if stage_clock > 4.0: _finish("restored")
+				if not down and restored.is_available() and restored.on_ground: upright += 1
+			for index in _restored_all.size():
+				var restored: RigidBody3D = _restored_all[index]
+				var key := "restored_upright_s_%d" % index
+				if is_instance_valid(restored) and not (restored.ragdoll and restored.ragdoll.is_down()) and restored.on_ground and not outcome.has(key):
+					outcome[key] = stage_clock
+			if upright == _restored_all.size() and not outcome.has("restored_upright_s"):
+				outcome.restored_upright_s = stage_clock
+			if stage_clock > 6.0 or (outcome.has("restored_upright_s") and stage_clock > outcome.restored_upright_s + .5): _finish("restored")
+
+func _watch_safety() -> void:
+	# Ragdolls, and how deep any flight torso ever overlaps the stock while the
+	# stock is not carried (an honest dive must never pass through it).
+	for w: RigidBody3D in crew:
+		if not is_instance_valid(w): continue
+		if w.ragdoll and w.ragdoll.is_down():
+			var downs: Array = outcome.get("ragdolled", [])
+			if not downs.has(w.worker_id):
+				downs.append(w.worker_id)
+				outcome.ragdolled = downs
+				outcome["ragdoll_at_%s" % w.worker_id] = {"state":w.head_leap.state,"elapsed":w.head_leap.elapsed,"t":probe.t}
+		# Only before custody: a released cargo keeps the original release
+		# exception with its former carrier until they separate (by design).
+		if is_instance_valid(part) and not is_instance_valid(part.carrier) and w.head_leap.active() and not w.head_leap.contacted:
+			var collision: CollisionShape3D = w.get_node("Collision")
+			if collision.shape is BoxShape3D:
+				var bounds: AABB = Catalogue.bounds_of(part.definition)
+				var depth := _box_overlap(collision.global_transform, collision.shape.size, part.global_transform*Transform3D(Basis.IDENTITY, bounds.get_center()), bounds.size)
+				outcome.max_torso_stock_overlap_m = maxf(float(outcome.get("max_torso_stock_overlap_m", 0.0)), depth)
+
+static func _box_overlap(a: Transform3D, a_size: Vector3, b: Transform3D, b_size: Vector3) -> float:
+	# SAT penetration depth of two oriented boxes (0 when separated).
+	var axes: Array[Vector3] = [a.basis.x, a.basis.y, a.basis.z, b.basis.x, b.basis.y, b.basis.z]
+	for i in 3:
+		for j in 3: axes.append(a.basis[i].cross(b.basis[j]))
+	var depth := INF
+	var apart := b.origin - a.origin
+	for axis: Vector3 in axes:
+		if axis.length_squared() < .000001: continue
+		axis = axis.normalized()
+		var ra := 0.0
+		var rb := 0.0
+		for k in 3:
+			ra += absf(axis.dot(a.basis[k].normalized()))*a_size[k]*.5
+			rb += absf(axis.dot(b.basis[k].normalized()))*b_size[k]*.5
+		var overlap := ra + rb - absf(axis.dot(apart))
+		if overlap <= 0.0: return 0.0
+		depth = minf(depth, overlap)
+	return depth
 
 func _save_and_restore(leader: RigidBody3D) -> void:
+	# The save replaces the live world: every crew member leaves, the same
+	# source keeps its actual pose, and fresh Wakos load the saved states.
 	var leap: RefCounted = leader.head_leap
-	var data: Dictionary = JSON.parse_string(JSON.stringify(leader.serialize_state()))
-	var physical: Dictionary = data.get("physical_body", {})
-	_saved = {"at_state":leap.state,"elapsed":leap.elapsed,"bodies":(physical.get("bodies",[]) as Array).size(),
+	var saved: Array = []
+	for w: RigidBody3D in crew:
+		if not is_instance_valid(w): continue
+		var data: Dictionary = JSON.parse_string(JSON.stringify(w.serialize_state()))
+		saved.append({"data":data,"position":w.global_position,"id":w.worker_id})
+	var physical: Dictionary = saved[0].data.get("physical_body", {})
+	_saved = {"at_state":leap.state,"elapsed":leap.elapsed,"members":saved.size(),"bodies":(physical.get("bodies",[]) as Array).size(),
 		"origin_motion":physical.get("origin_motion",false),"saved_locks":physical.get("saved",{}).get("angular_locks",[]),
 		"source_carried":part.carrier==leader.head_anchor,"source_in_transit":part.get_meta(&"in_transit",false),
-		"saved_velocity":data.get("velocity"),"worker_up_y":leader.global_basis.y.y}
-	# The save replaces the live world: the original worker leaves, the same
-	# source keeps its actual pose, and a fresh Wako loads the saved state.
+		"saved_velocity":saved[0].data.get("velocity"),"worker_up_y":leader.global_basis.y.y,
+		"physical_bodies_per_member":saved.map(func(row: Dictionary) -> int: return (row.data.get("physical_body",{}).get("bodies",[]) as Array).size())}
 	var pose := part.global_transform
-	leader.queue_free()
+	for w: RigidBody3D in crew:
+		if is_instance_valid(w): w.queue_free()
 	part.set_carried(null)
 	part.global_transform = pose
 	part.linear_velocity = Vector3.ZERO
-	_restored = WAKO.instantiate()
-	_restored.worker_id = "leap_restored"
-	_restored.position = leader.global_position
-	add_child(_restored)
-	_restored.restore_state(data)
-	_saved.restored_down = _restored.ragdoll.is_down() if _restored.ragdoll else false
+	_restored_all.clear()
+	for row: Dictionary in saved:
+		var restored: RigidBody3D = WAKO.instantiate()
+		restored.worker_id = str(row.id) + "_restored"
+		restored.position = row.position
+		add_child(restored)
+		restored.restore_state(row.data)
+		_restored_all.append(restored)
+	_restored = _restored_all[0]
+	_saved.restored_down = _restored_all.map(func(w: RigidBody3D) -> bool: return w.ragdoll.is_down() if w.ragdoll else false)
 	_saved.source_pose_kept_mm = pose.origin.distance_to(part.global_position)*1000.0
 	outcome.save = _saved
 	stage_name = "restored"
@@ -271,11 +355,23 @@ func _toss_scenario(delta: float) -> void:
 				_toss.catch_momentum_error = pickup.catch_before_momentum.distance_to(pickup.catch_after_momentum)
 				_toss.launch_momentum_error = pickup.launch_before_momentum.distance_to(pickup.launch_after_momentum)
 			if pickup.state == "caught":
-				var seat: Vector3 = w.head_anchor.global_transform*Vector3(0, float(part.definition.size.y)*.5+.03, 0)
-				_toss.max_step_mm = maxf(float(_toss.get("max_step_mm",0.0)), _part_prev.origin.distance_to(part.global_position)*1000.0)
-				_toss.seat_error_mm = part.global_position.distance_to(seat)*1000.0
+				# Real collision bottom against the actual roof plane (head frame).
+				var footprint: AABB = pickup._footprint(pickup._head_frame().affine_inverse()*part.global_transform)
+				_toss.catch_gap_mm = pickup.catch_gap*1000.0
+				_toss.roof_gap_mm = footprint.position.y*1000.0
+				_toss.max_roof_gap_mm = maxf(float(_toss.get("max_roof_gap_mm",-INF)), footprint.position.y*1000.0) if probe.t-float(_toss.caught_t) > .2 else _toss.get("max_roof_gap_mm",-INF)
+				_toss.seat_centre_mm = Vector2(footprint.get_center().x, footprint.get_center().z).length()*1000.0
+				_toss.settle_offset_mm = pickup.catch_offset.length()*1000.0
+				_toss.settle_yaw_deg = pickup.catch_yaw
+				# Per-tick step relative to the carrying head (the settle residual).
+				var local: Transform3D = w.head_anchor.global_transform.affine_inverse()*part.global_transform
+				if _toss.has("_local_prev"):
+					_toss.max_settle_step_mm = maxf(float(_toss.get("max_settle_step_mm",0.0)), (_toss._local_prev as Vector3).distance_to(local.origin)*1000.0)
+				_toss._local_prev = local.origin
 				_part_prev = part.global_transform
-				if probe.t-float(_toss.caught_t) > 1.0: _finish("caught")
+				if probe.t-float(_toss.caught_t) > 1.0:
+					_toss.erase("_local_prev")
+					_finish("caught")
 			elif pickup.state == "failed" or stage_clock > 8.0:
 				_toss.reason = pickup.reason
 				_finish(pickup.state)
