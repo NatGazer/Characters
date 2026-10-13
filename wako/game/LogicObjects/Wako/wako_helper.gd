@@ -892,7 +892,8 @@ func _update_animation(delta: float) -> void:
 			var stance_fraction := lerpf(.5,.24,smoothstep(2.1,3.2,gait_speed))
 			nominal_speed = stance_distance / (stance_fraction * _animation.get_animation(clip).length)
 		playback = clampf(gait_speed / nominal_speed, 0.12, 3.0)
-	elif not on_ground or fear_time > 0.0: clip = "work/danger_L"
+	# BackTool stunt hook: a fear/air reaction waits until the airborne tool is caught.
+	elif (not on_ground or fear_time > 0.0) and not (back_tool and back_tool.stunt_owns_gait()): clip = "work/danger_L"
 	if _animation.current_animation != clip:
 		var locomotion_clips := ["wk_walkcycle", "work/carry", "work/run"]
 		var previous_phase := 0.0

@@ -787,6 +787,9 @@ func _watch(delta: float, bt: RefCounted) -> void:
 		var p := tool.global_position
 		var v := tool.linear_velocity
 		var local: Transform3D = bt._root.affine_inverse() * tool.global_transform
+		# The first tick after a load has no evaluated cube yet (its body frame
+		# is the unposed skeleton): not a pose the tool was ever published in.
+		if wako._pose and not wako._pose.evaluated_valid: return
 		_hist.append({"tick": _tick, "pos": p, "vel": v, "carried": is_instance_valid(tool.carrier), "phase": str(bt.phase), "local": local, "body": bt._body_frame.affine_inverse() * tool.global_transform})
 		if _hist.size() > 6: _hist.pop_front()
 		if int(bt.catches) > _catches_seen:
