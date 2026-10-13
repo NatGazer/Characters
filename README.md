@@ -6,6 +6,7 @@ its raw scans, the finished models, textures, preview renders and the pipeline t
 | Creature | Folder | Contents |
 |---|---|---|
 | Giant rhinoceros beetle (*Trypoxylus dichotomus*) | [`rhinoceros-beetle/`](rhinoceros-beetle/) | Full-res and game GLB, 47-bone rig, 14 animations (idle, walk, run, attack, frightened, flee, takeoff, fly, land…) |
+| Wako, the armless cube helper (RaulsMod, Godot 4.7) | [`wako/`](wako/) | Remeshed legs with forward toes, 42 re-authored clips, procedural gait/IK, head-first pickup, backpack tool-toss stunt, expressive eyes; real-engine videos of every animation |
 
 ![rhinoceros beetle](rhinoceros-beetle/renders/showcase.jpg)
 
