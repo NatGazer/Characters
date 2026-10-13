@@ -430,7 +430,7 @@ func _process_modification_with_delta(delta: float) -> void:
 	_walking_ik = worker.action.is_empty() and (head_prepare or (not _head_gait_continuation and _work_release.is_empty() and worker._animation.current_animation in ["wk_idle","wk_walkcycle","work/carry","work/run"]))
 	# An action begun while the body still slides from a run (native braking
 	# takes ~.5 m from 3.4 m/s) would drag its planted clip feet along the
-	# ground: the gait keeps the legs for its braking steps (at most .5 s;
+	# ground: the gait keeps the legs for its braking steps (at most .6 s;
 	# never for foot work, head, back-tool or tool owners, whose own entry
 	# solves start from the published legs) and then hands over through the
 	# usual release blend.
@@ -440,7 +440,7 @@ func _process_modification_with_delta(delta: float) -> void:
 		and not (worker.head_leap and worker.head_leap.active()) and not (worker.back_tool and (worker.back_tool.busy() or worker.back_tool.pose_owned()))
 	if braking:
 		var slide: float = (worker.linear_velocity-worker.ground_velocity).slide(worker.ground_normal).length()
-		braking = slide > .8 if _brake_handoff_age < 0.0 else _brake_handoff_age < .5 and (slide > .25 or gait.state[0] != Gait.PLANTED or gait.state[1] != Gait.PLANTED)
+		braking = slide > .8 if _brake_handoff_age < 0.0 else _brake_handoff_age < .6 and (slide > .1 or gait.state[0] != Gait.PLANTED or gait.state[1] != Gait.PLANTED)
 	if braking:
 		_brake_handoff_age = maxf(_brake_handoff_age,0.0)+delta
 		_walking_ik = true
