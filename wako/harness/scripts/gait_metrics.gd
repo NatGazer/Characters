@@ -505,7 +505,7 @@ func _dump(pose: Node, gs: Variant) -> void:
 	for side in 2:
 		var ankle: Vector3 = pose.evaluated_soles[side] - pose.evaluated_ankles[side] * Vector3(0, pose._ankle_height[side], 0)
 		line += " %d %s %s %s %s" % [1 if pose.evaluated_grounded[side] else 0, _v(pose.evaluated_hips[side]), _v(pose.evaluated_knees[side]), _v(ankle), _v(pose.evaluated_soles[side])]
-	if gs: line += " drop=%.3f y=%.3f lean=%.3f" % [gs.body_drop, gs.body_y + gs.body_bob, gs.body_lean]
+	if gs: line += " drop=%.3f y=%.3f lean=%.3f" % [gs.body_drop, float(gs.body_y) + float(gs.get("body_bob") if gs.get("body_bob") != null else 0.0), gs.body_lean]
 	print(line + " " + label.replace(" ", "_"))
 	var line2 := "POSE2 %.4f %s %s %s %s" % [clock, _v(root.origin), _v(root.basis.x), _v(root.basis.y), _v(root.basis.z)]
 	for side in 2:
