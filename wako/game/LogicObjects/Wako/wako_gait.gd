@@ -129,6 +129,8 @@ var _frozen_support: Array = [null, null]
 var _frozen_local: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]
 var _pass: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]        # swing bulge around the stance foot
 var _catch: Array[float] = [0.0, 0.0]          # front-loaded progress for a swing leaving from far behind
+var _settle_aim: Array[Vector3] = [Vector3.INF, Vector3.INF]   # neutral the last settle step aimed at
+var _settled_at: Array[Vector3] = [Vector3.INF, Vector3.INF]   # where that settle step landed
 var stance_age: Array[float] = [0.0, 0.0]
 var landing_count: Array[int] = [0, 0]          # helper plays a footstep per new landing
 var landing_strength: Array[float] = [0.0, 0.0]
@@ -1124,6 +1126,10 @@ func _events(delta: float) -> void:
 		for side in 2:
 			var neutral := rest + _lateral(side, lead, HIP_X) + _slope_shift()
 			var offset := (_planted_point(side) - neutral).slide(Vector3.UP).length()
+			# A settle step the footprint check moved off a block edge already
+			# stands as close to this neutral as the ground allows: re-stepping
+			# toward the same spot would only shuffle in place forever.
+			if _settled_at[side].distance_to(_planted_point(side)) < .02 and _settle_aim[side].distance_to(neutral) < .04: offset = 0.0
 			var yaw_error := absf(wrapf(_planted_yaw(side) - lead, -PI, PI))
 			var score := maxf(offset / SETTLE_DISTANCE, yaw_error / SETTLE_YAW)
 			if score > 1.0 and score > worst_score and stance_age[side] > .05:
@@ -1131,6 +1137,7 @@ func _events(delta: float) -> void:
 				worst_score = score
 		if worst >= 0:
 			var neutral := rest + _lateral(worst, lead, HIP_X) + _slope_shift()
+			_settle_aim[worst] = neutral
 			var distance := (_planted_point(worst) - neutral).slide(Vector3.UP).length()
 			var duration := clampf(.12 + .2 * distance, .13, .2)
 			_lift_off(worst, SETTLE, 1.0 / duration, clampf(.03 + .12 * distance, .035, .065))
@@ -1840,6 +1847,7 @@ func _swing_output(side: int, delta: float) -> void:
 			var travel := velocity / speed if speed > .2 else facing(worker._heading)
 			print("GAIT contact side=%d at=%s other=%s(state %d) sep=%.3f heading=%.2f land_yaw=%.2f frozen=%s ahead_body=%.3f stance_d=%.3f p=%.2f" % [side, str(contact), str(other_pt), state[1 - side], (contact - other_pt).slide(Vector3.UP).dot(rgt) * (-1.0 if side == 0 else 1.0), worker._heading, landing_yaw[side], _frozen[side], (contact - worker.global_position).dot(travel), stance_distance(speed), _local_phase(side)])
 		_contact_kind[side] = state[side]
+		_settled_at[side] = contact if state[side] == SETTLE else Vector3.INF
 		# The swing start (support-local) must survive a deferred contact.
 		var start_keep := _swing_start(side)
 		# Planted with the yaw it is shown at (rate-limited above): no turn pop.
