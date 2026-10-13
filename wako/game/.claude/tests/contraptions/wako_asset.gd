@@ -3,6 +3,8 @@ extends Node3D
 ## helper contact tracks must not overwrite animations or assume seven bones.
 const Source := preload("res://LogicObjects/Wako/Wako.blend")
 const Worker := preload("res://LogicObjects/Wako/Wako.tscn")
+const HolderVisual := preload("res://LogicObjects/Wako/wako_back_holder_visual.gd")
+const Part := preload("res://Components/Contraptions/contraption_part.gd")
 var failures := 0
 var checks := 0
 
@@ -102,6 +104,71 @@ func _run() -> void:
 		var body = worker.ragdoll.rig.by_name[name]
 		rounded_physics = rounded_physics and body.shape is SphereShape3D and body.mass > 0.0 and body.inertia > 0.0
 	_check(rounded_physics, "native foot and toe contacts have finite rounded shapes without invisible boot boxes")
+	# Worn backpack: the plate is fitted to this rig's real skin (no floating
+	# fallback), 1 mm off the back face, and the always-visible holder keeps its
+	# eleven material meshes, two native tray sensors and finite 2 kg.
+	var back: RefCounted = worker.back_tool
+	var plate_meshes := 0
+	var plate_sensors := 0
+	for child: Node in back.holder.get_children():
+		if child is MeshInstance3D: plate_meshes += 1
+		elif child is CollisionShape3D and child.shape is BoxShape3D: plate_sensors += 1
+	var measured: float = HolderVisual.measured_back(worker._skin_mesh, worker._skeleton)
+	var seat: MeshInstance3D = back.holder.get_node_or_null("RootSeat")
+	var plate_inner := INF
+	var plate_outer := -INF
+	if seat:
+		for point: Vector3 in seat.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+			var z: float = (seat.transform * point).z
+			plate_inner = minf(plate_inner, z)
+			plate_outer = maxf(plate_outer, z)
+	print("CONTRAPTION_WAKO_ASSET plate fitted=%s back=%.4f outer=%.4f seat_z=%.4f meshes=%d sensors=%d" % [HolderVisual._body_fitted, measured, plate_outer, back.seat_point().z, plate_meshes, plate_sensors])
+	_check(HolderVisual._body_fitted and absf(plate_outer - (measured + HolderVisual.BODY_GAP + HolderVisual.SEAT_SIZE.z)) < .0015
+		and absf(plate_outer - back.PLATE_BACK) < .0015 and back.seat_point().z - plate_outer < .07,
+		"the back plate is fitted 1 mm off the real skin and the seat sits just behind it")
+	_check(plate_meshes == 11 and plate_sensors == 2 and is_equal_approx(back.holder_mass(), 2.0) and back.holder.visible,
+		"the always-visible holder keeps eleven meshes, two tray sensors and 2 kg")
+	# Both bronze straps follow the skin's own section (1 mm off it, a few mm
+	# at most across their width) up the back and over the roof bevel.
+	var straps_fitted: bool = back._straps.size() == 2
+	for strap: MeshInstance3D in back._straps:
+		straps_fitted = straps_fitted and strap.mesh == HolderVisual.strap_mesh(worker._skin_mesh, worker._skeleton, signf(strap.get_aabb().get_center().x))
+	print("CONTRAPTION_WAKO_ASSET straps fitted=%s gap=%s" % [straps_fitted, HolderVisual.strap_fit_gap])
+	_check(straps_fitted and HolderVisual.strap_fit_gap.x >= HolderVisual.BODY_GAP - .0001 and HolderVisual.strap_fit_gap.y <= .015,
+		"both straps are fitted to the real skin section (no floating strap)")
+	# Tray hardware hangs no lower than 4 cm above the cube's bottom edge
+	# (skin y -.2625) and stays inside the hips' swing lane (|x| <= .32), for
+	# every seat the holder can take (both sides, every offered face, both tools).
+	var hardware_ok := true
+	var lowest := INF
+	var widest := 0.0
+	var seated_faces := 0
+	for kind: String in ["assembly_tool", "salvage_tool"]:
+		var part := Part.new()
+		part.setup(kind, "asset_" + kind, true)
+		add_child(part)
+		await _advance(1)
+		for side: float in [-1.0, 1.0]:
+			for face: float in [-1.0, 1.0]:
+				back._side_sign = side
+				back._seat_flip = face
+				# Only the faces the BackTool will actually seat (it never offers a
+				# face whose underside would drop a tray below the cube).
+				if not back._seat_face_ok(part, side, face): continue
+				seated_faces += 1
+				back._commit_seat(part)
+				back._show_layout(true) # The trays as they hold this seat.
+				for child: Node in back.holder.get_children():
+					if child is MeshInstance3D and child.name != "RootSeat":
+						var mesh_node := child as MeshInstance3D
+						for corner in 8:
+							var q: Vector3 = mesh_node.transform * mesh_node.get_aabb().get_endpoint(corner)
+							lowest = minf(lowest, q.y)
+							widest = maxf(widest, absf(q.x))
+		part.queue_free()
+	hardware_ok = seated_faces >= 4 and lowest >= -.2625 + .04 and widest <= .32
+	print("CONTRAPTION_WAKO_ASSET holder_hardware seats=%d lowest=%.4f above_cube_bottom=%.4f widest=%.4f" % [seated_faces, lowest, lowest + .2625, widest])
+	_check(hardware_ok, "every diagonal seat keeps its tray hardware >= 4 cm above the cube bottom and inside the hip lane")
 	var unchanged := not animation.has_animation_library("work")
 	for name: StringName in clips:
 		unchanged = unchanged and animation.get_animation(name).get_track_count() == source_tracks[name]

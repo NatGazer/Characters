@@ -840,6 +840,10 @@ func _move_with_forces(delta: float, keep_evaluated_parent: bool = false) -> voi
 			desired += balance.normalized() * minf(balance.length() - .22, .25) * 1.5
 	var force := (desired - horizontal) * mass * 6.0 * (1.0 - _reaction * 0.7)
 	force = force.slide(ground_normal).limit_length(mass * 9.8 * (1.25 if on_ground else 0.055))
+	# --- BackTool stunt hook: supported forward advance under the airborne tool (forces only; see wako_back_tool.gd stunt_force) ---
+	var stunt_force: Variant = back_tool.stunt_force(horizontal) if back_tool else null
+	if stunt_force is Vector3: force = stunt_force
+	# --- end BackTool stunt hook ---
 	if idle_play and (idle_play.water_support_active() or idle_play.water_ballistic_flight()): force = Vector3.ZERO
 	apply_central_force(force)
 	if on_ground and _ground_body: _ground_body.apply_force(-force, _ground_point - _ground_body.global_position)
@@ -908,7 +912,9 @@ func _update_animation(delta: float) -> void:
 	var travelling: bool = _animation.current_animation in LOCOMOTION_CLIPS
 	# Hysteresis upward only: entering travel needs .2 m/s, while arriving
 	# still drops to idle at the original .15 (work settle gates wait on it).
-	if gait_speed > (0.15 if travelling else 0.2) and on_ground:
+	# BackTool stunt hook: the supported advance keeps the idle clip (support sole planted).
+	var stunt_gait: bool = back_tool and back_tool.stunt_owns_gait()
+	if gait_speed > (0.15 if travelling else 0.2) and on_ground and not stunt_gait:
 		var running: bool = gait_speed > (2.35 if _animation.current_animation == "work/run" else 2.6)
 		clip = "work/carry" if carrying else "work/run" if running else "wk_walkcycle"
 		var gait: RefCounted = _pose.gait if _pose else null
@@ -930,7 +936,8 @@ func _update_animation(delta: float) -> void:
 			var stance_distance := .40 if carrying else .50 if clip == "work/run" else .46
 			var nominal_speed := stance_distance * 2.0 / _animation.get_animation(clip).length
 			playback = clampf(gait_speed / nominal_speed, 0.12, 3.0)
-	elif not on_ground or fear_time > 0.0: clip = "work/danger_L"
+	# BackTool stunt hook: a fear/air reaction waits until the airborne tool is caught.
+	elif (not on_ground or fear_time > 0.0) and not stunt_gait: clip = "work/danger_L"
 	if _animation.current_animation != clip:
 		var previous_phase := 0.0
 		var preserve_phase := _animation.current_animation in LOCOMOTION_CLIPS and clip in LOCOMOTION_CLIPS
