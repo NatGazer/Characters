@@ -221,6 +221,8 @@ var _root_local := Transform3D.IDENTITY
 var _tool_local := Transform3D.IDENTITY
 var _tool_bounds := AABB()
 var _holder_bounds := AABB()
+# The holder without its roof straps/rivets: the stock is meant to land on the roof.
+var _holder_source_bounds := AABB()
 var _flight_start := Transform3D.IDENTITY
 var _destination := Transform3D.IDENTITY
 var _launch_velocity := Vector3.ZERO
@@ -2825,6 +2827,8 @@ func _arc_clear(with_cargo: bool, from_time := 0.0, quick_only := false, quick_d
 	if is_instance_valid(worker.equipped_tool): tool_shape.size = _tool_bounds.size+Vector3.ONE*.025
 	var holder_shape := BoxShape3D.new()
 	if _holder_bounds.size.length_squared()>.000001: holder_shape.size=_holder_bounds.size+Vector3.ONE*.015
+	var holder_source_shape := BoxShape3D.new()
+	if _holder_source_bounds.has_volume(): holder_source_shape.size=_holder_source_bounds.size+Vector3.ONE*.015
 	var cargo_shape := BoxShape3D.new()
 	cargo_shape.size = _stock_bounds.size+Vector3.ONE*.03
 	var cargo_start: Vector3 = (_planned_group_head(0.0)*_cargo_local).origin if with_cargo else Vector3.ZERO
@@ -2883,9 +2887,9 @@ func _arc_clear(with_cargo: bool, from_time := 0.0, quick_only := false, quick_d
 			query.shape=holder_shape
 			query.transform=body*_holder_frame(time)*Transform3D(Basis.IDENTITY,_holder_bounds.get_center())
 			if not space.intersect_shape(query,1).is_empty(): arc_failure="original back holder obstruction at %.3fs" % time; return false
-			if check_source:
-				source_query.shape=holder_shape
-				source_query.transform=query.transform
+			if check_source and _holder_source_bounds.has_volume():
+				source_query.shape=holder_source_shape
+				source_query.transform=body*_holder_frame(time)*Transform3D(Basis.IDENTITY,_holder_source_bounds.get_center())
 				if not space.intersect_shape(source_query,1).is_empty(): arc_failure="original stock intersects permanent back holder before head contact at %.3fs" % time; return false
 		if with_cargo:
 			var head := _planned_group_head(_flight_seconds*float(step)/steps)
@@ -3264,7 +3268,8 @@ func _crew_clear(time: float, with_cargo: bool, gun_head_boxes: Array[Dictionary
 	var cube_size := Vector3(.76,_head_height*2.0,.76)
 	var cargo := _planned_group_head(time)*_cargo_local*Transform3D(Basis.IDENTITY,_stock_bounds.get_center()) if with_cargo else Transform3D.IDENTITY
 	var holder:=own_body*_holder_frame(time)*Transform3D(Basis.IDENTITY,_holder_bounds.get_center())
-	if with_cargo and _boxes_overlap(cargo,_stock_bounds.size,holder,_holder_bounds.size): arc_failure="shared stock crosses permanent back holder at %.3fs" % time; return false
+	var holder_low:=own_body*_holder_frame(time)*Transform3D(Basis.IDENTITY,_holder_source_bounds.get_center())
+	if with_cargo and _holder_source_bounds.has_volume() and _boxes_overlap(cargo,_stock_bounds.size,holder_low,_holder_source_bounds.size): arc_failure="shared stock crosses permanent back holder at %.3fs" % time; return false
 	var has_tool:=is_instance_valid(worker.equipped_tool)
 	var tool:=own_body*_tool_local*Transform3D(Basis.IDENTITY,_tool_bounds.get_center()) if has_tool else Transform3D.IDENTITY
 	if with_cargo and has_tool and _boxes_overlap(cargo,_stock_bounds.size,tool,_tool_bounds.size): arc_failure="shared stock crosses retained tool at %.3fs" % time; return false
@@ -3304,7 +3309,8 @@ func _crew_clear(time: float, with_cargo: bool, gun_head_boxes: Array[Dictionary
 		var other_holder: Transform3D=other_body*other._holder_frame(time)*Transform3D(Basis.IDENTITY,other._holder_bounds.get_center())
 		if _boxes_overlap(holder,_holder_bounds.size,other_cube,cube_size) or _boxes_overlap(own_cube,cube_size,other_holder,other._holder_bounds.size): arc_failure="permanent back holder crosses partner head at %.3fs" % time; return false
 		if _boxes_overlap(holder,_holder_bounds.size,other_holder,other._holder_bounds.size): arc_failure="cooperative back holders cross at %.3fs" % time; return false
-		if with_cargo and _boxes_overlap(cargo,_stock_bounds.size,other_holder,other._holder_bounds.size): arc_failure="shared stock crosses partner back holder at %.3fs" % time; return false
+		var other_low: Transform3D=other_body*other._holder_frame(time)*Transform3D(Basis.IDENTITY,other._holder_source_bounds.get_center())
+		if with_cargo and other._holder_source_bounds.has_volume() and _boxes_overlap(cargo,_stock_bounds.size,other_low,other._holder_source_bounds.size): arc_failure="shared stock crosses partner back holder at %.3fs" % time; return false
 		var other_has_tool:=is_instance_valid(member.equipped_tool)
 		var other_tool: Transform3D=other_body*other._tool_local*Transform3D(Basis.IDENTITY,other._tool_bounds.get_center()) if other_has_tool else Transform3D.IDENTITY
 		if with_cargo and other_has_tool and _boxes_overlap(cargo,_stock_bounds.size,other_tool,other._tool_bounds.size): arc_failure="shared stock crosses partner tool at %.3fs" % time; return false
@@ -4225,6 +4231,7 @@ func _capture_leg_bases(sk: Skeleton3D) -> void:
 
 func _capture_holder_bounds() -> void:
 	_holder_bounds=AABB()
+	_holder_source_bounds=AABB()
 	if not worker.back_tool: return
 	var found:=false
 	var inverse:=worker.global_transform.affine_inverse()
@@ -4233,6 +4240,8 @@ func _capture_holder_bounds() -> void:
 		var bounds: AABB=inverse*node.global_transform*node.get_aabb()
 		_holder_bounds=_holder_bounds.merge(bounds) if found else bounds
 		found=true
+		if node in worker.back_tool._straps or node.mesh is CylinderMesh: continue
+		_holder_source_bounds=_holder_source_bounds.merge(bounds) if _holder_source_bounds.has_volume() else bounds
 	# Preserve the ORIGINAL world/cargo/partner union. Only own-limb
 	# admission resolves its empty cavities against every real constituent.
 	var started_usec := Time.get_ticks_usec()

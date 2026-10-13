@@ -99,7 +99,57 @@ static func _mesh_solids(mesh: Mesh,seat: bool) -> Array:
 		for offset: int in range(0,triangles.size(),24): solids.append(triangles.slice(offset,offset+24))
 		return solids
 	if seat and triangles.size()!=44*3: return []
+	# A body-fitted strap is one curved band: 8 triangles per station pair plus
+	# two end caps. Each station pair is cleared as the exact convex hull of its
+	# two section rings, which contains that piece of the band.
+	if not seat and triangles.size()>=60 and (triangles.size()-12)%24==0 and not _is_convex(triangles):
+		var segments: Array=[]
+		for offset: int in range(0,triangles.size()-12,24):
+			var hull:=_hull_triangles(triangles.slice(offset,offset+24))
+			if hull.is_empty(): return []
+			segments.append(hull)
+		return segments
 	return [triangles]
+
+static func _is_convex(triangles: PackedVector3Array) -> bool:
+	var centre:=Vector3.ZERO
+	for point: Vector3 in triangles: centre+=point/float(triangles.size())
+	for offset: int in range(0,triangles.size(),3):
+		var a: Vector3=triangles[offset]
+		var normal: Vector3=(triangles[offset+1]-a).cross(triangles[offset+2]-a)
+		if normal.length_squared()<.00000000000000000001: continue
+		normal=normal.normalized()
+		if normal.dot(centre-a)>0.0: normal=-normal
+		for point: Vector3 in triangles:
+			if normal.dot(point-a)>.000002: return false
+	return true
+
+static func _hull_triangles(source: PackedVector3Array) -> PackedVector3Array:
+	# Brute-force hull of a handful of points: every triple whose plane keeps
+	# all the others on one side is a hull triangle.
+	var points:=PackedVector3Array()
+	for point: Vector3 in source:
+		var known:=false
+		for other: Vector3 in points:
+			if other.distance_squared_to(point)<.0000000001: known=true; break
+		if not known: points.append(point)
+	var result:=PackedVector3Array()
+	if points.size()<4: return result
+	for i: int in points.size():
+		for j: int in range(i+1,points.size()):
+			for k: int in range(j+1,points.size()):
+				var normal: Vector3=(points[j]-points[i]).cross(points[k]-points[i])
+				if normal.length_squared()<.00000000000001: continue
+				normal=normal.normalized()
+				var above:=false
+				var below:=false
+				for point: Vector3 in points:
+					var distance: float=normal.dot(point-points[i])
+					if distance>.000001: above=true
+					elif distance< -.000001: below=true
+				if above and below: continue
+				result.append_array([points[i],points[j],points[k]])
+	return result
 
 static func _freeze(originals: Array,frame: Transform3D) -> Dictionary:
 	if not frame.origin.is_finite() or not is_finite(frame.basis.determinant()) or frame.basis.determinant()<=.000001: return {}
