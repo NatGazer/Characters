@@ -23,6 +23,8 @@ var threat: Node3D
 var weight := 0.0
 var direction := Vector3.ZERO
 var notice_focus := 0.0
+# Startle beat that precedes the focus: eyes widen first, then narrow.
+var notice_widen := 0.0
 var observations := 0
 var phrases := 0
 var _noticed_id := 0
@@ -36,10 +38,12 @@ var _yaw := 0.0
 var _turn_side := 1.0
 var _escape_amount := 0.0
 var _escape_age := 0.0
+var _look_back_period := 1.6
 
 func setup(owner: RigidBody3D) -> void:
 	worker = owner
 	_turn_side = 1.0 if absi(str(worker.worker_id).hash())%2==0 else -1.0
+	_look_back_period = 1.35+.1*float(absi(str(worker.worker_id).hash())%6)
 	# Existing support/tool IK consumes this authored pose afterward.
 	worker._skeleton.add_child(self)
 	worker._skeleton.move_child(self,worker._pose.get_index())
@@ -80,6 +84,7 @@ func _process_modification_with_delta(delta: float) -> void:
 		direction = Vector3.ZERO
 		threat = null
 		notice_focus = 0.0
+		notice_widen = 0.0
 		_lean = Vector3.ZERO
 		_drop = 0.0
 		_yaw = 0.0
@@ -96,9 +101,17 @@ func _process_modification_with_delta(delta: float) -> void:
 		_notice_age = 0.0
 		if observed_id!=0: _notice_serial += 1
 	_notice_age += step
-	# A brief focused squint releases into fully open watching eyes before
-	# the cube's warning dip. The ordinary expression clock remains the owner.
-	var focus := smoothstep(.015,.065,_notice_age)*(1.0-smoothstep(.12,.34,_notice_age)) if observed_id!=0 else 0.0
+	# Notice reads as surprise first (eyes widen within ~2 frames, pupils
+	# pinpoint), then a focused worried look while the warning plays, then
+	# open watching eyes. The ordinary expression clock remains the owner.
+	var widen := smoothstep(0.0,.03,_notice_age)*(1.0-smoothstep(.16,.40,_notice_age)) if observed_id!=0 else 0.0
+	var focus := smoothstep(.14,.26,_notice_age)*(1.0-smoothstep(.55,.95,_notice_age)) if observed_id!=0 else 0.0
+	var was_wide := notice_widen>=.5
+	notice_widen = move_toward(notice_widen,widen,step*30.0)
+	# The face composes the widen as it peaks (never a quiet-interval late).
+	if notice_widen>=.5 and not was_wide:
+		var face: RefCounted = worker.get("eyes")
+		if face: face.wake()
 	notice_focus = move_toward(notice_focus,focus,step*14.0)
 	threat = observed
 	var admitted := _can_present()
@@ -135,10 +148,12 @@ func _process_modification_with_delta(delta: float) -> void:
 		return
 	var local: Vector3 = (worker._model.global_basis.inverse()*direction).slide(Vector3.UP)
 	var pose := phrase_pose(_phrase_age) if active_phrase else Vector3(.032,.012,0.0) if shelter else Vector3.ZERO
-	# The cube follows the paid departure, then briefly watches back. The
-	# glance settles before the running lean; both still pass the existing
+	# The cube follows the paid departure, then briefly watches back, and
+	# keeps peeking back on a personal period while the escape lasts. Each
+	# glance settles before the running lean; all still pass the existing
 	# published-sole reach and complete carried-tool gates below.
-	var watch_back := smoothstep(.06,.15,_escape_age)*(1.0-smoothstep(.34,.64,_escape_age))
+	var back_age := _escape_age if _escape_age<_look_back_period else fmod(_escape_age-_look_back_period,_look_back_period)+.06
+	var watch_back := smoothstep(.06,.15,back_age)*(1.0-smoothstep(.34,.64,back_age))
 	var escape_pose := Vector3(.105,.018,.72*watch_back)*(_escape_amount if escaping else 0.0)
 	var escape_blend := smoothstep(.335,PHRASE_SECONDS,_phrase_age) if active_phrase else 1.0
 	pose = pose.lerp(escape_pose,escape_blend) if _escape_amount>.001 else pose

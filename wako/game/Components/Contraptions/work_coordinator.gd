@@ -220,6 +220,8 @@ func refresh_jobs() -> void:
 			worker.work_target = job.connection.b if job.kind == "unbend" and is_instance_valid(job.get("connection")) else job.target
 			worker.safe_position = _parking_position(worker)
 			worker.status_text = "Fetching " + _part_title(job) if entry.phase == "fetch" else "Inspecting " + _part_title(job)
+		# Eyes reach the next target as the lease is reserved, before departure.
+		_publish_attention(entry)
 	# Unclaimed helpers stay behind the workshop instead of roaming into combat.
 	var blocked_reported := false
 	for worker: Node in workers:
@@ -593,6 +595,7 @@ func _tick_job(entry: Dictionary, delta: float) -> void:
 	if not _nodes_valid(job):
 		_cancel(entry, "Component removed; checking a new job")
 		return
+	_publish_attention(entry)
 	var crew: Array = entry.crew
 	if crew.any(func(w: Variant) -> bool: return not is_instance_valid(w) or w.paused):
 		_cancel(entry, "Crew interrupted; load set down")
@@ -2293,6 +2296,32 @@ func _begin_staging(entry: Dictionary) -> void:
 			w._action_length = lead._action_length
 			w._animation.speed_scale = w._animation.get_animation(w._animation.current_animation).length / w._action_length
 
+# Gaze hint only (helper attention_point/attention_node): stock while fetching
+# or flipping it onto the head, the tool while fetching/fitting it, otherwise
+# the target. The node lets the eyes pursue a moving part instead of jumping
+# between stale points, so a member is only written when its focus changes.
+# work_target and every reach/admission contract stay untouched.
+func _publish_attention(entry: Dictionary) -> void:
+	var job: Dictionary = entry.job
+	var phase := str(entry.get("phase", ""))
+	var focus: Variant = job.get("target")
+	if phase in ["tool_route", "tool_fetch", "tool_change"]: focus = job.get("tool")
+	elif phase in ["fetch_outside", "fetch_route", "fetch", "head_pickup", "pickup", "pickup_flight"]: focus = job.get("part")
+	if not is_instance_valid(focus) or not focus is Node3D: focus = job.get("target")
+	var node: Node3D = focus if is_instance_valid(focus) and focus is Node3D else null
+	for member: Variant in entry.crew:
+		if is_instance_valid(member) and "attention_point" in member and member.attention_node!=node:
+			# Positions are read only when a member's focus changes (and only
+			# from a node inside the tree).
+			member.attention_point = node.global_position if node and node.is_inside_tree() else Vector3.INF
+			member.attention_node = node
+
+func _clear_attention(entry: Dictionary) -> void:
+	for member: Variant in entry.crew:
+		if is_instance_valid(member) and "attention_point" in member:
+			member.attention_point = Vector3.INF
+			member.attention_node = null
+
 func _finish(entry: Dictionary) -> void:
 	# Freed crew is admitted to its next useful lease on the next tick.
 	_refresh_clock = maxf(_refresh_clock, .25)
@@ -2305,6 +2334,7 @@ func _finish(entry: Dictionary) -> void:
 		_head_return_reasons.erase(str(entry.job.id))
 	yard.release_job(entry.job)
 	active_jobs.erase(entry.job.id)
+	_clear_attention(entry)
 	for w: Node in entry.crew:
 		if not is_instance_valid(w): continue
 		w.current_job_id = ""
@@ -2390,6 +2420,7 @@ func _cancel(entry: Dictionary, reason: String) -> void:
 	yard.release_job(entry.job)
 	_clear_storage_target(entry)
 	active_jobs.erase(id)
+	_clear_attention(entry)
 	_retry_after[id] = _clock + float(entry.get("retry_delay", 4.0))
 	_retry_reasons[id] = reason
 	if reason.begins_with(HEAD_RETURN_FAILURE_PREFIX):

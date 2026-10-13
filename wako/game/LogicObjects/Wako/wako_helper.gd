@@ -166,20 +166,20 @@ var idle_play: RefCounted
 var pickup: RefCounted
 var back_tool: RefCounted
 var head_leap: RefCounted
-var _face_rng := RandomNumberGenerator.new()
-var _face_clock := 0.0
-var _next_blink := 0.0
-var _blink_age := -1.0
-var _eye_effort := 1.0
+# Uploaded pupil gaze (atlas UV), mirrored from the face engine each tick
+# (written by wako_eyes.gd, read by the head-presentation checks).
+@warning_ignore("unused_private_class_variable")
 var _eye_gaze := Vector2.ZERO
-var _eye_shader_openness := 1.0
-var _eye_shader_gaze := Vector2.ZERO
 var _eye_smile_source: WeakRef
-var _eye_smile := 0.0
-var _eye_shader_smile := 0.0
-var _face_alarm := 0.0
-var _face_shader_alarm := 0.0
-var _face_shader_startle := 0.0
+const Eyes := preload("res://LogicObjects/Wako/wako_eyes.gd")
+## Face engine (blinks, saccades, event faces, uniform uploads).
+var eyes: RefCounted
+## Coordinator gaze hint for the current lease phase (stock, tool, target or
+## the next reserved target). Read by the eyes only; never a reach target.
+var attention_point := Vector3.INF
+## The same hint as a node when it moves (a part in flight, a fetched tool):
+## the eyes pursue it instead of re-aiming at a stale point.
+var attention_node: Node3D
 var _work_axis := Vector3.ZERO
 var _work_axis_target := 0
 var _work_axis_tool := 0
@@ -1483,156 +1483,38 @@ func _apply_skin() -> void:
 	_skin_mesh.set_surface_override_material(0, _shared_skin_material)
 
 func _seed_expression() -> void:
-	_face_rng.seed = absi(worker_id.hash()) + 7439
-	_next_blink = _face_rng.randf_range(1.1, 6.5)
-	_blink_age = -1.0
+	# One face engine per helper (seeded from worker_id); per-instance
+	# uniforms on the shared skin.
+	eyes = Eyes.new()
+	eyes.setup(self)
 
 func bind_eye_smile_source(source: RefCounted) -> void:
 	# Personality owns observation/timing. Eyes only consume its bounded intent;
 	# a weak reference does not retain an unloaded worker/director pair.
 	# Smile contract: smile_weight (float), look_position (finite Vector3).
 	# The production personality also publishes alert_weight/alert_position
-	# from its already revalidated live cached enemy core.
+	# from its already revalidated live cached enemy core, its attention
+	# result and the voice clock used for mouth sync.
 	_eye_smile_source = weakref(source) if source else null
 
 func _update_expression(delta: float) -> void:
-	_face_clock += delta
-	if _face_clock < 1.0 / 30.0: return
-	var elapsed := _face_clock
-	_face_clock = 0.0
-	_next_blink -= elapsed
-	if fear_time > 0.0: _next_blink = maxf(_next_blink, .5)
-	if _blink_age < 0.0 and _next_blink <= 0.0:
-		_blink_age = 0.0
-		_next_blink = _face_rng.randf_range(2.8, 6.5)
-	var blink := 1.0
-	if _blink_age >= 0.0:
-		_blink_age += elapsed
-		blink = 1.0 - smoothstep(0.0, .045, _blink_age) if _blink_age < .075 else smoothstep(.075, .16, _blink_age)
-		if _blink_age >= .16: _blink_age = -1.0
-	# These six supported work gestures watch their real fastener/contact,
-	# gathering the eyes with the cube before the unchanged .56 event.
-	var work_focus: bool = action in ["inspect","assemble","repair"] and is_instance_valid(work_target) and on_ground and is_available() and fear_time <= 0.0 \
-		and _pose and _pose.evaluated_valid and _pose.evaluated_grounded[1-work_foot_side]
-	var play: RefCounted = idle_play
-	var water_focus: bool = play and play._water_active and not play._water_interrupted and not play._reserved_for_work and play._water_point.is_finite() \
-		and play.state in ["water_attention","water_excited","water_run","water_settle","gather"] and is_available() and not paused and fear_time<=0.0 \
-		and action.is_empty() and current_job_id.is_empty() and not work_action_held and not carrying and cargo_mass<=0.0 \
-		and not is_instance_valid(station) and not is_instance_valid(work_target) and not is_instance_valid(equipped_gun)
-	var water_gather := 0.0
-	if water_focus and play.state=="water_excited":
-		water_gather = smoothstep(.02,.08,float(play.state_age))*(1.0-smoothstep(.13,.22,float(play.state_age)))
-	var work_gather := 0.0
-	var work_receive := 0.0
-	if work_focus:
-		var prepare_start := .08 if action == "inspect" else (.12 if action == "assemble" else .18)
-		var prepare_end := .18 if action == "inspect" else (.22 if action == "assemble" else .27)
-		work_gather = smoothstep(prepare_start,prepare_end,action_progress)*(1.0-smoothstep(.43 if action != "repair" else .44,.56,action_progress))
-		work_receive = smoothstep(.56,.60,action_progress)*(1.0-smoothstep(.66,.80,action_progress))
-	var effort := .92 if feet_work_active() else 1.0 - .12 * clampf(cargo_mass / 100.0, 0.0, 1.0)
-	if work_focus: effort = clampf(effort-.16*work_gather+.04*work_receive,0.0,1.0)
-	if water_focus: effort = 1.0-.18*water_gather
-	if fear_time > 0.0: effort = 1.0
-	_eye_effort = lerpf(_eye_effort, effort, 1.0 - exp(-(20.0 if water_focus else (16.0 if work_focus else 8.0)) * elapsed))
-	var gaze := Vector2.ZERO
-	var gaze_response := 24.0 if water_focus else (18.0 if work_focus else 7.0)
-	var looking: Vector3 = work_target.global_position if is_instance_valid(work_target) else target_position
-	if work_focus: looking = work_point()
-	var smile_request := 0.0
-	var player_looking := false
-	var pair_looking := false
-	var smile_source: RefCounted = _eye_smile_source.get_ref() if _eye_smile_source else null
-	var alert_request := 0.0
-	var alert_focus := 0.0
-	var alert_point := Vector3.INF
-	# Native fear already interrupts useful work and requests safe cover.
-	# Its face can react while the original gaze/tool recovery keeps priority.
-	var alarm_request := 1.0 if fear_time>0.0 and is_available() and on_ground and not paused else 0.0
-	# Actual work/station gaze and unfinished interruption keep priority.
-	# A cover route can still be active: eyes watch its real enemy while
-	# the unchanged native locomotion follows the safe walking request.
-	if smile_source and smile_source == personality and is_available() and on_ground and not paused \
-		and action in ["", "danger"] and current_job_id.is_empty() and not is_instance_valid(station) and not is_instance_valid(work_target):
-		var point: Variant = smile_source.get("alert_position")
-		var alert: Variant = smile_source.get("alert_weight")
-		if point is Vector3 and point.is_finite() and (alert is float or alert is int):
-			var amount := float(alert)
-			if is_finite(amount):
-				alert_request = clampf(amount, 0.0, 1.0)
-				alert_point = point
-				alarm_request = maxf(alarm_request,alert_request)
-				# The danger leaf reads this same verified hostile cache. Its brief
-				# notice focus shares the existing work/alert priority and eye clock.
-				if is_instance_valid(threat_watch):
-					var focus: Variant = threat_watch.get(&"notice_focus")
-					if (focus is float or focus is int) and is_finite(float(focus)):
-						alert_focus = clampf(float(focus),0.0,1.0)*minf(alert_request*5.0,1.0)
-						gaze_response = maxf(gaze_response,7.0+23.0*alert_focus)
-	if smile_source and is_instance_valid(Global.Player) and is_available() and fear_time <= 0.0 and action.is_empty() and current_job_id.is_empty() and not carrying and not is_instance_valid(station):
-		var smile_point: Variant = smile_source.get("look_position")
-		var weight: Variant = smile_source.get("smile_weight")
-		if smile_point is Vector3 and smile_point.is_finite() and (weight is float or weight is int):
-			var player_point: Vector3 = Global.Player.global_position + Vector3.UP * .6
-			var amount := float(weight)
-			if is_finite(amount) and smile_point.distance_squared_to(player_point) <= .25:
-				smile_request = clampf(amount, 0.0, 1.0)
-				# Only the real personality may retain observed idle eye contact
-				# between smiles. Declared material requests keep their old contract.
-				player_looking = smile_request > .001 or smile_source == personality
-				if player_looking: looking = smile_point
-	if water_focus and alert_request<=.001:
-		looking = play._water_point
-		# The real water look arrives first; the happy lids snap in as the
-		# original controller begins its supported proud cube accent.
-		smile_request = .35 if play.state=="water_attention" else .9
-	# The real pair controller has already revalidated obligations this tick.
-	# Follow its existing neighbour claim rather than searching for actors or
-	# borrowing player attention. Joy follows the earned native tap, never
-	# an authored near miss; the original eye filters also own its release.
-	if play and not play._pair.is_empty() and play._pair.stage!="route" and smile_source==personality \
-		and alert_request<=.001 and alarm_request<=.001 and is_available() and not paused and fear_time<=0.0 \
-		and action.is_empty() and current_job_id.is_empty() and not work_action_held and not carrying and cargo_mass<=0.0 \
-		and not is_instance_valid(station) and not is_instance_valid(work_target) and not is_instance_valid(equipped_gun):
-		var peer: RigidBody3D = play._pair_peer()
-		if is_instance_valid(peer) and peer.is_inside_tree() and not peer.is_queued_for_deletion() and peer.idle_play \
-			and peer.idle_play._pair_peer()==self and peer._visual_head_point.is_finite():
-			pair_looking = true
-			looking = peer._visual_head_point
-			gaze_response = maxf(gaze_response,18.0)
-			if bool(play._pair.get("contact",false)):
-				smile_request = .75*(1.0-smoothstep(.45,.90,float(play._pair.contact_age)))
-	_eye_smile = move_toward(_eye_smile, smile_request, elapsed * (12.0 if water_focus and smile_request>_eye_smile else (3.5 if smile_request > _eye_smile else 3.0)))
-	if is_instance_valid(work_target) or has_target or player_looking or water_focus or pair_looking:
-		var origin := _visual_head_point if _visual_head_point.is_finite() else _model.global_position
-		var local := _model.global_basis.inverse() * (looking - origin).normalized()
-		# This original atlas is rotated: U points physically up, V left.
-		gaze = Vector2(local.y, -local.x).limit_length(1.0) * .008
-	if alert_request > .001:
-		var origin := _visual_head_point if _visual_head_point.is_finite() else _model.global_position
-		var local := _model.global_basis.inverse() * (alert_point - origin).normalized()
-		var alert_gaze := Vector2(local.y, -local.x).limit_length(1.0) * .008
-		gaze = gaze.lerp(alert_gaze, alert_request)
-	_eye_gaze = _eye_gaze.lerp(gaze, 1.0 - exp(-gaze_response * elapsed))
-	# Fast acquisition overlaps the original body recoil. Release continues
-	# even when supported work regains priority; its effort/gaze stay intact.
-	_face_alarm = lerpf(_face_alarm,alarm_request,1.0-exp(-(18.0 if alarm_request>_face_alarm else 5.0)*elapsed))
-	if alarm_request == 0.0 and _face_alarm < .0001: _face_alarm = 0.0
-	var openness := lerpf(_eye_effort,1.0,_face_alarm) * blink * (1.0-.20*alert_focus)
-	# Material-only eye changes have no geometric motion vector. Mark their
-	# existing surface reactive until the next ordinary expression update;
-	# unchanged eyes retain opaque temporal history between natural blinks.
-	var eye_changed := absf(openness - _eye_shader_openness) > .0001 or _eye_gaze.distance_squared_to(_eye_shader_gaze) > .0000000001 or absf(_eye_smile - _eye_shader_smile) > .0001 or absf(_face_alarm-_face_shader_alarm) > .0001 or absf(alert_focus-_face_shader_startle) > .0001
-	_skin_mesh.set_instance_shader_parameter(&"eye_reactivity", 1.0 if eye_changed else 0.0)
-	_eye_shader_openness = openness
-	_eye_shader_gaze = _eye_gaze
-	_skin_mesh.set_instance_shader_parameter(&"eye_openness", openness)
-	_skin_mesh.set_instance_shader_parameter(&"gaze_uv_offset", _eye_gaze)
-	_eye_shader_smile = _eye_smile
-	_skin_mesh.set_instance_shader_parameter(&"eye_smile", _eye_smile)
-	_face_shader_alarm = _face_alarm
-	_face_shader_startle = alert_focus
-	_skin_mesh.set_instance_shader_parameter(&"face_alarm", _face_alarm)
-	_skin_mesh.set_instance_shader_parameter(&"face_startle", alert_focus)
+	# Runs every physics tick: blinks and saccades are evaluated at 120 Hz;
+	# the face brain runs at 6/4/2 Hz by camera distance and visibility (12-20
+	# Hz while a near face acts, talks, strikes or is alarmed), and only changed
+	# instance uniforms are uploaded. The engine mirrors its gaze into _eye_gaze.
+	if eyes and _skin_mesh: eyes.advance(delta)
+
+## Short event face from a real trigger (surprise, joy, pride, worry,
+## annoyed, relief, curious, notice, squeeze, flinch, satisfied).
+func face_pulse(kind: StringName, amount := 1.0) -> void:
+	if eyes: eyes.pulse(kind, amount)
+
+func face_blink(slow := false) -> void:
+	if eyes: eyes.blink_now(1.0, slow)
+
+## Rest/sit API for the face: relaxed lids, sleepy after a long rest.
+func set_face_rest(relaxed: float, sleepy := 0.0) -> void:
+	if eyes: eyes.set_rest(relaxed, sleepy)
 
 func _author_actions() -> void:
 	if _shared_work_library:
