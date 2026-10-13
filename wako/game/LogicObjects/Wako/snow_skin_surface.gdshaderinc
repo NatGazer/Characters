@@ -144,7 +144,7 @@ void fragment() {
 		float smile_shape = smoothstep(0.0, 1.0, smile);
 		float wink = clamp(side * eye_lids.w, 0.0, 1.0);
 		float squeeze = clamp(eye_iris.w, 0.0, 1.0);
-		float openness = clamp(eye_openness, 0.0, 1.0) * (1.0 - wink) * (1.0 - squeeze);
+		float openness = clamp(eye_openness, 0.0, 1.0) * (1.0 - wink) * (1.0 - smoothstep(0.0, 0.5, squeeze));
 		float dil = clamp(eye_iris.x, -1.0, 1.0);
 		float pop = 1.0 + 0.075 * clamp(eye_iris.z, 0.0, 1.0);
 		// Gaze: half moves the whole disc inside the white socket, half moves
@@ -225,7 +225,7 @@ void fragment() {
 		float crease_aa = 0.25 * (length(uv_dx) + length(uv_dy)) + 0.0002;
 		float chevron = (1.0 - smoothstep(0.0029 - crease_aa, 0.0029 + crease_aa, crease))
 			* (1.0 - smoothstep(0.038, 0.045, -across)) * local_weight;
-		float closed_ink = mix(seam_line, chevron, smoothstep(0.35, 0.8, squeeze)) * (1.0 - smoothstep(0.06, 0.24, openness));
+		float closed_ink = max(seam_line * (1.0 - smoothstep(0.45, 0.6, squeeze)), chevron * smoothstep(0.45, 0.6, squeeze)) * (1.0 - smoothstep(0.06, 0.24, openness));
 		float happy_lid = 0.0;
 		if (smile > 0.0) {
 			// Restrained lower-lid ink: both edges resolved together so it

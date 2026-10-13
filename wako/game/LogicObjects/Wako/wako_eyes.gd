@@ -275,7 +275,8 @@ func advance(delta: float) -> void:
 	if _blink_t>=0.0 or _time>=_blink_at: _advance_blink(delta)
 	# Gaze, settling and uploads run on strides with a personal phase (60 Hz
 	# near; the renderer never sees more); saccades and the dizzy swirl step
-	# every tick. A slow or still body refreshes its VOR at a half/quarter rate.
+	# every tick (every LOD: the package bounds a tick's gaze step to .004 UV).
+	# A slow or still body refreshes its VOR at a half/quarter rate.
 	if _sacc_t>=0.0 or _down or _tick>=_gaze_next:
 		_advance_gaze(_time-_gaze_time)
 		_gaze_time = _time
@@ -1022,9 +1023,12 @@ func _compose() -> void:
 	var t := _target
 	t[UC] = uc; t[LR] = lr; t[TILT] = tilt; t[WINK] = wink; t[DIL] = dil; t[POP] = pop; t[SMILE] = smile
 	t[MOPEN] = mopen; t[MCURVE] = mcurve; t[MWIDTH] = mwidth; t[MSKEW] = mskew; t[SQUEEZE] = squeeze; t[ALARM] = alarm; t[STARTLE] = startle
-	_fast = startle>0.0 or mopen>0.0 or squeeze>0.0 or not _pulses.is_empty() or (worker.action in STROKE_KINDS and _work_focus())
-	_busy = _fast or _down or alarm>0.0 or not worker.action.is_empty() or _air_time>0.0
-	if not _pulses.is_empty(): _apply_pulses()
+	# Compose at 20 Hz only while timing is visible (syllables, a strike, the
+	# startle beat, a pulse's attack); held/releasing pulses settle at 12 Hz.
+	var attacking := _apply_pulses() if not _pulses.is_empty() else false
+	var talking: bool = personality and float(personality.voice_clock)>=0.0
+	_fast = attacking or talking or startle>0.0 or squeeze>0.0 or (worker.action in STROKE_KINDS and _work_focus())
+	_busy = _fast or not _pulses.is_empty() or _down or alarm>0.0 or not worker.action.is_empty() or _air_time>0.0
 	t[UC] = clampf(t[UC],-.4,1.0)
 	t[LR] = clampf(t[LR],0.0,1.0)
 	t[TILT] = clampf(t[TILT],-1.0,1.0)
@@ -1056,8 +1060,11 @@ func _voice_shape(kind: String) -> Vector3:
 		"sigh": return Vector3(.4,.1,-.1)
 	return Vector3(.65,.1,0.0)
 
-func _apply_pulses() -> void:
+func _apply_pulses() -> bool:
+	# Adds the live pulse envelopes; true while one is starting (its attack,
+	# or due within the next busy brain tick).
 	var t := _target
+	var attacking := false
 	var index := 0
 	while index<_pulses.size():
 		var entry: Array = _pulses[index]
@@ -1070,9 +1077,11 @@ func _apply_pulses() -> void:
 			_pulses.remove_at(index)
 			continue
 		index += 1
+		if age<attack+.03: attacking = attacking or age>-BUSY_INTERVAL
 		if age<0.0: continue
 		var weight := float(entry[2])*(smoothstep(0.0,attack,age) if age<attack else 1.0 if age<attack+hold else 1.0-smoothstep(attack+hold,attack+hold+release,age))
 		for channel in PULSE_CHANNELS: t[channel] += float(preset[3+channel])*weight
+	return attacking
 
 func _settle(delta: float) -> void:
 	# Exponential approach per channel: fast enough for a 2-frame surprise,

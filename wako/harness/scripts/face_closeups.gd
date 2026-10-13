@@ -29,6 +29,10 @@ const PRESETS := [
 	["half lid down", {"eye_lids": Vector4(.35, 0, 0, 0), "gaze_uv_offset": Vector2(-.02, .006)}],
 	["O mouth", {"eye_lids": Vector4(0, 0, 0, 0), "eye_iris": Vector4(.5, 0, .3, 0), "mouth_shape": Vector4(.7, 0, -1, 0)}],
 	["grin talk", {"eye_lids": Vector4(.1, .2, .1, 0), "eye_smile": .6, "mouth_shape": Vector4(.55, .9, .25, 0)}],
+	["strike squint (sq .26)", {"eye_lids": Vector4(.21, .36, .2, 0), "eye_iris": Vector4(0, 0, 0, .26), "mouth_shape": Vector4(.1, -.5, .55, 0)}],
+	["squeeze 40%", {"eye_lids": Vector4(.21, .36, .2, 0), "eye_iris": Vector4(0, 0, 0, .4), "mouth_shape": Vector4(.1, -.5, .55, 0)}],
+	["squeeze 55%", {"eye_lids": Vector4(.21, .36, .2, 0), "eye_iris": Vector4(0, 0, 0, .55), "mouth_shape": Vector4(.1, -.5, .55, 0)}],
+	["squeeze 75%", {"eye_lids": Vector4(.21, .36, .2, 0), "eye_iris": Vector4(0, 0, 0, .75), "mouth_shape": Vector4(.1, -.5, .55, 0)}],
 ]
 const DEFAULTS := {"eye_openness": 1.0, "gaze_uv_offset": Vector2.ZERO, "eye_smile": 0.0, "face_alarm": 0.0, "face_startle": 0.0, "eye_lids": Vector4.ZERO, "eye_iris": Vector4.ZERO, "mouth_shape": Vector4.ZERO}
 var wako: RigidBody3D
