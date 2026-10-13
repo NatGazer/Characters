@@ -10,12 +10,14 @@ extends "res://harness/scripts/stage.gd"
 ##   --tool=assembly_tool|salvage_tool   --side=0|1
 ##   --walk [--walk_dist=6 --walk_speed=2.1]   walk/run with the tool seated
 ##   --depart             stow triggered by a far navigation target (production path)
-##   --interrupt=gather|hold|kick|rising|apex|falling|late|settle|reach|contact|draw|home  [--late_h=.12]
+##   --interrupt=gather|hold(=windup)|kick|rising|apex|falling|late|settle|reach|contact|draw|home  [--late_h=.12]
+##   --hit_kick_rel=k [--hit_speed=3 --hit_dir=1]   recoil-strength hit k ticks after the kick starts
 ##   --knock=back|retrieve|draw            ragdoll knock-down at that moment
 ##   --ceiling=<y>        static slab above the Wako (blocked arc)
 ##   --save=flight|flight_late|prepare|back|back_v2|retrieve    save + rebuild + restore
 ##   --slope=<deg>
-##   --cam=side|three|front|front3|back  --camoff=x,y,z  --cam_lift=.35 --fixed --fov=50
+##   --cam=side|three|front|front3|back|side_wide|three_wide|front3_wide|back_wide
+##        --camoff=x,y,z  --cam_lift=.35 (.55 wide) --fixed --fov=50
 ##   --noshadow  --win=a-b;c-d (render windows)  --vis=a-b (per-tick VIS trace)
 ##   --ticks_out=<path> (per-tick cost rows)  --quit (exit when the scenario completes)
 const Part := preload("res://Components/Contraptions/contraption_part.gd")
@@ -84,11 +86,16 @@ func setup() -> void:
 		"front": cam_offset = Vector3(.9, .75, -2.4)
 		"front3": cam_offset = Vector3(-1.9, .6, -2.2)
 		"back": cam_offset = Vector3(.3, .9, 2.5)
+		# Wide presets keep the ground and the whole 2.6 m flight in frame.
+		"side_wide": cam_offset = Vector3(3.5, 1.15, -.2)
+		"three_wide": cam_offset = Vector3(2.55, 1.2, 2.6)
+		"front3_wide": cam_offset = Vector3(-2.35, 1.0, -2.75)
+		"back_wide": cam_offset = Vector3(.45, 1.15, 3.4)
 		_: cam_offset = Vector3(2.0, 1.0, 2.05)
 	if args.has("camoff"):
 		var c: PackedStringArray = _arg("camoff", "").split(",")
 		cam_offset = Vector3(float(c[0]), float(c[1]), float(c[2]))
-	cam_lift = float(_arg("cam_lift", ".35"))
+	cam_lift = float(_arg("cam_lift", ".55" if _arg("cam", "").ends_with("_wide") else ".35"))
 	cam_smooth = 2.5
 	if args.has("ceiling"):
 		var y := float(_arg("ceiling", "1.9"))
@@ -244,7 +251,7 @@ func _interrupts(bt: RefCounted) -> void:
 	var vy: float = tool.linear_velocity.y if not tool.freeze else 0.0
 	match label:
 		"gather": hit = phase == "prepare" and (stage == "gather" or (stage.is_empty() and bt._path_index <= 1 and t_state > .25))
-		"hold": hit = phase == "prepare" and stage == "hold"
+		"hold", "windup": hit = phase == "prepare" and stage in ["hold", "windup"]
 		"kick": hit = phase == "prepare" and (stage == "kick" or (stage.is_empty() and bt._path_index >= bt._waypoints.size() - 1))
 		"rising": hit = phase == "flight" and vy > 1.0
 		"apex": hit = phase == "flight" and absf(vy) < .35 and bt._age > .05
@@ -546,6 +553,7 @@ func _observe(delta: float, bt: RefCounted) -> void:
 				m.support_sole_slip = maxf(float(m.get("support_sole_slip", 0.0)), sole.distance_to(_support_sole0))
 	_feet_after_launch(bt)
 	_retrieval_watch(delta, bt)
+	_r3_probe(delta, bt)
 	if args.has("trace") and is_instance_valid(tool) and phase in ["flight","prepare"] or (args.has("trace") and _t.has("catch") and clock - float(_t.catch) < .3):
 		var local: Vector3 = bt._body_frame.affine_inverse() * tool.global_position
 		var seat: Vector3 = bt.seat_point() if bt.has_method("seat_point") else Vector3(0, -.18, .58)
@@ -568,10 +576,23 @@ func _observe(delta: float, bt: RefCounted) -> void:
 		# code is wired to the BackTool face hooks, e.g. the gaze preview build).
 		var eyes: Dictionary = m.get("eyes", {})
 		var beat: Dictionary = eyes.get(stage, {"gaze_max": [0.0, 0.0], "openness_min": 1.0})
-		var eg: Vector2 = wako._eye_gaze
+		# Base helper face, or the face branch's eye engine (wako_eyes.gd).
+		var engine: Variant = wako.get("eyes")
+		var face_engine: bool = engine is Object and "gaze" in engine and "_blink_value" in engine
+		var eg: Vector2 = engine.gaze if face_engine else wako._eye_gaze
 		if eg.length() > Vector2(beat.gaze_max[0], beat.gaze_max[1]).length(): beat.gaze_max = [snappedf(eg.x, .0001), snappedf(eg.y, .0001)]
-		beat.openness_min = minf(float(beat.openness_min), float(wako._eye_shader_openness))
-		beat.smile_max = maxf(float(beat.get("smile_max", 0.0)), float(wako._eye_smile))
+		beat.openness_min = minf(float(beat.openness_min), float(engine._blink_value) if face_engine else float(wako._eye_shader_openness))
+		if not face_engine: beat.smile_max = maxf(float(beat.get("smile_max", 0.0)), float(wako._eye_smile))
+		if face_engine and "_track" in engine and bt.has_method("gaze_target"):
+			# How far the eyes' tracked point is from the stunt's gaze target.
+			var want: Variant = bt.gaze_target()
+			var track: Vector3 = engine._track
+			var head: Vector3 = wako._visual_head_point if wako._visual_head_point.is_finite() else wako.global_position
+			if want is Vector3 and track.is_finite():
+				var err := rad_to_deg((track - head).angle_to(Vector3(want) - head))
+				beat.track_err_max = maxf(float(beat.get("track_err_max", 0.0)), err)
+				beat.track_err_sum = float(beat.get("track_err_sum", 0.0)) + err
+				beat.track_n = int(beat.get("track_n", 0)) + 1
 		eyes[stage] = beat
 		m.eyes = eyes
 	if bt.has_method("gaze_target") and stage in ["gather", "hold", "kick", "flight", "settle", "reach", "draw"]:
@@ -662,7 +683,11 @@ func _retrieval_watch(delta: float, bt: RefCounted) -> void:
 func _on_stage(from: String, to: String, bt: RefCounted) -> void:
 	if to == "kick" and is_instance_valid(tool):
 		m.cock_leg = _leg_angles(bt, int(bt._foot_side))
-	if from == "hold" or (from == "gather" and to == "kick"): _t.kick_start = clock
+		_kick_sole_prev = bt._body_frame.affine_inverse() * Vector3(_leg_points(int(bt._foot_side))[3])
+		_kick_sole0 = _kick_sole_prev
+		_kick_sole_path = 0.0
+		_kick_tick0 = _tick
+	if to == "kick": _t.kick_start = clock
 
 func _on_phase(from: String, to: String, bt: RefCounted) -> void:
 	if to == "prepare" and not _t.has("prepare"): _t.prepare = clock
@@ -678,6 +703,15 @@ func _on_phase(from: String, to: String, bt: RefCounted) -> void:
 		m.launch_tool_height = _launch_tool.y - _ground_y
 		m.release_leg = _leg_angles(bt, int(bt._foot_side))
 		m.release_sole = _leg_points(int(bt._foot_side))[3]
+		# Kick drive: the thigh's own flexion change and the kick sole's travel
+		# (body frame, cock -> release), so a pure ankle flick reads as such.
+		if m.has("cock_leg") and _kick_sole0.is_finite():
+			var sole_now: Vector3 = bt._body_frame.affine_inverse() * Vector3(m.release_sole)
+			_kick_sole_path += sole_now.distance_to(_kick_sole_prev)
+			m.kick_thigh_flex_change = float(m.release_leg.thigh_flexion) - float(m.cock_leg.thigh_flexion)
+			m.kick_sole_travel = _kick_sole_path
+			m.kick_sole_disp = sole_now - _kick_sole0
+			m.kick_ticks = _tick - _kick_tick0
 		m.kick_dir = tool.linear_velocity.normalized()
 		var toe_v: Vector3 = bt._toe_velocity if "_toe_velocity" in bt else Vector3.ZERO
 		m.release_toe_speed = toe_v.length()
@@ -1009,7 +1043,7 @@ func _assertions() -> void:
 	var count := 0
 	var checks: Array = []
 	var knock := args.has("knock")
-	var plain := not args.has("interrupt") and not args.has("save") and not args.has("ceiling") and not knock and not args.has("fear")
+	var plain := not args.has("interrupt") and not args.has("save") and not args.has("ceiling") and not knock and not args.has("fear") and not args.has("hit_kick_rel")
 	checks.append(["same native tool and mass throughout", bool(m.get("identity_same", false)) and bool(m.get("mass_conserved", false))])
 	checks.append(["never left busy (no soft-lock)", not bool(m.get("final_busy", true))])
 	var holder: Dictionary = m.get("holder", {})
@@ -1021,17 +1055,23 @@ func _assertions() -> void:
 		checks.append(["loose release: no capsule/ragdoll overlap or exception 1 s later", not bool(after.get("capsule_overlap", false)) and not bool(after.get("ragdoll_overlap", false)) and not bool(drop.get("exception_after_1s", false))])
 		# A hit/knock already shoves the Wako; a tool shed from the air after it
 		# may land on it (solid, never through it).
-		if not knock and not args.has("hit"): checks.append(["loose release: worker horizontal dv < .1 m/s", float(drop.get("worker_dv_max", 0.0)) < .1])
+		if not knock and not args.has("hit") and not args.has("hit_kick_rel"): checks.append(["loose release: worker horizontal dv < .1 m/s", float(drop.get("worker_dv_max", 0.0)) < .1])
 	if plain or (args.has("interrupt") and str(_arg("interrupt", "")) in ["rising", "apex", "falling", "late", "settle", "reach", "contact"]):
 		var catch: Dictionary = chk.get("catch", {})
 		checks.append(["caught on BOTH trays and settled in contact", catch.get("catch_trays", []) == [true, true] and int(catch.get("contact_missing_ticks", 1)) == 0])
 		checks.append(["complete stow and retrieval onto the foot", str(m.get("result", "")) == "complete" and str(m.get("final_carrier", "")) == "foot"])
 		checks.append(["catch orientation error < 8 deg", float(m.get("catch_orientation_error_deg", 99.0)) < 8.0])
+		checks.append(["no part of the tool passes through the tray hardware in flight (<= .5 mm)", float(chk.get("hw_pen_flight_max", 0.0)) <= .0005])
 	var catch_rec: Dictionary = chk.get("catch", {})
 	if catch_rec.has("catch_reversal"):
 		# Contact is detected on the tick it happens; the body stops on its own
 		# free path (no penetrated pose is published, no step back).
 		checks.append(["catch pose on the free path (pop <= 1 cm) with no step back (<= 2 mm)", float(catch_rec.get("catch_pop", 1.0)) <= .01 and float(catch_rec.get("catch_reversal", 1.0)) <= .002])
+	if plain and m.has("kick_thigh_flex_change"):
+		# The leg drives the kick (not an ankle flick), and the wind-up is a
+		# moving counter-swing (no held frame) that drops the tool first.
+		checks.append(["hip-driven kick: thigh flexion +15 deg or more, sole travel >= .20 m", float(m.get("kick_thigh_flex_change", 0.0)) >= 15.0 and float(m.get("kick_sole_travel", 0.0)) >= .20])
+		checks.append(["anticipation keeps moving (still <= .07 s) and dips the tool >= 5 cm", float(m.get("prepare_longest_still", 1.0)) <= .07 and float(m.get("windup_dip", 0.0)) >= .05])
 	if plain and not args.has("walk") and not args.has("depart"):
 		checks.append(["retrieval under 2 s from a standstill", float(m.get("retrieval_time", 99.0)) < 2.0])
 		checks.append(["per-tick query cost <= 170 ops", int(chk.get("worst_tick_ops", 9999)) <= 170])
@@ -1039,6 +1079,10 @@ func _assertions() -> void:
 		checks.append(["legs keep >= 5 cm from the seated tool and holder while walking", float(chk.get("leg_tool_clearance_min_walk", 0.0)) >= .05 and float(chk.get("leg_holder_clearance_min", 0.0)) >= .05])
 	if args.has("interrupt") and str(_arg("interrupt", "")) in ["gather", "hold", "kick", "draw", "home"]:
 		checks.append(["interrupt keeps the tool on the foot without a jump (<= 5 cm/tick off its path)", str(m.get("final_carrier", "")) == "foot" and not _t.has("dropped") and float(m.get("interrupt_max_tool_step", 1.0)) <= .05])
+	if args.has("hit_kick_rel"):
+		# A recoil-strength hit around the release: the tool stays on the foot,
+		# is caught, or lands loose - never through the body.
+		checks.append(["hit around release: the tool never passes through the body (<= 5 mm)", int(chk.get("cube_pen_ticks", 0)) == 0])
 	if args.has("fear"):
 		if args.has("hit"):
 			# A shove can carry the cradle out from under the tool: then the same
@@ -1091,6 +1135,173 @@ func _process(delta: float) -> void:
 			if clock >= float(ab[0]) and clock <= float(ab[1]): on = true
 		get_viewport().disable_3d = not on
 	if not _done and args.has("quit") and clock > 40.0: _finish("wall_timeout")
+
+## ---- Round-3 probes ----------------------------------------------------------
+## Tool visual (dense 1 cm samples) vs every piece of tray hardware - rubber
+## base and its two lips, bronze shelf, gusset - and the plate, from launch
+## through the settle and during retrieval; cube penetration in every phase;
+## the kick's leg drive; stillness/stalls through the gather and wind-up; an
+## optional recoil-strength hit k ticks after the kick starts (--hit_kick_rel).
+var _kick_sole0 := Vector3.INF
+var _kick_sole_prev := Vector3.INF
+var _kick_sole_path := 0.0
+var _kick_tick0 := 0
+var _dense_pts := PackedVector3Array()
+var _dense_bands := {}
+var _prep_prev_com := Vector3.INF
+var _prep_still := 0.0
+var _gather_moving := false
+var _hit_kick_done := false
+
+func _dense_tool() -> void:
+	if not _dense_pts.is_empty(): return
+	var inv := tool.global_transform.affine_inverse()
+	for node: Node in tool.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if not mi.mesh or not mi.is_visible_in_tree(): continue
+		var xf: Transform3D = inv * mi.global_transform
+		for s in mi.mesh.get_surface_count():
+			var arr: Array = mi.mesh.surface_get_arrays(s)
+			var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+			if idx.is_empty():
+				for i in v.size(): idx.append(i)
+			for t in range(0, idx.size() - 2, 3):
+				var a: Vector3 = xf * v[idx[t]]
+				var b: Vector3 = xf * v[idx[t + 1]]
+				var c: Vector3 = xf * v[idx[t + 2]]
+				for e: Array in [[a, b], [b, c], [c, a]]:
+					var n := maxi(1, ceili((e[0] as Vector3).distance_to(e[1]) / .01))
+					for k in n: _dense_pts.append((e[0] as Vector3).lerp(e[1], float(k) / n))
+				_dense_pts.append((a + b + c) / 3.0)
+	# Packed arrays are values in a Dictionary: build plain arrays first.
+	var bands := {}
+	for i in _dense_pts.size():
+		var band := floori(_dense_pts[i].y / .01)
+		if not bands.has(band): bands[band] = []
+		(bands[band] as Array).append(i)
+	for band: int in bands: _dense_bands[band] = PackedInt32Array(bands[band])
+
+func _hardware_boxes(bt: RefCounted) -> Array:
+	# [label, world transform (orthonormal), local AABB (metres)] per solid piece.
+	var out: Array = []
+	var groups := {"rubber": bt._seat_models, "shelf": bt._drop_arms, "gusset": bt._gussets}
+	for kind: String in groups:
+		var nodes: Array = groups[kind]
+		for i in nodes.size():
+			var mi: MeshInstance3D = nodes[i]
+			if not is_instance_valid(mi) or not mi.visible: continue
+			var g: Transform3D = mi.global_transform
+			var sc: Vector3 = g.basis.get_scale()
+			var xf := Transform3D(g.basis.orthonormalized(), g.origin)
+			if kind == "rubber":
+				var p: Vector3 = HolderVisual.PAD_SIZE * sc
+				var lh: float = HolderVisual.LIP_HEIGHT * sc.y
+				var lw: float = HolderVisual.LIP_WIDTH * sc.z
+				out.append(["%s%d" % [kind, i], xf, AABB(-p * .5, p)])
+				out.append(["lip%d" % i, xf, AABB(Vector3(-p.x * .5, p.y * .5, p.z * .5 - lw), Vector3(p.x, lh, lw))])
+				out.append(["lip%d" % i, xf, AABB(Vector3(-p.x * .5, p.y * .5, -p.z * .5), Vector3(p.x, lh, lw))])
+			else:
+				var box: AABB = mi.mesh.get_aabb()
+				out.append(["%s%d" % [kind, i], xf, AABB(box.position * sc, box.size * sc)])
+	for child: Node in bt.holder.get_children():
+		if child is MeshInstance3D and child.name == "RootSeat":
+			var seat_mi := child as MeshInstance3D
+			out.append(["plate", seat_mi.global_transform, seat_mi.mesh.get_aabb()])
+	return out
+
+func _hardware_pen(bt: RefCounted) -> Dictionary:
+	# Deepest tool-visual sample inside each hardware piece (metres).
+	_dense_tool()
+	var out := {}
+	var txf := tool.global_transform
+	var com := txf * tool.center_of_mass
+	for item: Array in _hardware_boxes(bt):
+		var xf: Transform3D = item[1]
+		var box: AABB = item[2]
+		if xf.origin.distance_to(com) > .62 + box.size.length() * .5: continue
+		var to_local: Transform3D = xf.affine_inverse() * txf
+		var to_tool: Transform3D = txf.affine_inverse() * xf
+		var lo := INF
+		var hi := -INF
+		for c in 8:
+			var q: Vector3 = to_tool * box.get_endpoint(c)
+			lo = minf(lo, q.y)
+			hi = maxf(hi, q.y)
+		var depth := 0.0
+		for band in range(floori(lo / .01), floori(hi / .01) + 1):
+			if not _dense_bands.has(band): continue
+			for i: int in _dense_bands[band]:
+				var q: Vector3 = to_local * _dense_pts[i]
+				if box.has_point(q):
+					depth = maxf(depth, minf(minf(minf(q.x - box.position.x, box.end.x - q.x), minf(q.y - box.position.y, box.end.y - q.y)), minf(q.z - box.position.z, box.end.z - q.z)))
+		if depth > 0.0:
+			var label: String = item[0]
+			out[label] = maxf(float(out.get(label, 0.0)), depth)
+	return out
+
+func _r3_probe(delta: float, bt: RefCounted) -> void:
+	if not is_instance_valid(tool) or not is_instance_valid(wako): return
+	if wako._pose and not wako._pose.evaluated_valid: return
+	var phase: String = bt.phase
+	var stage := _stage_name()
+	# Recoil-strength hit swept around the release tick.
+	if args.has("hit_kick_rel") and not _hit_kick_done and m.has("cock_leg") and _tick - _kick_tick0 >= int(_arg("hit_kick_rel", "0")):
+		_hit_kick_done = true
+		chk.hit_kick = {"tick": _tick, "rel": _tick - _kick_tick0, "phase": phase, "stage": stage}
+		_interrupt_t = clock
+		_loose_watch = 0
+		wako.apply_hit(-wako._model.global_basis.x * wako.mass * float(_arg("hit_speed", "3.0")) * float(_arg("hit_dir", "1")))
+	# Cube penetration of the tool visual in every phase (custody or loose).
+	var pen := _cube_penetration(bt)
+	if pen > 0.0:
+		var key := phase + ":" + stage + (":loose" if not is_instance_valid(tool.carrier) else "")
+		var by: Dictionary = chk.get("cube_pen_by_phase", {})
+		by[key] = maxf(float(by.get(key, 0.0)), pen)
+		chk.cube_pen_by_phase = by
+		if pen > .005: chk.cube_pen_ticks = int(chk.get("cube_pen_ticks", 0)) + 1
+	# Tool vs tray hardware from launch through the settle, and while the
+	# empty foot reaches and draws the tool out.
+	var window := phase in ["flight", "retrieve", "return"] or (phase == "back" and _t.has("catch") and clock - float(_t.catch) < .6)
+	if window and _t.has("launch"):
+		var hw := _hardware_pen(bt)
+		if not hw.is_empty():
+			var bucket := phase + ("" if is_instance_valid(tool.carrier) else ":loose")
+			var rec: Dictionary = chk.get("hw_pen", {})
+			var row: Dictionary = rec.get(bucket, {})
+			for label: String in hw:
+				var depth: float = hw[label]
+				if depth > float(row.get(label, [0.0])[0]): row[label] = [snappedf(depth, .0001), snappedf(clock, .001)]
+			rec[bucket] = row
+			chk.hw_pen = rec
+			if phase == "flight" and is_instance_valid(tool) and not is_instance_valid(tool.carrier) and wako.equipped_tool == tool:
+				var worst := 0.0
+				for label: String in hw: worst = maxf(worst, float(hw[label]))
+				chk.hw_pen_flight_max = maxf(float(chk.get("hw_pen_flight_max", 0.0)), worst)
+	# Gather/wind-up: the tool never stops dead between start and release.
+	if phase == "prepare" and tool.carrier == wako.tool_anchor and stage in ["gather", "hold", "windup", "kick"]:
+		var com_local: Vector3 = bt._body_frame.affine_inverse() * (tool.global_transform * tool.center_of_mass)
+		if _prep_prev_com.is_finite():
+			var speed := com_local.distance_to(_prep_prev_com) / delta
+			# Reads as a held pose: under ~1 cm per 60 fps frame.
+			if speed < .6 and (bt._stage_age > .10 or stage != "gather"):
+				_prep_still += delta
+			else: _prep_still = 0.0
+			m.prepare_longest_still = maxf(float(m.get("prepare_longest_still", 0.0)), _prep_still)
+			if stage == "gather":
+				if speed > .5: _gather_moving = true
+				elif speed < .2 and _gather_moving:
+					_gather_moving = false
+					m.gather_stalls = int(m.get("gather_stalls", 0)) + 1
+			# Counter-motion: the COM drops during the wind-up before the kick.
+			if stage in ["hold", "windup"]: m.windup_dip = maxf(float(m.get("windup_dip", 0.0)), float(m.get("_windup_top", com_local.y)) - com_local.y)
+			if stage == "gather": m._windup_top = com_local.y
+		_prep_prev_com = com_local
+	# Kick sole path (body frame) from the cocked pose to the release.
+	if phase == "prepare" and stage == "kick" and _kick_sole_prev.is_finite():
+		var sole: Vector3 = bt._body_frame.affine_inverse() * Vector3(_leg_points(int(bt._foot_side))[3])
+		_kick_sole_path += sole.distance_to(_kick_sole_prev)
+		_kick_sole_prev = sole
 
 ## ---- Holder geometry (plate vs skin, seated tool vs plate) --------------------
 func _holder_metrics(bt: RefCounted) -> Dictionary:

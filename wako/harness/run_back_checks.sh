@@ -33,6 +33,15 @@ SCENARIOS=(
   "ceiling_185_pickaxe --tool=salvage_tool --side=1 --ceiling=1.85"
   "ceiling_150 --tool=assembly_tool --side=0 --ceiling=1.50"
   "knock_back --tool=assembly_tool --side=0 --knock=back"
+  "depart_mallet_L --tool=assembly_tool --side=0 --depart"
+  "depart_mallet_R --tool=assembly_tool --side=1 --depart"
+  "depart_pickaxe_L --tool=salvage_tool --side=0 --depart"
+  "depart_pickaxe_R --tool=salvage_tool --side=1 --depart"
+  "interrupt_kick_pickaxe --tool=salvage_tool --side=0 --interrupt=kick"
+  "hit_kick_mallet_L --tool=assembly_tool --side=0 --hit_kick_rel=6 --hit_speed=3.0"
+  "hit_release_mallet_R --tool=assembly_tool --side=1 --hit_kick_rel=10 --hit_speed=3.0"
+  "hit_release_pickaxe_L --tool=salvage_tool --side=0 --hit_kick_rel=10 --hit_speed=3.0"
+  "hit_release_mallet_L --tool=assembly_tool --side=0 --hit_kick_rel=11 --hit_speed=3.0"
 )
 run_one() {
   local label="$1"; shift

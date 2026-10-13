@@ -41,6 +41,13 @@ static var _body_fit_triangles := 0
 const SEAT_ORIGIN := Vector3(0,-.13,.25)
 const BODY_GAP := .001 # A seated one-millimetre interface, never skin penetration.
 
+## Drops the shared strap/cradle meshes once no back holder uses them (the
+## last BackTool released), so nothing stays referenced at engine exit.
+static func release_cache() -> void:
+	_strap_meshes = [null,null]
+	_strap_ends = [Transform3D(),Transform3D()]
+	_cradle = null
+
 static func fit_to_body(skin_mesh: MeshInstance3D, skeleton: Skeleton3D) -> bool:
 	if _body_fitted: return true
 	if not skin_mesh or not skin_mesh.mesh or not skin_mesh.skin or not skeleton: return false
