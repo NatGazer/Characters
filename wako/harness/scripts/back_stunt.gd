@@ -416,6 +416,9 @@ func _do_save(bt: RefCounted) -> void:
 	tool.collision_layer = 0
 	tool.collision_mask = 0
 	wako = spawn_wako(Vector3(restore_pos[0], restore_pos[1], restore_pos[2]), str(saved_worker.id))
+	# --reseat_on_restore: the save was taken with a --back-tool-seat override
+	# (e.g. last round's seat); the restoring build uses its own seat.
+	if args.has("reseat_on_restore") and wako.back_tool: wako.back_tool.seat_override = PackedFloat32Array()
 	wako.restore_state(saved_worker)
 	cam_follow = wako
 	var bound: bool = wako.back_tool.bind_restored_item(tool)

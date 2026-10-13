@@ -46,6 +46,7 @@ SCENARIOS=(
   "slope_up_mallet_R --tool=assembly_tool --side=1 --slope=8"
   "slope_down_pickaxe_R --tool=salvage_tool --side=1 --slope=-8"
   "knock_draw_pickaxe --tool=salvage_tool --side=0 --knock=draw"
+  "save_back_old_seat_pickaxe --tool=salvage_tool --side=1 --save=back --back-tool-seat=15,.16,-.10,0 --reseat_on_restore"
 )
 run_one() {
   local label="$1"; shift
