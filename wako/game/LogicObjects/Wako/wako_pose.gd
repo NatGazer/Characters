@@ -430,8 +430,9 @@ func _process_modification_with_delta(delta: float) -> void:
 	if was_walking_ik and not _walking_ik and evaluated_valid:
 		# The gait can hand its legs over mid-stride (an action begins on
 		# arrival or interrupts): remember its last joints for a short blend.
-		_gait_release_rotations = _gait_rotations.duplicate()
-		for side in 2: _gait_release_rotations[_chains[side][2]] = evaluated_ankles[side].get_rotation_quaternion()
+		_gait_release_rotations.clear()
+		for side in 2:
+			_gait_release_rotations[side] = [evaluated_soles[side], evaluated_ankles[side].get_rotation_quaternion()]
 		_gait_release_age = 0.0
 	_update_travel_pole_handoff(delta)
 	_gait_sides = [false, false]
@@ -1614,25 +1615,25 @@ func _air_legs(sk: Skeleton3D) -> void:
 func _blend_gait_release(sk: Skeleton3D, manipulation: bool, delta: float) -> void:
 	# Owners without their own joint handoff (step, push, pull, ...) read
 	# authored clip feet: entered mid-stride that is a one-tick knee snap. Ease
-	# their legs in from the gait's last joints over GAIT_RELEASE_BLEND; owners
+	# their soles in from the gait's last published soles over
+	# GAIT_RELEASE_BLEND and re-solve the same face-bent leg (a Cartesian
+	# blend, so a sole both owners plant at the same spot never dips). Owners
 	# that already filter from _gait_rotations, and a manipulated work foot,
 	# keep their own continuity.
 	_gait_release_age += delta
 	var filtered: bool = worker.action in ["","interrupted","place","brace"]
 	var w := smoothstep(0.0, GAIT_RELEASE_BLEND, _gait_release_age)
-	var rebase: Basis = sk.global_basis.inverse()*worker.global_basis*evaluated_worker.basis.inverse()
+	var local_inv := sk.global_transform.affine_inverse()
 	for side in 2:
-		if filtered or (manipulation and side == worker.work_foot_side): continue
+		if filtered or (manipulation and side == worker.work_foot_side) or not _gait_release_rotations.has(side): continue
 		var chain: Array = _chains[side]
-		for bone: int in [chain[0],chain[1]]:
-			if not _gait_release_rotations.has(bone): continue
-			var previous: Quaternion = _gait_release_rotations[bone]
-			sk.set_bone_pose_rotation(bone,previous.slerp(sk.get_bone_pose_rotation(bone),w))
-		if _gait_release_rotations.has(chain[2]):
-			var foot_pose := sk.get_bone_global_pose(chain[2])
-			var previous_foot: Quaternion = (rebase*Basis(_gait_release_rotations[chain[2]] as Quaternion)).get_rotation_quaternion()
-			foot_pose.basis = Basis(previous_foot.slerp(foot_pose.basis.get_rotation_quaternion(),w))
-			sk.set_bone_global_pose(chain[2],foot_pose)
+		var released: Array = _gait_release_rotations[side]
+		var foot_pose := sk.get_bone_global_pose(chain[2])
+		var offset := Vector3(0,_ankle_height[side],0)
+		var owner_sole: Vector3 = sk.global_transform*(foot_pose*offset)
+		var sole: Vector3 = (released[0] as Vector3).lerp(owner_sole,w)
+		var basis: Basis = sk.global_basis.inverse()*Basis((released[1] as Quaternion).slerp((sk.global_basis*foot_pose.basis).get_rotation_quaternion(),w))
+		_solve(sk,chain[0],chain[1],chain[2],local_inv*sole-basis*offset,1.0,basis)
 	if _gait_release_age >= GAIT_RELEASE_BLEND: _gait_release_rotations.clear()
 
 func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walking: bool, _speed: float, _phase: float, delta: float) -> void:

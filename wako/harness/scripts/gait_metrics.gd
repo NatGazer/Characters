@@ -491,6 +491,11 @@ func _toe_penetration(s: Dictionary, pose: Node) -> void:
 			for inf: Array in v: p += _sk.get_bone_global_pose(int(inf[0])) * (inf[2] as Vector3) * float(inf[1])
 			pen = maxf(pen, -n.dot(xf * p - hit.position))
 		s.toe_pen = maxf(s.toe_pen, pen)
+		if debug and pen > .002 and pose.evaluated_grounded[side]:
+			var toe_rot: Quaternion = _sk.get_bone_pose_rotation(int(pose._toes[side]))
+			var rest_rot: Quaternion = _sk.get_bone_rest(int(pose._toes[side])).basis.get_rotation_quaternion()
+			var foot_up: Vector3 = -(_sk.global_basis * _sk.get_bone_global_pose(int(pose._chains[side][2])).basis.y).normalized()
+			print("TOEPEN c=%.3f %s side=%d pen=%.4f toe_vs_rest=%.1fdeg foot_tilt=%.1fdeg action=%s anim=%s" % [clock, label, side, pen, rad_to_deg(toe_rot.angle_to(rest_rot)), rad_to_deg(foot_up.angle_to(n)), wako.action, wako._animation.current_animation])
 		if pose.evaluated_grounded[side]: s.toe_pen_g = maxf(s.toe_pen_g, pen)
 
 func _dump(pose: Node, gs: Variant) -> void:
