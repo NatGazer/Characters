@@ -10,6 +10,7 @@ const HolderVisual := preload("res://LogicObjects/Wako/wako_back_holder_visual.g
 const SENSOR_LAYER := 1 << 20
 const TOE_SPEED := 1.5
 const TOE_TURN := 4.5
+const RETRIEVE_KNEE_DROP := deg_to_rad(55.0) # knee pole below forward while reaching back
 const MAX_KICK_SPEED := 6.5
 const FLIGHT_SECONDS := .56 # Legacy hop route only; the stunt plans its own flight time.
 const FOOT_WORK := ["inspect", "assemble", "repair", "unbend", "maintenance", "tool_change"]
@@ -763,9 +764,10 @@ func evaluated(pose: SkeletonModifier3D, sk: Skeleton3D, delta: float) -> void:
 		var carrier_frame := _settled_body_frame() if stage == "retrace" else _body_frame
 		for i in range(_path_index,_waypoints.size()):
 			_waypoints[i] = carrier_frame*_return_local_waypoints[i]
-		if stage == "retrace":
+		if stage in ["retrace","draw","home"]:
 			# Home rests on the real floor wherever the body now stands (it may
-			# bob or have been shoved): keep it just clear of that support.
+			# bob, pitch or have been shoved): keep it just clear of that
+			# support, so the work entry that follows starts from a clear pose.
 			var home_on_floor := _supported_return_home(_waypoints[-1],.08)
 			if home_on_floor.origin.is_finite(): _waypoints[-1] = home_on_floor
 	if phase == "retrieve": _publish_back()
@@ -1028,6 +1030,14 @@ func _drive_toe(pose: SkeletonModifier3D,sk: Skeleton3D,delta: float,wanted: Tra
 	# Preserve the actual incoming knee plane, then turn it finitely toward
 	# the eye-facing model front. Imported Bone forward is reversed.
 	var forward: Vector3=(-worker._model.global_basis.z).normalized()
+	if phase in ["retrieve","return"]:
+		# Reaching back for the seated handle (and carrying it out from behind):
+		# the knee drops (pole forward and down) so the thigh hangs under the
+		# hip and the shin folds up behind, instead of the whole leg splaying
+		# outboard ("dog at a hydrant"). It eases back as the toe comes forward.
+		var behind: float = 1.0 if phase == "retrieve" else clampf((_body_frame.affine_inverse()*wanted.origin).z/.20,0.0,1.0)
+		var drop_angle := RETRIEVE_KNEE_DROP*behind
+		forward = (forward*cos(drop_angle)-_body_frame.basis.y*sin(drop_angle)).normalized()
 	var pole_angle:=_knee_plane_world.angle_to(forward)
 	_knee_plane_world=_knee_plane_world.normalized().slerp(forward,minf(TOE_TURN*delta/maxf(pole_angle,.000001),1.0)).normalized()
 	var old_pole: Vector3=pose._travel_poles[side]
@@ -3085,6 +3095,22 @@ func _draw_routes(toe: Transform3D,end: Transform3D) -> Array:
 	var behind := Vector3(s*lateral,-.42,lift_local.z)
 	var wide_point := Vector3(s*lateral,maxf(end_local.y+.18,-.75),(lift_local.z+end_local.z)*.5)
 	var low_point := Vector3(s*maxf(absf(end_local.x)+.04,.36),end_local.y+.05,end_local.z)
+	if lateral > .62:
+		# A wide head only needs its full half-width of lateral room where the
+		# blade passes the cube's side at cube height. Standing upright behind
+		# the hip the head is over the roof, and swung outward it is far out:
+		# a narrower lane with each turn made on the move (no turn-in-place
+		# stops) shortens the outboard swing and the thigh's abduction.
+		var lane := maxf(.52,BACK_BOUNDS.end.x+_keepout_half_depth(tool)+.03)
+		# (An asymmetric head - pick on one side - may need the swing outward
+		# made high, before the head comes down past the roof.)
+		for narrow: float in [lane,.62]:
+			var near_wide := Transform3D(swing,_body_frame*Vector3(s*narrow,wide_point.y,wide_point.z))
+			var tail: Array = [near_wide,Transform3D(end.basis,_body_frame*low_point),end]
+			var high := Vector3(s*narrow,maxf(lift_local.y-.05,-.30),lift_local.z)
+			routes.append([lift,Transform3D(upright,_body_frame*Vector3(s*narrow,-.42,lift_local.z))]+tail)
+			routes.append([lift,Transform3D(swing,_body_frame*high)]+tail)
+			routes.append([lift,Transform3D(upright,_body_frame*high),Transform3D(swing,_body_frame*(high+Vector3(0,-.04,0)))]+tail)
 	routes.append([lift,Transform3D(upright,lift.origin),Transform3D(upright,_body_frame*behind),Transform3D(swing,_body_frame*wide_point),
 		Transform3D(swing,_body_frame*low_point),Transform3D(end.basis,_body_frame*low_point),end])
 	return routes
@@ -3258,14 +3284,23 @@ func _seat_spec(tool: RigidBody3D) -> Dictionary:
 	# still bracket the tool's centre of mass.
 	if seat_override.size() == 3:
 		return {"tilt":deg_to_rad(seat_override[0]),"shift":seat_override[1],"y_max":seat_override[2],"pads":[-.14,.20]}
+	# Compact head (mallet): nearly centred on the back so its two ends
+	# overhang the sides about equally (<= ~11 cm, the 1.05 m shaft is longer
+	# than the 0.81 m back is wide), its handle end sits low just outboard of
+	# the hip (an easy toe target) only ~3 cm under the cube; both trays stay
+	# inside the hip lane and bracket the COM.
+	var spec := {"tilt":deg_to_rad(27.0),"shift":.02,"y_max":-.02,"pads":[-.14,.14]}
 	if is_instance_valid(tool) and _keepout_half_width(tool) > .2:
-		# Wide cutter: a shallower tilt and a larger far shift keep its blade
-		# outboard of the far leg and its keepout under the roof.
-		return {"tilt":deg_to_rad(15.0),"shift":.16,"y_max":-.10,"pads":[-.125,.12]}
-	# Compact head (mallet): its handle end sits low just outboard of the hip
-	# (an easy toe target: little abduction), the head peeks out past the far
-	# shoulder; both trays stay inside the hip lane and bracket the COM.
-	return {"tilt":deg_to_rad(30.0),"shift":.12,"y_max":-.044,"pads":[-.14,.14]}
+		# Wide cutter: a shallower tilt keeps its tall blade's keepout under the
+		# roof; a moderate far shift trims the blade's side overhang (~17 cm,
+		# was ~25) while it still clears the far leg by > 20 cm.
+		spec = {"tilt":deg_to_rad(15.0),"shift":.10,"y_max":-.10,"pads":[-.125,.12]}
+	if seat_override.size() == 4:
+		# Tuning: tilt, shift, y_max with the tool's own tray stations.
+		spec.tilt = deg_to_rad(seat_override[0])
+		spec.shift = seat_override[1]
+		spec.y_max = seat_override[2]
+	return spec
 
 func _seat_layout_for(tool: RigidBody3D,s: float,f: float) -> Dictionary:
 	# Pure geometry for one tool/side/face (cached): seat frame (body), tray

@@ -123,6 +123,7 @@ func _equip() -> void:
 	tool.global_transform = wako.tool_anchor.global_transform
 	tool.set_meta(&"equipped_worker", wako.worker_id)
 	wako.set_equipped_tool(tool)
+	if args.has("plan_debug") and wako.back_tool: wako.back_tool.plan_debug = true
 	_id = tool.get_instance_id()
 	_rid = tool.get_rid()
 	m.tool_mass = tool.mass
@@ -661,7 +662,39 @@ func _feet_after_launch(bt: RefCounted) -> void:
 var _retr_last_toe := Vector3.INF
 var _still := 0.0
 func _retrieval_watch(delta: float, bt: RefCounted) -> void:
+	if args.has("trace_from") and clock > float(_arg("trace_from", "0")) and clock < float(_arg("trace_from", "0")) + 1.5 and is_instance_valid(tool):
+		_dense_tool()
+		var low := INF
+		for i in range(0, _dense_pts.size(), 4): low = minf(low, (tool.global_transform * _dense_pts[i]).y)
+		print("TRACE t=%.3f phase=%s stage=%s root_y=%.3f tool_low=%.3f action=%s g=%s" % [clock, bt.phase, bt.stage, bt._root.origin.y - _ground_y, low - _ground_y, str(wako.action), str(wako._pose.evaluated_grounded)])
+	if args.has("trace_wait") and bt.phase == "back" and clock > float(_arg("trace_wait", "4.0")):
+		print("WAIT t=%.3f stage=%s g=%s sole0=%.3f sole1=%.3f vel=%s gait=%.3f" % [clock, str(bt.stage), str(wako._pose.evaluated_grounded), Vector3(_leg_points(0)[3]).y - _ground_y, Vector3(_leg_points(1)[3]).y - _ground_y, str(wako.linear_velocity), wako.gait_speed])
 	if not _t.has("retrieve_request") or _t.has("action_begin_seen"): return
+	if bt.phase == "back":
+		# Why the retrieval has not started yet (ticks per blocking gate).
+		var why := []
+		if not wako.on_ground: why.append("air")
+		if not wako.is_available(): why.append("unavailable")
+		if wako._pose.evaluated_grounded.count(true) != 2:
+			why.append("grounded")
+			for leg in 2:
+				if not wako._pose.evaluated_grounded[leg]:
+					why.append("ungrounded_%d%s" % [leg, "_tool" if leg == int(bt._foot_side) else ""])
+					var sole_h: float = Vector3(_leg_points(leg)[3]).y - _ground_y
+					m["ungrounded_sole_max_%d" % leg] = maxf(float(m.get("ungrounded_sole_max_%d" % leg, 0.0)), sole_h)
+		if wako.gait_speed >= .08: why.append("gait")
+		if (wako.linear_velocity - wako.ground_velocity).length() >= .08: why.append("speed")
+		if absf(wako.turn_rate) > .15: why.append("turn")
+		if int(bt._planted_ticks) < 2: why.append("planted")
+		if bt._seat_settling: why.append("seat_settling")
+		if float(bt._retrieval_retry) > 0.0: why.append("retry")
+		if not wako._pose._work_release.is_empty() or wako._pose._travel_tool_handoff or wako._pose._travel_pole_handoff: why.append("pose_handoff")
+		if wako.idle_play and str(wako.idle_play.state) != "": why.append("idle_play:" + str(wako.idle_play.state))
+		if not wako.action.is_empty(): why.append("action")
+		var wait: Dictionary = m.get("retrieve_wait", {})
+		for k: String in why: wait[k] = int(wait.get(k, 0)) + 1
+		wait.ticks = int(wait.get("ticks", 0)) + 1
+		m.retrieve_wait = wait
 	if bt.phase in ["retrieve", "return"] or (bt.phase == "foot" and not _t.has("action_begin")):
 		var pts := _leg_points(int(bt._foot_side))
 		var toe: Vector3 = pts[3]
@@ -678,6 +711,21 @@ func _retrieval_watch(delta: float, bt: RefCounted) -> void:
 			m["reach_min_thigh_flexion"] = minf(float(m.get("reach_min_thigh_flexion", INF)), float(a.thigh_flexion))
 			var sole_h: float = Vector3(pts[3]).y - _ground_y
 			m.reach_max_sole_height = maxf(float(m.get("reach_max_sole_height", 0.0)), sole_h)
+		if bt.phase == "return" and is_instance_valid(tool):
+			if not bt._return_local_waypoints.is_empty() and not m.has("return_route_pts"):
+				var pts2 := []
+				for w: Transform3D in bt._return_local_waypoints: pts2.append([w.origin, w.basis.y.normalized(), w.basis.x.normalized()])
+				m.return_route_pts = pts2
+				m.return_seg_t = []
+			if m.has("return_seg_t") and (m.return_seg_t as Array).size() <= int(bt._path_index):
+				(m.return_seg_t as Array).append([int(bt._path_index), snappedf(clock, .001), str(bt.stage)])
+			var a2 := _leg_angles(bt, int(bt._foot_side))
+			m.return_max_thigh_abduction = maxf(float(m.get("return_max_thigh_abduction", -INF)), float(a2.thigh_abduction))
+			_dense_tool()
+			var low := INF
+			var xf := tool.global_transform
+			for i in range(0, _dense_pts.size(), 3): low = minf(low, (xf * _dense_pts[i]).y)
+			m.return_min_tool_floor = minf(float(m.get("return_min_tool_floor", INF)), low - _ground_y)
 	if _t.has("action_begin"): _t.action_begin_seen = true
 
 func _on_stage(from: String, to: String, bt: RefCounted) -> void:
@@ -688,6 +736,12 @@ func _on_stage(from: String, to: String, bt: RefCounted) -> void:
 		_kick_sole_path = 0.0
 		_kick_tick0 = _tick
 	if to == "kick": _t.kick_start = clock
+	if to == "reach" and not m.has("reach_route"):
+		var inv: Transform3D = bt._body_frame.affine_inverse()
+		var route := []
+		for w: Transform3D in bt._waypoints: route.append(inv * w.origin)
+		m.reach_route = route
+		m.reach_hip = inv * Vector3(_leg_points(int(bt._foot_side))[0])
 
 func _on_phase(from: String, to: String, bt: RefCounted) -> void:
 	if to == "prepare" and not _t.has("prepare"): _t.prepare = clock
@@ -1075,6 +1129,11 @@ func _assertions() -> void:
 	if plain and not args.has("walk") and not args.has("depart"):
 		checks.append(["retrieval under 2 s from a standstill", float(m.get("retrieval_time", 99.0)) < 2.0])
 		checks.append(["per-tick query cost <= 170 ops", int(chk.get("worst_tick_ops", 9999)) <= 170])
+		checks.append(["retrieval: thigh abduction <= 35 deg, tool >= 5 cm off the floor on the way home",
+			float(m.get("reach_max_thigh_abduction", 99.0)) <= 35.0 and float(m.get("return_max_thigh_abduction", 99.0)) <= 35.0 and float(m.get("return_min_tool_floor", 0.0)) >= .05])
+		var seated: Dictionary = m.get("seated", {})
+		checks.append(["seated silhouette: <= 20 cm past the cube's sides, <= 8 cm below it",
+			float(seated.get("silhouette_side_overhang", 1.0)) <= .20 and float(seated.get("silhouette_bottom_hang", 1.0)) <= .08])
 	if args.has("walk") or args.has("depart"):
 		checks.append(["legs keep >= 5 cm from the seated tool and holder while walking", float(chk.get("leg_tool_clearance_min_walk", 0.0)) >= .05 and float(chk.get("leg_holder_clearance_min", 0.0)) >= .05])
 	if args.has("interrupt") and str(_arg("interrupt", "")) in ["gather", "hold", "kick", "draw", "home"]:
@@ -1359,6 +1418,22 @@ func _holder_metrics(bt: RefCounted) -> Dictionary:
 					front = minf(front, q.z)
 					top = maxf(top, q.y)
 					bottom = minf(bottom, q.y)
+			# Visual silhouette vs the cube's back outline (x +-.405, y -.2625..roof .3376).
+			_dense_tool()
+			var lo := Vector3.INF
+			var hi := -Vector3.INF
+			var low_at := Vector3.ZERO
+			for i in range(0, _dense_pts.size(), 2):
+				var q2: Vector3 = inv * _dense_pts[i]
+				if q2.y < lo.y: low_at = q2
+				lo = lo.min(q2)
+				hi = hi.max(q2)
+			out.silhouette_lowest_point = low_at
+			out.silhouette_x = [lo.x, hi.x]
+			out.silhouette_y = [lo.y, hi.y]
+			out.silhouette_side_overhang = maxf(0.0, maxf(hi.x - .405, -.405 - lo.x))
+			out.silhouette_bottom_hang = maxf(0.0, -.2625 - lo.y)
+			out.silhouette_top_over_roof = hi.y - .3376
 			out.tool_front_z = front
 			out.tool_plate_gap = front - outer_max
 			out.tool_top_y = top
