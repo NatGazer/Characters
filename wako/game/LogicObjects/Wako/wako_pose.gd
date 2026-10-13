@@ -1669,7 +1669,7 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 		var horizontal := hip_to_ankle.slide(Vector3.UP)
 		if horizontal.length_squared()<reach*reach:
 			sole.y += maxf(-sqrt(reach*reach-horizontal.length_squared())-hip_to_ankle.y,0.0)
-		# An airborne foot straightens its knee at most ~8 deg a tick (the
+		# An airborne foot straightens its knee at most ~9 deg a tick (the
 		# planned arc can ask for more as the leg nears extension: a whip). A
 		# contact the limited knee has not reached yet keeps reaching (deferred
 		# below), so the plant is still exact. Extension is always limited (it
@@ -1679,7 +1679,7 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 			var to: Vector3 = sole-ankle_offset-hip
 			var span: float = to.length()
 			var flex: float = gait.knee_flex(side,span)
-			var limit: float = deg_to_rad(8.0)
+			var limit: float = deg_to_rad(9.0)
 			if span>.001 and flex<previous_flex-limit:
 				sole = hip+to/span*gait.knee_span(side,previous_flex-limit)+ankle_offset
 			elif span>.001 and flex>previous_flex+limit and gait.t[side]<.75:
@@ -1751,7 +1751,8 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 	var normal: Vector3 = hit.normal if not hit.is_empty() else Vector3.UP
 	var requested: Vector3 = sole+normal*held_lift+held_shift
 	_solve(sk,chain[0],chain[1],chain[2],local_inv*requested-basis*Vector3(0,_ankle_height[side],0),1.0,basis)
-	for bone: int in [chain[0],chain[1]]: _gait_rotations[bone] = sk.get_bone_pose_rotation(bone)
+	_gait_rotations[chain[0]] = sk.get_bone_pose_rotation(chain[0])
+	_gait_rotations[chain[1]] = sk.get_bone_pose_rotation(chain[1])
 	gait.knee_prev[side] = gait.knee_flex(side,(requested-ankle_offset-hip).length())
 	evaluated_grounded[side] = planted and _target_valid[side] and held_lift<.01
 	gait.requested[side] = requested
