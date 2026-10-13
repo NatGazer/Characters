@@ -35,7 +35,13 @@ const REACH_DROP := .06         # extra crouch the visual root may still add to 
 const FOOT_GAP := .20           # sole centres across the heading; the shins are ~.15 thick
 const LAUNCH_HOLD := .065       # weight goes onto the support foot before the first lift
 const PEEL_RATE := 10.0         # rad/s: a stop drops a peeled heel quickly, never in one tick
+const PEEL_PUSH_RATE := 22.0    # rad/s: the push-off heel rise keeps up with a running hip
+const PEEL_CAP := .36           # rad: deepest push-off heel rise (the toe pad stays planted)
 const DROP_SPEED := .6          # m/s: the reach crouch eases in at crests and edges (no hiccup)
+const FOOT_HALF_LENGTH := .09   # skinned sole extent ahead/behind the sole point
+const FOOT_HALF_WIDTH := .075
+const MIN_STANCE := .05         # s: a plant stands at least this long (no touch-and-go taps)
+const COAST_TIME := .45         # s: after the travel request ends the gait keeps stepping at most this long
 
 var pose: SkeletonModifier3D
 var worker: RigidBody3D
@@ -62,6 +68,7 @@ var hold := false
 var plan_usec := 0              # cost of the last plan() (diagnostics)
 var debug_log := false          # harness: print launch/lift decisions
 var _launch_hold := 0.0
+var _no_intent := 0.0
 var airborne := false           # locomotion left the ground: the legs fly (air())
 var _air_fresh := false
 var _air_vy := 0.0
@@ -95,6 +102,12 @@ var _t_prev: Array[float] = [-1.0, -1.0]
 var _frozen: Array[bool] = [false, false]
 var _planar: Array[bool] = [true, true]
 var _contact_delay: Array[int] = [0, 0]
+var _defer_excess: Array[float] = [0.0, 0.0]
+var _caught_up: Array[bool] = [false, false]   # one catch-up re-step per swing
+var _waiting: Array[bool] = [false, false]     # a lift held until the partner lands
+var _reach_pull: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]   # standing reach correction of a swing's footfall
+var _fp_for: Array[Vector3] = [Vector3.INF, Vector3.INF]     # footprint check cache (landing probed)
+var _fp_shift: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]
 var _contact_kind: Array[int] = [SWING, SWING]
 var _frozen_support: Array = [null, null]
 var _frozen_local: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]
@@ -130,6 +143,9 @@ var _lw_v := 0.0
 var body_y := 0.0               # sprung crouch (speed dip, launch gather, reversal crouch)
 var _by_v := 0.0
 var body_bob := 0.0             # phase-locked stance bob (never sprung: no lag)
+var _walk_amp := 0.0
+var _run_amp := 0.0
+var _bob_run := 0.0
 var body_lean := 0.0
 var _lean_v := 0.0
 var body_nod := 0.0
@@ -137,6 +153,11 @@ var body_roll := 0.0            # total: sprung bank/launch + phase-locked waddl
 var _roll_s := 0.0
 var _roll_v := 0.0
 var _roll_osc := 0.0
+var _roll_amp := 0.0            # phase-locked waddle amplitude (rad)
+var _roll_hip: Array[float] = []   # hip height change per sin(roll), skeleton rest
+var _thigh: Array[float] = []
+var _shin: Array[float] = []
+var knee_prev: Array[float] = [NAN, NAN]    # last shown knee flex (rad), for the swing knee rate limit
 var body_shift := 0.0           # total: sprung launch shift + phase-locked sway
 var _shift_s := 0.0
 var _shift_v := 0.0
@@ -178,6 +199,9 @@ func setup(owner_pose: SkeletonModifier3D, sk: Skeleton3D) -> void:
 	pose = owner_pose
 	worker = owner_pose.worker
 	_rest_foot.clear()
+	_roll_hip.clear()
+	_thigh.clear()
+	_shin.clear()
 	_toe_axis.clear()
 	_toe_dir.clear()
 	_ball_off.clear()
@@ -197,11 +221,32 @@ func setup(owner_pose: SkeletonModifier3D, sk: Skeleton3D) -> void:
 			ball = sk.get_bone_global_rest(toe).origin - sole
 		var axis := toe_dir.cross(Vector3.UP).normalized()  # ankle local +Y points to the sole
 		_toe_axis.append(axis if axis.length_squared() > .5 else Vector3.RIGHT)
+		# Which way each hip moves when the cube rolls (rest-derived, so the
+		# root's imported 180-degree turn needs no sign bookkeeping here).
+		var root_rest := sk.get_bone_rest(0)
+		var rel := root_rest.affine_inverse() * sk.get_bone_global_rest(pose._chains[side][0]).origin
+		var tilted := Transform3D(Basis(Vector3.BACK, .1) * root_rest.basis, root_rest.origin) * rel
+		_roll_hip.append((tilted.y - (root_rest * rel).y) / sin(.1))
+		var hip_rest := sk.get_bone_global_rest(pose._chains[side][0]).origin
+		var knee_rest := sk.get_bone_global_rest(pose._chains[side][1]).origin
+		_thigh.append(hip_rest.distance_to(knee_rest))
+		_shin.append(knee_rest.distance_to(rest_ankle.origin))
 		var flat := Vector3(ball.x, 0.0, ball.z)
 		_toe_dir.append(flat.normalized() if flat.length() > .01 else Vector3.BACK)
 		_ball_off.append(ball)
 
 # ------------------------------------------------------------------ helpers
+func knee_flex(side: int, d: float) -> float:
+	# Knee flex (0 = straight) of a two-link leg spanning hip->ankle `d`.
+	var a: float = _thigh[side]
+	var b: float = _shin[side]
+	return PI - acos(clampf((a * a + b * b - d * d) / (2.0 * a * b), -1.0, 1.0))
+
+func knee_span(side: int, flex: float) -> float:
+	var a: float = _thigh[side]
+	var b: float = _shin[side]
+	return sqrt(maxf(a * a + b * b + 2.0 * a * b * cos(flex), 0.0))
+
 static func min_jerk(x: float) -> float:
 	x = clampf(x, 0.0, 1.0)
 	return x * x * x * (10.0 + x * (-15.0 + 6.0 * x))
@@ -234,7 +279,11 @@ static func bump(x: float, early := .8) -> float:
 	return pow(sin(PI * pow(x, early)), 1.5)
 
 func _bump(tt: float) -> float:
-	return bump(tt, lerpf(.8, .7, run_weight))
+	# A walk eases its lift in over the first ~12% (the knee turns from
+	# extending to folding over a few ticks); a run's toe-off starts at about
+	# the speed its push-off peel was already raising the ankle.
+	var ease := smoothstep(0.0, .12, tt)
+	return bump(tt, lerpf(.8, .7, run_weight)) * lerpf(ease, lerpf(.5, 1.0, ease), run_weight)
 
 static func spring(x: float, v: float, target: float, omega: float, dt: float) -> Vector2:
 	# Implicit critically damped spring: unconditionally stable at any tick.
@@ -260,9 +309,16 @@ func _local_phase(side: int) -> float:
 func _stride(v: float) -> float:
 	# Quick, short steps read small and cute: ~5.8 steps/s at a 3.4 m/s run.
 	var l := clampf(.16 + .125 * v, .16, .62)
+	# A walk takes longer, confident steps (~2.9 steps/s at 1 m/s, not a
+	# mincing scurry); from a jog on the run's own quick cadence takes over.
+	l *= lerpf(1.2, 1.0, smoothstep(1.0, 1.7, v))
 	# Shorter steps on steep ground keep both soles inside the leg's reach
 	# (the native body height is measured at its centre, not at the feet).
 	l *= lerpf(1.0, .72, smoothstep(.985, .89, up.y))
+	# A turning deck turns the planted feet under the hips (the hips follow
+	# the creature's heading, not the deck): shorter stances keep them in
+	# reach instead of running out mid-stride.
+	if is_instance_valid(worker._ground_body): l /= 1.0 + .45 * absf(worker._ground_body.angular_velocity.dot(up))
 	if carry: l *= .8
 	elif _tool_mode(): l *= .75
 	elif flee: l *= 1.1
@@ -271,6 +327,8 @@ func _stride(v: float) -> float:
 func _duty(v: float) -> float:
 	var d := lerpf(.62, .50, smoothstep(.6, 1.8, v))
 	d = lerpf(d, .36, smoothstep(1.8, 3.2, v))
+	# Steep ground (> ~15 deg) is climbed, never bounded: no flight phase.
+	d = maxf(d, .5 * smoothstep(.975, .955, up.y))
 	if _tool_mode(): return maxf(d, .56)
 	return maxf(d, .52) if carry else d
 
@@ -369,49 +427,102 @@ func _plant(side: int, hit: Dictionary, point: Vector3, yaw: float) -> void:
 
 func validate_landing(side: int, hip: Vector3) -> void:
 	# Called by the pose with this tick's real hip: a footfall the leg will
-	# not reach at contact is pulled toward the hip now and committed, so the
-	# foot lands exactly where it plants (no slide at contact).
-	# Corrections must stay absorbable by the fading re-target offset: none
-	# in the last part of the swing, and only small ones once it is late.
+	# not reach at contact is pulled toward the predicted hip. Before the
+	# commit the pull is a standing offset the planner re-applies every tick
+	# (the footfall keeps following the body; freezing it mid-swing stranded
+	# the foot behind the hip whenever the body sped up or turned); once
+	# committed only small, late corrections move the fixed footfall.
 	if state[side] == PLANTED or t[side] < .45 or t[side] > .9: return
 	var rate := _swing_rate(side)
 	var t_rem := (1.0 - t[side]) / maxf(rate, .001)
-	var hip_contact := hip + velocity.slide(Vector3.UP) * t_rem - Vector3.UP * clampf(.2 - body_drop, 0.0, .02)
+	# (a few mm of the reach crouch may still come; more would only be the
+	# crouch chasing a footfall planned beyond the leg)
+	var hip_contact := hip + velocity.slide(Vector3.UP) * t_rem + Vector3.UP * (hip_rise_at_contact(side, t_rem) - clampf(.2 - body_drop, 0.0, .004))
 	var ankle: Vector3 = landing[side] + Vector3.UP * float(pose._ankle_height[side])
-	# Land on a slightly flexed knee: a fully straight reach whips the knee.
-	var reach: float = float(worker._leg_lengths[side]) - .035
+	# A walk lands reaching forward on a nearly straight leg (~22 deg of
+	# knee flex, the shin close to vertical) that then loads into the
+	# double-support flex; a run lands on a softer knee (~30 deg) under the
+	# body, never a locked knee (that whips).
+	var reach: float = float(worker._leg_lengths[side]) - lerpf(.014, .026, run_weight)
 	var offset := ankle - hip_contact
-	if offset.length() <= reach or absf(offset.y) >= reach: return
+	if offset.length() <= reach or absf(offset.y) >= reach:
+		if not _frozen[side]: _reach_pull[side] = _reach_pull[side].move_toward(Vector3.ZERO, .006)
+		return
 	var horizontal := offset.slide(Vector3.UP).limit_length(sqrt(reach * reach - offset.y * offset.y))
 	var wanted := Vector3(hip_contact.x + horizontal.x, landing[side].y, hip_contact.z + horizontal.z)
-	var step := (.008 if t[side] > .88 else .015) if t[side] > .7 else .06
-	wanted = landing[side] + (wanted - landing[side]).slide(Vector3.UP).limit_length(step)
-	var hit: Dictionary = _ground(wanted)
+	var correction := (wanted - landing[side]).slide(Vector3.UP)
+	if not _frozen[side]:
+		# Grows by at most 2 cm a tick (the re-target carry absorbs it).
+		_reach_pull[side] = (_reach_pull[side] + correction.limit_length(.02)).limit_length(.15)
+		return
+	var step := .008 if t[side] > .88 else .015
+	wanted = landing[side] + correction.limit_length(step)
+	var hit: Dictionary = _footprint_fix(side, _ground(wanted), landing_yaw[side])
 	if hit.is_empty() or not hit.collider is Node3D: return
-	_frozen[side] = true
 	_frozen_support[side] = weakref(hit.collider)
 	_frozen_local[side] = (hit.collider as Node3D).to_local(hit.position)
 	landing[side] = hit.position
 
-func defer_contact(side: int) -> bool:
-	# The pose found this tick's footfall below the real hip's reach (steep
-	# descent): keep reaching for it a little longer instead of planting a
-	# stretched leg that would have to slide back toward the hip.
-	if state[side] != PLANTED or _contact_delay[side] >= 14: return false
-	var delay := _contact_delay[side] + 1
-	var body := _support_alive(side)
-	state[side] = _contact_kind[side]
-	t[side] = .999
-	_t_prev[side] = .999
-	_frozen[side] = true
-	_frozen_support[side] = weakref(body) if body else null
-	_frozen_local[side] = local_point[side]
-	_contact_delay[side] = delay
-	landing_count[side] -= 1
-	out_planted[side] = false
-	# A drop landing keeps falling with the cube instead of a timed curve.
-	_drop[side] = _drop_planted[side]
-	return true
+func defer_contact(side: int, offset: Vector3) -> bool:
+	# The pose found this tick's footfall beyond the real hip's reach
+	# (`offset` = contact ankle - hip). Waiting only helps while the deficit is
+	# mostly vertical and shrinking (the crouch is still coming down); a
+	# footfall the body is moving AWAY from (rotating deck, a reversal on a
+	# slope) is re-stepped toward the hip instead of left hanging behind it.
+	if state[side] != PLANTED: return false
+	var reach: float = float(worker._leg_lengths[side]) - .014
+	var excess := offset.length() - reach
+	var flat := offset.slide(Vector3.UP)
+	var direction := velocity / speed if speed > .2 else facing(worker._heading)
+	var behind := -flat.dot(direction)
+	# Waiting suits a deficit under the hip (a step down the crouch is still
+	# reaching for) or one closing quickly; a footfall out to the side of a
+	# turn or reversal is re-stepped instead.
+	var shrinking := _contact_delay[side] == 0 or excess < _defer_excess[side] - .0004
+	var vertical := flat.length() < .22 or (_contact_delay[side] > 0 and excess < _defer_excess[side] - .003)
+	var kind: int = _contact_kind[side]
+	# A few millimetres are planted as they are (the leg still reaches).
+	if excess < .004: return false
+	if vertical and behind < .06 and shrinking and _contact_delay[side] < 12:
+		var body := _support_alive(side)
+		state[side] = kind
+		t[side] = .999
+		_t_prev[side] = .999
+		_frozen[side] = true
+		_frozen_support[side] = weakref(body) if body else null
+		_frozen_local[side] = local_point[side]
+		_contact_delay[side] += 1
+		_defer_excess[side] = excess
+		landing_count[side] -= 1
+		out_planted[side] = false
+		# A drop landing keeps falling with the cube instead of a timed curve.
+		_drop[side] = _drop_planted[side]
+		if debug_log: print("GAIT defer side=%d excess=%.3f behind=%.3f delay=%d" % [side, excess, behind, _contact_delay[side]])
+		return true
+	if moving and not hold and not _caught_up[side] and (not vertical or behind >= .06) and not _drop_planted[side]:
+		# Catch-up: the foot stays airborne a few more ticks and re-targets a
+		# reachable footfall from the predicted hip (the old curve's offset
+		# fades out, so it never jumps).
+		state[side] = kind
+		t[side] = .78
+		_t_prev[side] = .78
+		_frozen[side] = false
+		_contact_delay[side] = 0
+		_caught_up[side] = true
+		min_rate[side] = maxf(min_rate[side], .22 / .075)
+		lift[side] = minf(lift[side], .04)
+		_sampled_for[side] = Vector3.INF
+		_fp_for[side] = Vector3.INF
+		# The re-step starts where the sole touched (carried by a moving deck).
+		var under := _support_alive(side)
+		if under: local_point[side] = under.to_local(out_sole[side])
+		else: support[side] = null
+		start_world[side] = out_sole[side]
+		landing_count[side] -= 1
+		out_planted[side] = false
+		if debug_log: print("GAIT catch_up side=%d excess=%.3f behind=%.3f" % [side, excess, behind])
+		return true
+	return false
 
 func replant(side: int, hit: Dictionary, point: Vector3) -> void:
 	# Pose moved a fresh contact to where the leg can actually reach it.
@@ -453,10 +564,14 @@ func _lift_off(side: int, kind: int, rate_floor: float, base_lift: float) -> voi
 	min_rate[side] = rate_floor
 	lift[side] = base_lift
 	_sampled_for[side] = Vector3.INF
+	_fp_for[side] = Vector3.INF
+	_reach_pull[side] = Vector3.ZERO
 	_clear_lift[side] = 0.0
 	_t_prev[side] = -1.0
 	_frozen[side] = false
 	_contact_delay[side] = 0
+	_caught_up[side] = false
+	_waiting[side] = false
 	_pass[side] = Vector3.ZERO
 	_drop[side] = false
 	_drop_planted[side] = false
@@ -491,7 +606,8 @@ func _refresh_query() -> void:
 	# Exclusions only change with carried bodies/ragdoll state: rebuild on a
 	# key change (or every half second), not every tick.
 	var key := 0
-	for body: Variant in [worker.equipped_tool, worker._cargo_source]:
+	for k in 2:
+		var body: Variant = worker.equipped_tool if k == 0 else worker._cargo_source
 		if is_instance_valid(body): key = key * 31 + (body as Object).get_instance_id() + (7 if body.get("carrier") != null else 0)
 	_query_age += 1
 	if key != _query_key or _query_age > 60 or _space == null:
@@ -561,6 +677,8 @@ func _init_from_published(side: int, sk: Skeleton3D) -> void:
 func reset() -> void:
 	# Hard reset (ragdoll, head leap, a fall the gait did not start): those
 	# owners never show the acting root, so the next start fades it in.
+	knee_prev[0] = NAN
+	knee_prev[1] = NAN
 	airborne = false
 	_air_fresh = false
 	release(0.0, true)
@@ -572,6 +690,8 @@ func release(delta: float, hard := false) -> void:
 	active = false
 	moving = false
 	moving_age = 0.0
+	knee_prev[0] = NAN
+	knee_prev[1] = NAN
 	_launch_hold = 0.0
 	_launch_t = -1.0
 	_last_velocity = Vector3.INF
@@ -688,7 +808,15 @@ func _update_clock(delta: float) -> void:
 	var desired: Vector3 = worker.locomotion_desired
 	var intent: bool = desired.length() > .12 and not hold
 	var was_moving := moving
-	moving = not hold and (intent or speed > (.2 if moving else .35))
+	_no_intent = 0.0 if intent else _no_intent + delta
+	# Once the request ends the gait keeps stepping only while the body still
+	# has real travel left (a braking run), never for a slow creep: settle
+	# steps then finish the stop (a slope creep re-launched swings, tapping).
+	var coast := false
+	if moving and not intent and speed > .2 and _no_intent < COAST_TIME:
+		_predict(STOP_HORIZON, Vector3.ZERO)
+		coast = speed > .6 or _pred_x.length() > .12
+	moving = not hold and (intent or coast or (not was_moving and speed > .6))
 	moving_age = moving_age + delta if moving else 0.0
 	if moving and not was_moving: moving_age = 0.0
 	half_stride = _stride(speed)
@@ -700,6 +828,7 @@ func _update_clock(delta: float) -> void:
 	phase = fposmod(phase + phase_rate * delta, 1.0)
 	_recent_speed = maxf(speed, _recent_speed - delta * 2.5)
 	if moving and not was_moving: _start_step()
+	if debug_log and OS.get_environment("CLOCKDBG") != "": print("CLOCK z=%.3f phase=%.3f rate=%.3f moving=%s speed=%.2f hs=%.3f states=%s t=%s hold=%s" % [worker.global_position.z, phase, phase_rate, moving, speed, half_stride, state, t, hold])
 
 func _start_step() -> void:
 	# Launch: the foot farther behind the requested motion steps first.
@@ -755,23 +884,44 @@ func _events(delta: float) -> void:
 		match state[side]:
 			PLANTED:
 				stance_age[side] += delta
+				_waiting[side] = false
 				if p < d: armed[side] = true
 				if not moving or hold: continue
 				var other_planted := state[1 - side] == PLANTED
-				# Walking keeps a supporting foot: wait for the partner's contact
-				# (flight is for running; a foot-held tool never flies, since its
-				# whole-tool clearance needs a genuinely supported opposite sole).
 				var tool_foot: bool = _is_tool_foot(side)
-				var may_fly: bool = duty < .49 and not worker.tool_foot_occupied()
-				if not other_planted and not may_fly and not _overreached(side): continue
-				if not other_planted and tool_foot: continue
+				if not other_planted and not _may_fly() and _reach_left(side) < .004:
+					# Running out of leg while the partner is still airborne: crouch
+					# onto this plant and bring the partner's contact forward now,
+					# before it has to let go.
+					_waiting[side] = true
+					_hurry(1 - side)
 				# Push-off only late in a stance this foot actually stood through
 				# (a late landing starts its stance at a late clock phase).
 				var late: bool = p > .75 * d and stance_age[side] > .6 * d / maxf(phase_rate, .5)
-				if (armed[side] and p >= d and _launch_hold <= 0.0) or (late and _launch_hold <= 0.0 and _pushed_off(side, delta)):
+				var due: bool = _launch_hold <= 0.0 and ((armed[side] and p >= d) or (late and _pushed_off(side, delta)))
+				var over := not due and _overreached(side)
+				if not due and not over: continue
+				# Flight is for running only: a walk, a carry, a foot-held tool
+				# (its whole-tool clearance needs a genuinely supported opposite
+				# sole) and steep ground always keep one foot down. A foot that is
+				# due while its partner is still airborne waits (the crouch covers
+				# its reach) and the partner's contact is brought forward.
+				# Only a plant the crouch can no longer keep within the leg leaves
+				# anyway (a reversal): a short float beats a sliding sole.
+				if not other_planted and (not _may_fly() or tool_foot) and (tool_foot or not _beyond_reach(side)):
+					_waiting[side] = true
+					_hurry(1 - side)
+					continue
+				# No one-tick taps: a fresh plant stands at least MIN_STANCE
+				# unless it is already beyond the leg.
+				if stance_age[side] < MIN_STANCE and not _beyond_reach(side): continue
+				if debug_log and not other_planted: print("GAIT lift_unsupported side=%d due=%s reach_left=%.3f may_fly=%s partner_state=%d partner_t=%.2f" % [side, due, _reach_left(side), _may_fly(), state[1 - side], t[1 - side]])
+				# Running out of leg late in a stance is simply an early push-off:
+				# an ordinary swing from where the clock is (no re-phase).
+				if due or (over and p > .7 * d):
 					var first := moving_age < .12
 					_lift_off(side, SWING, 1.0 / (T_FIRST_SWING if first else T_SWING_MAX), _base_lift(side))
-				elif _overreached(side):
+				else:
 					# Never drag a plant past reach: release it now and re-phase so
 					# the alternation continues from this very step.
 					if other_planted:
@@ -811,9 +961,42 @@ func _events(delta: float) -> void:
 			_lift_off(worst, SETTLE, 1.0 / duration, clampf(.03 + .12 * distance, .035, .065))
 		else: quiet = speed < .25
 
+func _may_fly() -> bool:
+	# Running flight needs a run duty, free feet and ground that is not steep.
+	return duty < .49 and not worker.tool_foot_occupied() and not carry and up.y > .966
+
+func _hurry(side: int) -> void:
+	# The partner is due to lift: land this airborne foot sooner (at most
+	# halving its remaining swing, never under 60 ms: no whip).
+	if state[side] == PLANTED or _drop[side]: return
+	var rate := _swing_rate(side) if state[side] == SWING else maxf(min_rate[side], .001)
+	var remaining := (1.0 - t[side]) / rate
+	min_rate[side] = maxf(min_rate[side], (1.0 - t[side]) / maxf(.06, remaining * .5))
+
+func _reach_left(side: int) -> float:
+	# Leg length still unused by this plant (from the last evaluated hip,
+	# carried to this tick's body transform). A plant the body is still
+	# moving toward (a fresh footfall ahead of the hip) is not running out.
+	if not pose.evaluated_valid: return 1.0
+	var rebase: Transform3D = worker.global_transform * pose.evaluated_worker.affine_inverse()
+	var hip: Vector3 = rebase * pose.evaluated_hips[side]
+	var ankle: Vector3 = _planted_point(side) + Vector3.UP * float(pose._ankle_height[side])
+	if speed > .2 and (ankle - hip).dot(velocity) > 0.0: return 1.0
+	# Measured against the reach budget (leg - .012), a tick ahead.
+	hip += velocity * (1.0 / 120.0)
+	return float(worker._leg_lengths[side]) - .012 - hip.distance_to(ankle)
+
+func _beyond_reach(side: int) -> bool:
+	return _reach_left(side) < -.002
+
 func _dip(v: float) -> float:
-	# Light walking crouch (legs extend so the bob shows); a run sits lower.
-	return -.012 * smoothstep(.1, 1.0, v) - .008 * smoothstep(1.2, 3.2, v)
+	# The standing hip sits ~.885 m up (knees ~35 deg). A walk rises 1 cm and
+	# vaults over the stance foot (bob below): the leg reaches its footfall at
+	# ~21 deg of knee flex (the reach budget), loads to ~29 and re-extends to
+	# ~26 over the foot, instead of shuffling on bent knees. Taller would only
+	# be pulled back down by the reach crouch (a laggy dip that put the low
+	# point at mid-stance). A jog and a run sit progressively lower.
+	return .004 * smoothstep(.1, .8, v) * (1.0 - smoothstep(1.2, 1.9, v)) - .02 * smoothstep(1.3, 3.2, v)
 
 func _roll_weight() -> float:
 	return smoothstep(.3, 1.2, speed)
@@ -821,13 +1004,33 @@ func _roll_weight() -> float:
 func _base_lift(side: int) -> float:
 	if _is_tool_foot(side): return .075
 	# A visible knee drive: ~10 cm clearance walking, a high heel tuck running.
-	var l := lerpf(.095, .19, smoothstep(1.2, 3.2, speed))
+	# A run tucks the heel to ~85 deg of knee fold, not a whipping 95.
+	var l := lerpf(.125, .165, smoothstep(1.2, 3.2, speed))
 	return l * .6 if carry else l
 
 func _peel_max() -> float:
-	# Heel-up roll about the toe joint at lift-off: subtle walking, a real
-	# push-off running.
-	return lerpf(.22, .32, run_weight) * (.6 if carry else 1.0)
+	# Phase-driven heel-up roll about the toe joint at lift-off (~10 deg,
+	# subtle); the reach-driven push-off (_push_peel) adds what the leg needs.
+	return lerpf(.17, .2, run_weight) * (.6 if carry else 1.0)
+
+func _push_peel(side: int, point: Vector3, frame: Basis, basis: Basis, normal: Vector3, delta: float) -> float:
+	# Smallest heel-up (bisection, no allocation) that keeps this tick's hip
+	# within the push-off length of the rolled ankle; capped at PEEL_CAP.
+	var rebase: Transform3D = worker.global_transform * pose.evaluated_worker.affine_inverse()
+	var hip: Vector3 = rebase * pose.evaluated_hips[side] + Vector3.UP * hip_rise_at_contact(side, delta)
+	var cap: float = float(worker._leg_lengths[side]) - lerpf(.015, .026, run_weight)
+	var ankle0: Vector3 = point - basis * Vector3(0, float(pose._ankle_height[side]), 0)
+	if hip.distance_to(ankle0) <= cap: return 0.0
+	var joint := point + frame * _ball_off[side]
+	var axis := _roll_axis(side, frame, normal)
+	var lo := 0.0
+	var hi := PEEL_CAP
+	if hip.distance_to(joint + Basis(axis, hi) * (ankle0 - joint)) > cap: return hi
+	for i in 6:
+		var mid := (lo + hi) * .5
+		if hip.distance_to(joint + Basis(axis, mid) * (ankle0 - joint)) > cap: lo = mid
+		else: hi = mid
+	return hi
 
 func _pushed_off(side: int, delta: float) -> bool:
 	# Push-off: a late-stance leg leaves as it reaches its extension (knee
@@ -835,9 +1038,14 @@ func _pushed_off(side: int, delta: float) -> bool:
 	# straight (and dragging its toe) on its last stance ticks.
 	if not pose.evaluated_valid or _is_tool_foot(side): return false
 	var rebase: Transform3D = worker.global_transform * pose.evaluated_worker.affine_inverse()
-	var hip: Vector3 = rebase * pose.evaluated_hips[side] + velocity * delta * 1.5
+	# Judged where the hip will be a tick and a half on, including the bob's
+	# rise (a run's hip climbs ~8 mm a tick out of mid-stance).
+	var ahead := delta * 1.5
+	var hip: Vector3 = rebase * pose.evaluated_hips[side] + velocity * ahead + Vector3.UP * hip_rise_at_contact(side, ahead)
 	var ankle: Vector3 = out_sole[side] - out_basis[side] * Vector3(0, float(pose._ankle_height[side]), 0)
-	return hip.distance_to(ankle) > float(worker._leg_lengths[side]) - .02
+	# A run lets go at ~25 deg (the push-off); a walk uses the whole stance up
+	# to the reach budget (its footfall is planned for exactly that).
+	return hip.distance_to(ankle) > float(worker._leg_lengths[side]) - lerpf(.013, .024, run_weight)
 
 func _overreached(side: int) -> bool:
 	if not pose.evaluated_valid: return false
@@ -846,8 +1054,10 @@ func _overreached(side: int) -> bool:
 	var sole := _planted_point(side)
 	var ankle: Vector3 = sole + Vector3.UP * float(pose._ankle_height[side])
 	var reach: float = float(worker._leg_lengths[side]) - .012
-	if hip.distance_to(ankle) > reach - .004: return true
 	var direction := velocity.normalized() if speed > .2 else facing(worker._heading)
+	# Only a plant the body is moving AWAY from runs out of leg: a fresh
+	# footfall ahead of the hip (a walk lands near the reach budget) is not.
+	if hip.distance_to(ankle) > reach - .002 and ((sole - hip).dot(direction) < 0.0 or speed < .2): return true
 	# A foot-held mallet points forward-up: behind the hip it swings under the
 	# cube, so that foot keeps its stance in front and leaves early.
 	if _is_tool_foot(side): return -(sole - hip).dot(direction) > .04
@@ -862,11 +1072,14 @@ func _landing_target(side: int, t_rem: float) -> void:
 		var heading := _heading_at(t_rem)
 		var vl := v_land.length()
 		var point: Vector3 = worker.global_position + _pred_x + worker.ground_velocity * t_rem + _lateral(side, heading, _track(vl))
-		var direction := v_land / vl if vl > .2 else facing(heading)
+		# Mid-reversal the predicted velocity passes through zero: lean on the
+		# request so the footfall goes where the body is heading, not sideways.
+		var aim := v_land + desired.slide(up) * (.3 * (1.0 - smoothstep(.3, .7, vl)))
+		var direction := aim.normalized() if aim.length() > .2 else facing(heading)
 		_lt_hip = point + Vector3.UP * (HIP_ABOVE_BODY + _dip(vl) - body_drop - REACH_DROP)
 		# Running feet land a little under the body (not a straight-legged
 		# overstride) and leave further behind it.
-		var lead := lerpf(.5, .44, smoothstep(1.7, 2.9, vl))
+		var lead := lerpf(.47, .44, smoothstep(1.7, 2.9, vl))
 		point += direction * (stance_distance(vl) * lead + (TOOL_STANCE_LEAD if _is_tool_foot(side) else 0.0))
 		# Never cross or brush the other leg: keep the soles FOOT_GAP apart
 		# across the heading (the inside foot of a turn steps out). Checked
@@ -875,10 +1088,12 @@ func _landing_target(side: int, t_rem: float) -> void:
 		var other := 1 - side
 		var anchor: Vector3 = _planted_point(other) if state[other] == PLANTED else landing[other]
 		var outward := -1.0 if side == 0 else 1.0
-		for frame_heading: float in [heading, worker._heading]:
-			var right := Basis(Vector3.UP, frame_heading) * Vector3.RIGHT
+		# The push is bounded: in a hard turn on a rotating deck an unbounded
+		# one threw the footfall far sideways (behind the hip).
+		for k in 2:
+			var right := Basis(Vector3.UP, heading if k == 0 else float(worker._heading)) * Vector3.RIGHT
 			var gap := (point - anchor).slide(Vector3.UP).dot(right) * outward
-			if gap < FOOT_GAP: point += right * outward * (FOOT_GAP - gap)
+			if gap < FOOT_GAP: point += right * outward * minf(FOOT_GAP - gap, .14)
 		_lt_point = point
 		_lt_heading = heading
 		return
@@ -889,6 +1104,56 @@ func _landing_target(side: int, t_rem: float) -> void:
 	_lt_point = worker.global_position + _pred_x + worker.ground_velocity * t_rem + _lateral(side, heading, HIP_X)
 	_lt_heading = heading
 	_lt_hip = _lt_point + Vector3.UP * (HIP_ABOVE_BODY - body_drop - REACH_DROP)
+
+func _footprint_fix(side: int, hit: Dictionary, yaw: float) -> Dictionary:
+	# The skinned foot spans ~.09 m ahead/behind the sole point and ~.08 m to
+	# each side: a footfall whose toe or heel would rest inside a higher riser
+	# or block (stair edges, the block field) moves off that edge, by the
+	# smaller of stepping back from it or fully onto the higher surface.
+	# Cached per landing (re-probed only once it moves > 1 cm): 4 rays, plus
+	# 4 more when an edge is found.
+	if hit.is_empty(): return hit
+	var c: Vector3 = hit.position
+	if _fp_for[side].is_finite() and _fp_for[side].distance_to(c) < .02:
+		if _fp_shift[side].length_squared() < 1e-8: return hit
+		var again := _ground(c + _fp_shift[side])
+		return again if not again.is_empty() else hit
+	_fp_for[side] = c
+	_fp_shift[side] = Vector3.ZERO
+	var n: Vector3 = hit.normal
+	var forward := facing(yaw)
+	var right := Vector3(-forward.z, 0.0, forward.x)
+	var worst := .008
+	var away := Vector3.ZERO
+	var radius := 0.0
+	for i in 4:
+		var u := forward if i == 0 else (-forward if i == 1 else (right if i == 2 else -right))
+		var r := FOOT_HALF_LENGTH if i < 2 else FOOT_HALF_WIDTH
+		var probe := _ground(c + u * r)
+		if probe.is_empty(): continue
+		var protrusion: float = probe.position.y - (c.y - (n.x * u.x + n.z * u.z) * r / maxf(n.y, .5))
+		if protrusion > worst:
+			worst = protrusion
+			away = u
+			radius = r
+	if radius <= 0.0: return hit
+	# Locate the edge between the (low) centre and the (high) probe.
+	var lo := 0.0
+	var hi := radius
+	for k in 3:
+		var mid := (lo + hi) * .5
+		var probe := _ground(c + away * mid)
+		if not probe.is_empty() and probe.position.y - (c.y - (n.x * away.x + n.z * away.z) * mid / maxf(n.y, .5)) > .008: hi = mid
+		else: lo = mid
+	var edge := (lo + hi) * .5
+	var back := radius + .012 - edge
+	var onto := edge + radius + .012
+	var shift := -away * back if back <= onto + .03 else away * onto
+	var moved := _ground(c + shift)
+	if moved.is_empty(): return hit
+	_fp_shift[side] = shift
+	if debug_log: print("GAIT footprint side=%d protrusion=%.3f edge=%.3f shift=%s" % [side, worst, edge, str(shift)])
+	return moved
 
 func _sample_corridor(side: int, from: Vector3, to: Vector3) -> void:
 	# Look-ahead: ground at 1/3 and 2/3 of the horizontal corridor (cached
@@ -1107,9 +1372,18 @@ func _planted_output(side: int, delta: float) -> void:
 	# push-off. A stop lets the heel back down quickly, never in one tick.
 	var u := clampf(_local_phase(side) / maxf(duty, .05), 0.0, 1.0) if moving and not hold else 0.0
 	var wanted := _peel_max() * smoothstep(.5, 1.0, u) * _roll_weight() if not _is_tool_foot(side) else 0.0
-	_peel[side] = move_toward(_peel[side], wanted, PEEL_RATE * maxf(delta, 1.0 / 120.0))
 	var frame := _foot_frame(yaw, hit.normal)
 	var basis := (frame * _rest_foot[side]).orthonormalized()
+	var rate := PEEL_RATE
+	if u > .4 and not _is_tool_foot(side) and pose.evaluated_valid:
+		# Push-off: as the hip travels away the heel rises just enough to keep
+		# the knee from snapping straight on the last stance ticks, so the
+		# extension eases out before toe-off instead of reversing in one tick.
+		var needed := _push_peel(side, point, frame, basis, hit.normal, delta)
+		if needed > wanted:
+			wanted = needed
+			rate = PEEL_PUSH_RATE
+	_peel[side] = move_toward(_peel[side], wanted, rate * maxf(delta, 1.0 / 120.0))
 	var sole := point
 	if _peel[side] > .0001:
 		var roll := Basis(_roll_axis(side, frame, hit.normal), _peel[side])
@@ -1152,6 +1426,7 @@ func _swing_output(side: int, delta: float) -> void:
 		else: land = hit.position
 	else:
 		_landing_target(side, t_rem)
+		_lt_point += _reach_pull[side]
 		hit = _ground(_lt_point)
 		if not hit.is_empty():
 			# Reachable footfall: on steep descents pull the landing toward the
@@ -1164,9 +1439,14 @@ func _swing_output(side: int, delta: float) -> void:
 				var horizontal := offset.slide(Vector3.UP).limit_length(sqrt(reach * reach - offset.y * offset.y))
 				var closer: Dictionary = _ground(Vector3(_lt_hip.x + horizontal.x, hit.position.y, _lt_hip.z + horizontal.z))
 				if not closer.is_empty(): hit = closer
+			# The whole foot must fit: no toe or heel inside a riser or block.
+			if t[side] >= .55: hit = _footprint_fix(side, hit, _lt_heading)
 		land = hit.position if not hit.is_empty() else Vector3(_lt_point.x, landing[side].y, _lt_point.z)
 		landing_yaw[side] = _lt_heading
 		if t[side] >= COMMIT_T and not hit.is_empty():
+			if debug_log:
+				var tr := velocity / speed if speed > .2 else facing(worker._heading)
+				print("GAIT commit side=%d lt_ahead=%.3f land_ahead=%.3f t_rem=%.3f pred_x=%.3f v=%.2f" % [side, (_lt_point - worker.global_position).dot(tr), (land - worker.global_position).dot(tr), t_rem, _pred_x.dot(tr), speed])
 			_frozen[side] = true
 			_frozen_support[side] = weakref(hit.collider) if hit.collider is Node3D else null
 			_frozen_local[side] = (hit.collider as Node3D).to_local(land) if hit.collider is Node3D else land
@@ -1211,16 +1491,34 @@ func _swing_output(side: int, delta: float) -> void:
 	_t_prev[side] = t[side]
 	# Never let a planned sole sink into terrain met on the way (probed only
 	# near the ground or over a corridor that rises above the straight line).
+	var yaw := lerp_angle(start_yaw[side], landing_yaw[side], s)
 	var low: bool = point.y - maxf(from.y, land.y) < .05 or _clear_lift[side] > 0.0 or not _planar[side] or _is_tool_foot(side)
 	var under: Dictionary = _ground(point) if low else {}
 	var floor_clear := .012 * clampf(minf(t[side] / .12, (1.0 - t[side]) / .12), 0.0, 1.0)
+	var raise := 0.0
 	if not under.is_empty() and floor_clear > 0.0:
 		var gap: float = under.normal.dot(point - under.position)
-		if gap < floor_clear: point += under.normal * (floor_clear - gap)
+		if gap < floor_clear: raise = floor_clear - gap
+	if not _planar[side] and t[side] > .02 and t[side] < .97:
+		# Over an edge the toe and heel ends are probed too (stair noses,
+		# blocks), so the foot's front or back never cuts through a riser.
+		var forward := facing(yaw)
+		var settle := clampf(t[side] / .1, 0.0, 1.0) * clampf((1.0 - t[side]) / .08, 0.0, 1.0)
+		for k in 2:
+			var end := _ground(point + forward * (FOOT_HALF_LENGTH if k == 0 else -FOOT_HALF_LENGTH))
+			if not end.is_empty(): raise = maxf(raise, (end.position.y + .016 - point.y) * settle)
+	if raise > 0.0:
+		# The correction grows by at most 2.5 cm a tick (an unforeseen riser
+		# would otherwise pop the knee); the corridor is re-sampled so the
+		# planned arc itself climbs over it from the next tick on.
+		if raise > .025:
+			raise = .025
+			_sampled_for[side] = Vector3.INF
+		point.y += raise
 	if delta > 0.0 and _t_prev[side] >= 0.0 and speed <= 2.4:
 		var ceiling := 5.9 * delta
 		if previous.distance_to(point) > ceiling: point = previous.move_toward(point, ceiling)
-	var yaw := lerp_angle(start_yaw[side], landing_yaw[side], s)
+	if debug_log and OS.get_environment("CLOCKDBG") != "" and t[side] < .2: print("SWING side=%d t=%.3f point=%s from=%s land=%s raise=%.4f lift=%.3f clear=%.3f bump=%.3f peel0=%.3f" % [side, t[side], str(point), str(from), str(land), raise, lift[side], _clear_lift[side], _bump(t[side]), _peel0[side]])
 	foot_yaw[side] = yaw
 	var normal := start_normal[side].slerp(landing_normal[side], s).normalized() if start_normal[side].dot(landing_normal[side]) < .9999 else landing_normal[side]
 	var tt := t[side]
@@ -1253,7 +1551,8 @@ func _swing_output(side: int, delta: float) -> void:
 		if debug_log:
 			var other_pt := _foot_now(1 - side)
 			var rgt := Basis(Vector3.UP, worker._heading) * Vector3.RIGHT
-			print("GAIT contact side=%d at=%s other=%s(state %d) sep=%.3f heading=%.2f land_yaw=%.2f frozen=%s" % [side, str(contact), str(other_pt), state[1 - side], (contact - other_pt).slide(Vector3.UP).dot(rgt) * (-1.0 if side == 0 else 1.0), worker._heading, landing_yaw[side], _frozen[side]])
+			var travel := velocity / speed if speed > .2 else facing(worker._heading)
+			print("GAIT contact side=%d at=%s other=%s(state %d) sep=%.3f heading=%.2f land_yaw=%.2f frozen=%s ahead_body=%.3f stance_d=%.3f p=%.2f" % [side, str(contact), str(other_pt), state[1 - side], (contact - other_pt).slide(Vector3.UP).dot(rgt) * (-1.0 if side == 0 else 1.0), worker._heading, landing_yaw[side], _frozen[side], (contact - worker.global_position).dot(travel), stance_distance(speed), _local_phase(side)])
 		_contact_kind[side] = state[side]
 		# The swing start (support-local) must survive a deferred contact.
 		var start_keep := _swing_start(side)
@@ -1417,21 +1716,13 @@ func _update_body(delta: float) -> void:
 	# lowest at mid-stance and highest at mid-flight; nose down when low.
 	# Walk and run waves keep their own phase and are cross-faded by
 	# amplitude (shifting one wave's phase with speed would sweep the bob).
-	var walk_wave := cos(TAU * fposmod(2.0 * _act_phase - (duty - .5), 1.0))
-	var x := fposmod(2.0 * _act_phase - duty, 1.0)
-	# A run rises a touch faster than it falls (peak ~4 ms before
-	# mid-flight): the stance knee re-extends into the push-off while the
-	# landing leg still arrives bent. A steeper rise would snap the knee
-	# straight in the last stance ticks.
-	const PEAK := .475
-	var run_wave := cos(PI * x / PEAK) if x < PEAK else -cos(PI * (x - PEAK) / (1.0 - PEAK))
-	# A jog (walk_speed 2.1, the usual travel speed) already bounces like a
-	# run; the out-of-phase cross-fade band sits at ~1.5 m/s, passed quickly.
 	var bounce := 0.0 if carry else smoothstep(1.1, 1.9, v)
-	var walk_amp := (1.0 - bounce) * gait_on * calm
-	var run_amp := bounce * calm
-	body_bob = -(.023 * walk_amp * walk_wave + lerpf(.027, .034, act_run) * run_amp * run_wave)
-	body_nod = .026 * walk_amp * walk_wave + lerpf(.028, .035, act_run) * run_amp * run_wave
+	_walk_amp = (1.0 - bounce) * gait_on * calm
+	_run_amp = bounce * calm
+	_bob_run = act_run
+	body_bob = _bob_at(_act_phase)
+	var walk_wave := cos(TAU * fposmod(2.0 * _act_phase - (duty - .5), 1.0))
+	body_nod = .022 * _walk_amp * walk_wave + lerpf(.028, .035, act_run) * _run_amp * _run_wave(_act_phase)
 	_update_squash(delta)
 	# Forward lean from speed and paid acceleration: one owner, continuous,
 	# underdamped. Braking leans back; when the skid ends the cube pitches
@@ -1458,7 +1749,8 @@ func _update_body(delta: float) -> void:
 	var sway := gait_on * steady * (.45 if carry else 1.0) * (.4 if tool else 1.0)
 	var sway_wave := cos(TAU * (_act_phase - duty * .5))
 	_shift_osc = -lerpf(.037, .02, act_run) * sway * sway_wave
-	_roll_osc = lerpf(.06, .035, act_run) * sway * sway_wave
+	_roll_amp = lerpf(.06, .035, act_run) * sway
+	_roll_osc = _roll_amp * sway_wave
 	body_twist = lerpf(.06, .045, act_run) * sway * sway_wave
 	var s := spring(_shift_s, _shift_v, .03 * support_sign * launch, 26.0, delta)
 	_shift_s = s.x
@@ -1485,6 +1777,40 @@ func _update_body(delta: float) -> void:
 	settle_dip = sd.x
 	_settle_v = sd.y
 
+func _run_wave(ph: float) -> float:
+	# A run rises a touch faster than it falls (peak ~4 ms before
+	# mid-flight): the stance knee re-extends into the push-off while the
+	# landing leg still arrives bent. A steeper rise would snap the knee
+	# straight in the last stance ticks.
+	const PEAK := .475
+	var x := fposmod(2.0 * ph - duty, 1.0)
+	return cos(PI * x / PEAK) if x < PEAK else -cos(PI * (x - PEAK) / (1.0 - PEAK))
+
+func _bob_at(ph: float) -> float:
+	# Phase-locked stance bob (added AFTER the springs: a spring at step
+	# frequency lags ~90 degrees). Walk: an inverted-pendulum vault, low only
+	# at double support (the loading flex), tall over the straight stance
+	# leg. Run: lowest at mid-stance, highest mid-flight. The two waves keep
+	# their own phase and are cross-faded by amplitude (a jog, the usual
+	# 2.1 m/s travel, already bounces like a run).
+	var walk_wave := cos(TAU * fposmod(2.0 * ph - (duty - .5), 1.0))
+	return -(.007 * _walk_amp * walk_wave + lerpf(.027, .034, _bob_run) * _run_amp * _run_wave(ph))
+
+func _hip_offset(side: int, ph: float) -> float:
+	# Phase-locked height of this hip: the bob, plus the waddle roll about
+	# the stance hip (acting_root: the root rises by the stance hip's drop, so
+	# the swing-side hip rides up to twice that).
+	var osc := _roll_amp * cos(TAU * (ph - duty * .5))
+	var roll := clampf(_roll_s + osc, -.095, .095)
+	return _bob_at(ph) + HIP_X * absf(sin(osc)) + _roll_hip[side] * sin(roll)
+
+func hip_rise_at_contact(side: int, t_rem: float) -> float:
+	# How much this visual hip will rise (+) or sink (-) by a contact t_rem
+	# away (bob and waddle are phase-locked, so they are known ahead): a
+	# walking swing judges its reach at the double-support trough with its
+	# own hip back down from the waddle, not from mid-vault.
+	return (_hip_offset(side, _act_phase + phase_rate * t_rem) - _hip_offset(side, _act_phase)) * locomotion_weight
+
 func acting_root(sk: Skeleton3D, authored: Transform3D) -> Transform3D:
 	# Procedural locomotion root, blended in by locomotion_weight. Authored
 	# locomotion clips only contribute while the creature is standing still
@@ -1495,7 +1821,11 @@ func acting_root(sk: Skeleton3D, authored: Transform3D) -> Transform3D:
 	var root := authored.interpolate_with(procedural, w) if w > .0005 else authored
 	# Skeleton-space offsets: -Z is the face, -X the character's left hip;
 	# +X rotation tilts the top backward, +Z rotation tilts it left.
-	root.origin += Vector3(body_shift * w, (body_y + body_bob) * w + settle_dip + squash - body_drop, 0.0)
+	# The waddle rolls the cube over the stance foot about the STANCE hip
+	# (lifting the root by that hip's drop): the swing-side hip sinks instead,
+	# so the stance leg stays long rather than buckling under the roll.
+	var roll_lift := HIP_X * absf(sin(_roll_osc))
+	root.origin += Vector3(body_shift * w, (body_y + body_bob + roll_lift) * w + settle_dip + squash - body_drop, 0.0)
 	var tilt := Basis(Vector3.UP, body_yaw * w) * Basis(Vector3.RIGHT, -(body_lean + body_nod) * w) * Basis(Vector3.BACK, body_roll * w)
 	root.basis = (tilt * root.basis).orthonormalized()
 	return root
@@ -1508,9 +1838,12 @@ func update_drop(sk: Skeleton3D, root: Transform3D, delta: float) -> void:
 	for side in 2:
 		# Landings are judged from .35 on, so the crouch eases in ahead of the
 		# contact rather than being yanked in on its last ticks.
-		if state[side] != PLANTED and t[side] < .35: continue
+		# A step down is judged almost from lift-off: its crouch has a long
+		# way to go and must not be yanked in on the last ticks.
+		if state[side] != PLANTED and t[side] < (.12 if landing[side].y < _swing_start(side).y - .05 else .35): continue
 		# A stance about to lift off is released by the planner, not chased.
-		if state[side] == PLANTED and moving and _local_phase(side) > .7 * duty: continue
+		# (a lift held for its airborne partner is still this leg's to reach).
+		if state[side] == PLANTED and moving and _local_phase(side) > .7 * duty and not _waiting[side]: continue
 		var target: Vector3 = out_sole[side] - _roll_off[side] if state[side] == PLANTED else landing[side]
 		var ankle: Vector3 = target + Vector3.UP * float(pose._ankle_height[side])
 		var hip_rest: Vector3 = sk.get_bone_global_rest(pose._chains[side][0]).origin
@@ -1521,16 +1854,20 @@ func update_drop(sk: Skeleton3D, root: Transform3D, delta: float) -> void:
 			# here: the run's footfall is ~.4 m ahead now but only ~.2 m then.
 			var rate: float = maxf(min_rate[side], .001)
 			if state[side] == SWING and moving: rate = maxf(rate, _phase_swing_rate(side))
-			hip += velocity.slide(Vector3.UP) * ((1.0 - t[side]) / rate)
-		var reach: float = float(worker._leg_lengths[side]) - .022
+			var t_rem := (1.0 - t[side]) / rate
+			if debug_log and OS.get_environment("CLOCKDBG") != "": print("HIPPRED side=%d t=%.2f hip_y=%.3f drop=%.3f rise=%.3f t_rem=%.3f ph=%.3f ph_c=%.3f off_now=%.3f off_c=%.3f" % [side, t[side], hip.y - body_drop, body_drop, hip_rise_at_contact(side, t_rem), t_rem, _act_phase, _act_phase + phase_rate * t_rem, _hip_offset(side, _act_phase), _hip_offset(side, _act_phase + phase_rate * t_rem)])
+			hip += velocity.slide(Vector3.UP) * t_rem + Vector3.UP * hip_rise_at_contact(side, t_rem)
+		var reach: float = float(worker._leg_lengths[side]) - .014
 		var horizontal := (hip - ankle).slide(Vector3.UP).length()
 		if horizontal >= reach: continue
 		var vertical := hip.y - ankle.y
-		if debug_log and vertical - sqrt(reach * reach - horizontal * horizontal) > .1:
+		if debug_log and vertical - sqrt(reach * reach - horizontal * horizontal) > float(OS.get_environment("DROPDBG") if OS.get_environment("DROPDBG") != "" else "0.1"):
 			print("GAIT drop need z=%.2f side=%d state=%d t=%.2f need=%.3f target=%s hip=%s horiz=%.3f drop=%.3f" % [worker.global_position.z, side, state[side], t[side], vertical - sqrt(reach * reach - horizontal * horizontal), str(target), str(hip), horizontal, body_drop])
 		need = maxf(need, vertical - sqrt(reach * reach - horizontal * horizontal))
 	need = clampf(need, 0.0, .2)
 	var d := spring(body_drop, _drop_v, need, 24.0 if need > body_drop else 9.0, delta)
-	# Speed-capped: a crest or an edge eases the crouch in (no root hiccup).
-	_drop_v = clampf(d.y, -DROP_SPEED, DROP_SPEED)
-	body_drop = maxf(body_drop + _drop_v * delta, 0.0) if absf(d.y) > DROP_SPEED else maxf(d.x, 0.0)
+	# Speed-capped: a crest or an edge eases the crouch in (no root hiccup);
+	# a deep step down may crouch a little faster.
+	var cap := lerpf(DROP_SPEED, 1.0, smoothstep(.03, .1, need - body_drop))
+	_drop_v = clampf(d.y, -cap, cap)
+	body_drop = maxf(body_drop + _drop_v * delta, 0.0) if absf(d.y) > cap else maxf(d.x, 0.0)

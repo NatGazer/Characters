@@ -29,6 +29,7 @@ const HEAD_OFFSET := .338 # Original mesh top 1.412m minus imported root-bone pi
 const TOOL_AXIS_TIE_EPS := .00001
 const WORK_RUN_SPEED := 3.4
 const WORK_HEAD_CARRY_SPEED := 2.2
+const LOCOMOTION_CLIPS: Array[String] = ["wk_walkcycle", "work/carry", "work/run"]
 static var _shared_work_library: AnimationLibrary
 static var _shared_skin_material: ShaderMaterial
 @export var worker_id := ""
@@ -899,8 +900,7 @@ func _update_animation(delta: float) -> void:
 		return
 	var clip := "wk_idle"
 	var playback := 1.0
-	var locomotion_clips := ["wk_walkcycle", "work/carry", "work/run"]
-	var travelling: bool = _animation.current_animation in locomotion_clips
+	var travelling: bool = _animation.current_animation in LOCOMOTION_CLIPS
 	# Hysteresis upward only: entering travel needs .2 m/s, while arriving
 	# still drops to idle at the original .15 (work settle gates wait on it).
 	if gait_speed > (0.15 if travelling else 0.2) and on_ground:
@@ -928,7 +928,7 @@ func _update_animation(delta: float) -> void:
 	elif not on_ground or fear_time > 0.0: clip = "work/danger_L"
 	if _animation.current_animation != clip:
 		var previous_phase := 0.0
-		var preserve_phase := _animation.current_animation in locomotion_clips and clip in locomotion_clips
+		var preserve_phase := _animation.current_animation in LOCOMOTION_CLIPS and clip in LOCOMOTION_CLIPS
 		if preserve_phase:
 			previous_phase = _animation.current_animation_position / _animation.current_animation_length
 		_animation.play(clip, 0.24, 1.0)

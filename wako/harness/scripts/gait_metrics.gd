@@ -56,6 +56,19 @@ var _prev_active := false
 var _sole_verts: Array = [[], []]
 var _mesh: MeshInstance3D
 var _sk: Skeleton3D
+# Regression checks (critic round 2): pronks, taps, slow flight, stuck
+# contacts, 4-tick (one 30 fps frame) knee change, shin tilt, toe/heel in
+# geometry. _n counts published evaluations (the per-label arrays insert a
+# NAN break when a label is re-entered, so second differences never span gaps).
+var _n := 0
+var _lift_n := [-99, -99]
+var _land_n := [-99, -99]
+var _ground_run := [0, 0]
+var _air_run := 0
+var _air_counted := false
+var _stuck := [0, 0]
+var _k_hist: Array = [[], []]               # last 5 [angle, grounded, stance_tick]
+var _swing_flex := [0.0, 0.0]
 
 class EvalTimer extends SkeletonModifier3D:
 	var probe: Node
@@ -82,7 +95,9 @@ func attach(target: RigidBody3D) -> void:
 			_ball_rest_h[side] = _sk.get_bone_global_rest(toe).origin.y - (ankle.origin.y - float(pose._ankle_height[side]))
 	_collect_sole_verts()
 	var g: Variant = pose.get("gait")
-	if debug and g != null and "debug_log" in g: g.debug_log = true
+	if debug and g != null and "debug_log" in g:
+		g.debug_log = true
+		print("GAITRIG ball_off=%s toe_dir=%s ankle_h=%s legs=%s roll_hip=%s" % [str(g._ball_off), str(g._toe_dir), str(pose._ankle_height), str(wako._leg_lengths), str(g.get("_roll_hip"))])
 
 func _collect_sole_verts() -> void:
 	# The underside of each foot+toe in the rest pose (lowest 3 cm of the
@@ -124,8 +139,16 @@ func _collect_sole_verts() -> void:
 				lowest = minf(lowest, rest_pos.y)
 				picked.append([rest_pos.y, influences])
 		var keep: Array = []
+		var ext := AABB()
+		var ankle_rest := _sk.get_bone_global_rest(int(pose._chains[side][2]))
+		var sole_rest := ankle_rest.origin - Vector3(0, float(pose._ankle_height[side]), 0)
 		for p: Array in picked:
-			if float(p[0]) < lowest + .03: keep.append(p[1])
+			if float(p[0]) < lowest + .03:
+				keep.append(p[1])
+				var rp := Vector3.ZERO
+				for inf: Array in p[1]: rp += _sk.get_bone_global_rest(int(inf[0])) * (inf[2] as Vector3) * float(inf[1])
+				ext = AABB(rp - sole_rest, Vector3.ZERO) if ext.size == Vector3.ZERO and ext.position == Vector3.ZERO else ext.expand(rp - sole_rest)
+		if debug: print("FOOTPRINT side=%d rel_sole min=%s max=%s lowest_rel=%.3f" % [side, str(ext.position), str(ext.end), lowest - sole_rest.y])
 		# Bounded cost: at most 90 underside vertices per foot.
 		var stride := maxi(1, ceili(keep.size() / 90.0))
 		for i in range(0, keep.size(), stride): (_sole_verts[side] as Array).append(keep[i])
@@ -191,7 +214,9 @@ func _bucket() -> Dictionary:
 			"neutral": [], "skates": [], "skate_max": 0.0, "sole_step": 0.0, "tool_blocked": 0, "plan_sum": 0, "plan_n": 0, "plan_max": 0, "perf_samples": [], "plan_samples": [], "swing_time": [], "stance_time": [], "min_clear": INF,
 			"rh": [], "ry": [], "pitch": [], "roll": [], "twist": [], "bob_low": [], "bob_high": [], "flex_off": [], "flex_mid": [],
 			"leg_gap": INF, "ankle_gap": INF, "track": [], "apex": [], "toe_pen": -INF, "toe_pen_g": -INF,
-			"root_step": 0.0, "root_turn": 0.0, "handoffs": 0, "knee_step_shown": 0.0, "root_step_shown": 0.0, "root_turn_shown": 0.0}
+			"root_step": 0.0, "root_turn": 0.0, "handoffs": 0, "knee_step_shown": 0.0, "root_step_shown": 0.0, "root_turn_shown": 0.0,
+			"last_n": -2, "pronk": 0, "taps": 0, "air_slow": 0, "both_up_duty": 0, "both_up_ev": 0, "stuck_max": 0, "knee4_g": 0.0, "knee4_land": 0.0,
+			"flex_g": [], "flex_td": [], "flex_swing": [], "shin_back": [], "behind5": 0, "ahead5": 0, "rel_n": 0, "ball_pen": 0.0, "heel_pen": 0.0}
 	return _stats[key]
 
 func _support_point(side: int, any := false) -> Array:
@@ -203,6 +228,17 @@ func _support_point(side: int, any := false) -> Array:
 	var ball := _ball(side)
 	if support is Node3D and (any or pose._target_valid[side]):
 		return [weakref(support), (support as Node3D).to_local(sole), (support as Node3D).to_local(ball)]
+	return [null, sole, ball]
+
+func _contact_point(side: int) -> Array:
+	# Anchor a physical contact in the frame of the body actually under the
+	# sole (pose._support can still name a deck the foot just stepped off).
+	var sole: Vector3 = wako._pose.evaluated_soles[side]
+	var ball := _ball(side)
+	var hit := _ground_hit(sole)
+	if not hit.is_empty() and hit.collider is Node3D and not hit.collider is StaticBody3D:
+		var body: Node3D = hit.collider
+		return [weakref(body), body.to_local(sole), body.to_local(ball)]
 	return [null, sole, ball]
 
 func _drift(anchor: Array, side: int) -> float:
@@ -226,7 +262,12 @@ func _ground_hit(point: Vector3) -> Dictionary:
 	_ray_age += 1
 	if _ray_age > 60:
 		_ray_age = 0
-		_ray.exclude = wako.query_exclusions()
+		# The creature's own carried bodies (a foot-held mallet, head cargo)
+		# are not ground: a sole resting on its own tool is not a contact.
+		var ex: Array[RID] = wako.query_exclusions()
+		for body: Variant in [wako.equipped_tool, wako._cargo_source]:
+			if body is CollisionObject3D and is_instance_valid(body): ex.append((body as CollisionObject3D).get_rid())
+		_ray.exclude = ex
 		_ray.collision_mask = 1
 	_ray.from = point + Vector3.UP * .5
 	_ray.to = point - Vector3.UP * .6
@@ -272,8 +313,13 @@ func _sample(delta: float) -> void:
 	var pose: Node = wako._pose
 	if not pose.evaluated_valid or pose.evaluation_serial == _serial: return
 	_serial = pose.evaluation_serial
+	_n += 1
 	var s := _bucket()
 	s.ticks += 1
+	if int(s.last_n) >= 0 and int(s.last_n) != _n - 1:
+		# Re-entered label: break the series (no fake second differences).
+		for key: String in ["rh", "ry", "pitch", "roll", "twist"]: (s[key] as Array).append(NAN)
+	s.last_n = _n
 	var gait: Variant = pose.get("gait")
 	if label != _anchor_label:
 		# Drift is judged per phase: a new label re-anchors the soles that
@@ -284,7 +330,7 @@ func _sample(delta: float) -> void:
 				_anchor[side] = _support_point(side)
 				_stance_max[side] = 0.0
 			if _contact[side]:
-				_contact_anchor[side] = _support_point(side, true)
+				_contact_anchor[side] = _contact_point(side)
 				_contact_max[side] = 0.0
 	if not dump_label.is_empty() and (dump_label == "*" or label.begins_with(dump_label)): _dump(pose, gait)
 	if not str(wako.tool_pose_blocked).is_empty(): s.tool_blocked += 1
@@ -348,8 +394,12 @@ func _sample(delta: float) -> void:
 		var gap_sole := sole.y - ground
 		var gap_ball := ball.y - _ground_y(ball) - float(_ball_rest_h[side])
 		var touching: bool = (gap_sole < CONTACT_H and gap_sole > -.03) or (gap_ball < CONTACT_H and gap_ball > -.03)
+		if gap_ball < .1:
+			if debug and -gap_ball > .008 and -gap_ball > float(s.ball_pen) + .002: print("BALLPEN c=%.3f %s side=%d pen=%.4f sole_gap=%.4f g=%s state=%s t=%.2f ball=%s sole=%s" % [clock, label, side, -gap_ball, gap_sole, g, str(gait.state[side]) if gait else "-", float(gait.t[side]) if gait else -1.0, str(ball), str(sole)])
+			s.ball_pen = maxf(s.ball_pen, -gap_ball)
+		if gap_sole < .1: s.heel_pen = maxf(s.heel_pen, -gap_sole)
 		if touching and not _contact[side]:
-			_contact_anchor[side] = _support_point(side, true)
+			_contact_anchor[side] = _contact_point(side)
 			_contact_max[side] = 0.0
 		elif touching:
 			var drift := _drift(_contact_anchor[side], side)
@@ -385,6 +435,7 @@ func _sample(delta: float) -> void:
 		if gait != null: _last_state[side] = int(gait.state[side])
 		_knee_angle[side] = a
 		_knee_dir[side] = kd
+		_regressions(s, side, g, a, flex, hip, knee, ankle, sole, travel, speed, gait)
 		if g and hip.distance_to(ankle) > float(wako._leg_lengths[side]) - .012 + .003: s.reach_viol += 1
 		# Planned-curve offset (the planner's own re-target carry; informative).
 		if gait != null and not g and gait.debug_planned[side].is_finite():
@@ -435,10 +486,29 @@ func _sample(delta: float) -> void:
 			(_swing_rel[side] as Array).append(ahead)
 			_swing_apex[side] = maxf(_swing_apex[side], ankle.y - ground)
 			var wsp: float = pose._walk_swing_phase[side]
-			if wsp >= .6 and speed > .6 and gait != null and gait.moving and gait.state[side] == 1:
+			# Judged while the request agrees with the motion: mid-reversal the
+			# planner deliberately lands toward where the body is GOING.
+			var wanted: Vector3 = wako.locomotion_desired.slide(Vector3.UP)
+			var steady := wanted.length() < .1 or wanted.normalized().dot(travel) > .7
+			if wsp >= .6 and speed > .6 and gait != null and gait.moving and gait.state[side] == 1 and steady:
+				if debug and -ahead > .1 and -ahead > float(s.late_behind) + .01: print("LATE c=%.3f %s side=%d behind=%.3f t=%.2f g=%s" % [clock, label, side, -ahead, wsp, g])
 				s.late_behind = maxf(s.late_behind, -ahead)
 			if ground > -INF: s.min_clear = minf(s.min_clear, gap_sole)
 		_grounded[side] = g
+	# Both feet up: slow flight (>= 30 ms below 1 m/s) and any double swing
+	# while the gait itself wants double support (duty >= .5).
+	if both_air and not wako._pose.evaluated_grounded[0] and gait != null and gait.active:
+		_air_run += 1
+		if speed < 1.0 and _air_run >= 4 and not _air_counted:
+			s.air_slow += 1
+			_air_counted = true
+		if gait.moving and float(gait.duty) >= .5 and speed > .2:
+			s.both_up_duty += 1
+			if _air_run == 1: s.both_up_ev += 1
+			if debug and _air_run == 1: print("BOTHUP c=%.3f %s duty=%.2f v=%.2f states=%s t=%s" % [clock, label, gait.duty, speed, str(gait.state), str(gait.t)])
+	else:
+		_air_run = 0
+		_air_counted = false
 	var gap := _seg_dist(knees[0], ankles[0], knees[1], ankles[1])
 	if debug and gap < .18:
 		print("LEGGAP c=%.3f %s gap=%.3f states=%s t=%s soles=%s/%s heading=%.2f" % [clock, label, gap, str(gait.state) if gait else "-", str(gait.t) if gait else "-", str(pose.evaluated_soles[0]), str(pose.evaluated_soles[1]), float(wako._heading)])
@@ -454,6 +524,61 @@ func _sample(delta: float) -> void:
 		if clock - _flight_start > .02: _bob_high(s, _flight_start, clock - delta)
 		_flight_start = -1.0
 	if int(s.ticks) % 3 == 0: _toe_penetration(s, pose)
+
+func _regressions(s: Dictionary, side: int, g: bool, a: float, flex: float, hip: Vector3, knee: Vector3, ankle: Vector3, sole: Vector3, travel: Vector3, speed: float, gait: Variant) -> void:
+	var was: bool = _grounded[side]
+	# Lifts/landings of both feet within 2 ticks below 2.5 m/s: a pronk.
+	if was and not g:
+		_lift_n[side] = _n
+		if _n - int(_lift_n[1 - side]) <= 2 and speed < 2.5 and speed > .2:
+			s.pronk += 1
+			if debug: print("PRONK lift c=%.3f %s v=%.2f" % [clock, label, speed])
+		if _ground_run[side] <= 2 and speed > .2:
+			s.taps += 1
+			if debug: print("TAP c=%.3f %s side=%d ticks=%d v=%.2f" % [clock, label, side, _ground_run[side], speed])
+	if g and not was:
+		_land_n[side] = _n
+		if _n - int(_land_n[1 - side]) <= 2 and speed < 2.5 and speed > .2:
+			s.pronk += 1
+			if debug: print("PRONK land c=%.3f %s v=%.2f" % [clock, label, speed])
+	_ground_run[side] = _ground_run[side] + 1 if g else 0
+	# A contact the planner keeps deferring at the end of its swing.
+	if gait != null and int(gait.state[side]) != 0 and float(gait.t[side]) >= .99 and not g: _stuck[side] += 1
+	else: _stuck[side] = 0
+	s.stuck_max = maxi(int(s.stuck_max), int(_stuck[side]))
+	# Knee change over one 30 fps frame on a foot grounded throughout; the
+	# first 8 stance ticks are the landing absorption.
+	var hist: Array = _k_hist[side]
+	hist.append([a, g, _ground_run[side]])
+	if hist.size() > 5: hist.pop_front()
+	if hist.size() == 5 and g and bool(hist[0][1]) and bool(hist[1][1]) and bool(hist[2][1]) and bool(hist[3][1]):
+		var change := absf(a - float(hist[0][0]))
+		s.knee4_g = maxf(s.knee4_g, change)
+		if int(_ground_run[side]) <= 9: s.knee4_land = maxf(s.knee4_land, change)
+		if debug and change > 25.0: print("KNEE4 c=%.3f %s side=%d change=%.1f stance_tick=%d" % [clock, label, side, change, _ground_run[side]])
+	if speed > .3:
+		if g:
+			(s.flex_g as Array).append(flex)
+			if not was: (s.flex_td as Array).append(flex)
+		else: _swing_flex[side] = maxf(_swing_flex[side], flex)
+		if g and not was and _swing_flex[side] > 0.0:
+			(s.flex_swing as Array).append(_swing_flex[side])
+			_swing_flex[side] = 0.0
+		# Shin tilt along travel: + means the ankle trails the knee (backward).
+		var shin := ankle - knee
+		(s.shin_back as Array).append(rad_to_deg(atan2(-shin.dot(travel), -shin.y)))
+		var ahead := (sole - hip).slide(Vector3.UP).dot(travel)
+		s.rel_n += 1
+		if ahead < -.05: s.behind5 += 1
+		elif ahead > .05: s.ahead5 += 1
+
+static func _pct(a: Array, q: float) -> float:
+	var c: Array = []
+	for v in a:
+		if not is_nan(float(v)): c.append(float(v))
+	if c.is_empty(): return NAN
+	c.sort()
+	return float(c[clampi(int(c.size() * q), 0, c.size() - 1)])
 
 func _bob_low(s: Dictionary, t0: float, t1: float) -> void:
 	var best := INF
@@ -505,7 +630,9 @@ func _dump(pose: Node, gs: Variant) -> void:
 	for side in 2:
 		var ankle: Vector3 = pose.evaluated_soles[side] - pose.evaluated_ankles[side] * Vector3(0, pose._ankle_height[side], 0)
 		line += " %d %s %s %s %s" % [1 if pose.evaluated_grounded[side] else 0, _v(pose.evaluated_hips[side]), _v(pose.evaluated_knees[side]), _v(ankle), _v(pose.evaluated_soles[side])]
-	if gs: line += " drop=%.3f y=%.3f lean=%.3f" % [gs.body_drop, float(gs.body_y) + float(gs.get("body_bob") if gs.get("body_bob") != null else 0.0), gs.body_lean]
+	if gs:
+		line += " drop=%.3f y=%.3f lean=%.3f" % [gs.body_drop, float(gs.body_y) + float(gs.get("body_bob") if gs.get("body_bob") != null else 0.0), gs.body_lean]
+		line += " gt=%.3f,%.3f gs=%d,%d roll=%.3f ph=%.3f" % [gs.t[0], gs.t[1], gs.state[0], gs.state[1], gs.body_roll, gs.get("_act_phase") if gs.get("_act_phase") != null else -1.0]
 	print(line + " " + label.replace(" ", "_"))
 	var line2 := "POSE2 %.4f %s %s %s %s" % [clock, _v(root.origin), _v(root.basis.x), _v(root.basis.y), _v(root.basis.z)]
 	for side in 2:
@@ -549,24 +676,30 @@ static func _mean_abs(a: Array) -> float:
 
 static func _minv(a: Array) -> float:
 	var m := INF
-	for v in a: m = minf(m, float(v))
+	for v in a:
+		if not is_nan(float(v)): m = minf(m, float(v))
 	return m if m != INF else NAN
 
 static func _maxv(a: Array) -> float:
 	var m := -INF
-	for v in a: m = maxf(m, float(v))
+	for v in a:
+		if not is_nan(float(v)): m = maxf(m, float(v))
 	return m if m != -INF else NAN
 
 static func _vacc(a: Array) -> float:
 	# Largest vertical root acceleration (second difference at 120 Hz).
 	var m := 0.0
-	for i in range(2, a.size()): m = maxf(m, absf(float(a[i]) - 2.0 * float(a[i - 1]) + float(a[i - 2])) * 14400.0)
+	for i in range(2, a.size()):
+		var v := absf(float(a[i]) - 2.0 * float(a[i - 1]) + float(a[i - 2])) * 14400.0
+		if not is_nan(v): m = maxf(m, v)
 	return m
 
 static func _p2p(a: Array) -> float:
 	# Robust peak-to-peak (5th..95th percentile) of a steady phase.
-	if a.size() < 8: return NAN
-	var c := a.duplicate()
+	var c: Array = []
+	for v in a:
+		if not is_nan(float(v)): c.append(float(v))
+	if c.size() < 8: return NAN
 	c.sort()
 	return float(c[int(c.size() * .95)]) - float(c[int(c.size() * .05)])
 
@@ -589,6 +722,9 @@ func print_report() -> void:
 		if int(s.tool_blocked) > 0: line += " tool_blocked=%d" % s.tool_blocked
 		if float(s.min_clear) < INF: line += " min_swing_clear=%.3f" % s.min_clear
 		# Timings: median (robust to preemption on a shared CPU) / mean / max.
+		line += " stuck_max=%d pronk=%d taps=%d air_slow=%d both_up_duty=%d/%dev knee4_g=%.1fdeg knee4_land=%.1fdeg ball_pen=%.1fmm heel_pen=%.1fmm" % [s.stuck_max, s.pronk, s.taps, s.air_slow, s.both_up_duty, s.both_up_ev, s.knee4_g, s.knee4_land, float(s.ball_pen) * 1000.0, float(s.heel_pen) * 1000.0]
+		if not (s.flex_g as Array).is_empty():
+			line += " flex_g_p5/p50/p95=%.0f/%.0f/%.0f flex_td=%.0f flex_swing=%.0f shin_back_p10/p50=%.0f/%.0f behind5/ahead5=%.0f/%.0f%%" % [_pct(s.flex_g, .05), _pct(s.flex_g, .5), _pct(s.flex_g, .95), _mean(s.flex_td), _mean(s.flex_swing), _pct(s.shin_back, .1), _pct(s.shin_back, .5), 100.0 * s.behind5 / maxf(s.rel_n, 1), 100.0 * s.ahead5 / maxf(s.rel_n, 1)]
 		if int(s.perf_n) > 0: line += " perf_us=%d/%.0f/%d" % [_median(s.perf_samples), float(s.perf_sum) / s.perf_n, s.perf_max]
 		if int(s.plan_n) > 0: line += " plan_us=%d/%.0f/%d" % [_median(s.plan_samples), float(s.plan_sum) / s.plan_n, s.plan_max]
 		print(line)
@@ -607,3 +743,20 @@ func print_report() -> void:
 		if float(s.toe_pen) > -INF: act += " toe_pen=%.1fmm(planted %.1fmm)" % [float(s.toe_pen) * 1000.0, float(s.toe_pen_g) * 1000.0]
 		act += " root_step=%.4f root_turn=%.2fdeg handoffs=%d shown_knee_step=%.1fdeg shown_root_step=%.4f shown_root_turn=%.2fdeg" % [s.root_step, s.root_turn, s.handoffs, s.knee_step_shown, s.root_step_shown, s.root_turn_shown]
 		print(act)
+		# Pass/fail summary against the acceptance gates (informative for
+		# phases owned by foot actions, falls or ragdoll).
+		var fails: Array[String] = []
+		if float(s.late_behind) > .10: fails.append("late_behind=%.3f" % s.late_behind)
+		if int(s.stuck_max) > 3: fails.append("stuck=%d" % s.stuck_max)
+		if int(s.pronk) > 0: fails.append("pronk=%d" % s.pronk)
+		if int(s.taps) > 0: fails.append("taps=%d" % s.taps)
+		if int(s.both_up_duty) > 0: fails.append("both_up_duty=%d" % s.both_up_duty)
+		if int(s.air_slow) > 0: fails.append("air_slow=%d" % s.air_slow)
+		if float(s.skate_max) > .006: fails.append("skate=%.1fmm" % (float(s.skate_max) * 1000.0))
+		if float(s.slip_max) > .005: fails.append("slip=%.1fmm" % (float(s.slip_max) * 1000.0))
+		if int(s.knee_n) > 0 and int(s.knee_pos) < int(s.knee_n): fails.append("knee_fwd")
+		if int(s.reach_viol) > 0: fails.append("reach_viol=%d" % s.reach_viol)
+		if float(s.ball_pen) > .008: fails.append("ball_pen=%.1fmm" % (float(s.ball_pen) * 1000.0))
+		if float(s.knee4_land) > 25.0: fails.append("knee4_land=%.0f" % s.knee4_land)
+		if float(s.knee_step_stance) > 8.0: fails.append("knee_step_stance=%.1f" % s.knee_step_stance)
+		print("GATE %-16s %s" % [key, "ok" if fails.is_empty() else "FAIL " + " ".join(fails)])
