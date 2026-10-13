@@ -62,7 +62,7 @@ func setup() -> void:
 	var start := Vector3(0, 1.0, 22)
 	match scenario:
 		"terrain": _build_terrain()
-		"platform", "platform_fast":
+		"platform", "platform_fast", "deck_run":
 			start = Vector3(0, 1.45, 0)
 			_build_platform()
 		"slope_stop":
@@ -481,6 +481,30 @@ func _run(scenario: String) -> void:
 			await _phase("carry_reverse", 2.4)
 			await _stop("carry_stop")
 			print("CARGO carrier_ok=%s cargo_y_rel=%.3f" % [cargo.get("carrier") == wako.head_anchor, cargo.global_position.y - wako.global_position.y])
+		"deck_run":
+			# The contraption support test's final phase: on a deck drifting
+			# at .6 m/s, walk 5 m, stop, then run 6 m at 3.2 m/s from rest.
+			deck.linear_velocity = Vector3(.6, 0, 0)
+			await _phase("deck_idle", 1.0)
+			wako.navigate_to(wako.global_position + Vector3(-5, -wako.ride_height, 0))
+			await _phase("deck_walk", 3.0)
+			wako.stop_navigation()
+			await _phase("deck_stop", 1.5)
+			wako.walk_speed = 3.2
+			wako.navigate_to(wako.global_position + Vector3(0, -wako.ride_height, -6))
+			await _phase("deck_run", 3.0)
+			await _stop("stop")
+		"hit":
+			# A modest side hit while standing, then while walking (the
+			# contraption gait test's danger stage).
+			await _phase("stand", .8)
+			wako.apply_hit(Vector3(18, 2, 0))
+			await _phase("hit_stand", 1.2)
+			_goto(Vector3.FORWARD, 2.1)
+			await _phase("walk", 1.2)
+			wako.apply_hit(Vector3(18, 2, 0))
+			await _phase("hit_walk", 1.2)
+			await _stop("stop")
 		"knockdown":
 			# Ragdoll from a run (hard gait reset), recovery, then travel again.
 			_goto(Vector3.FORWARD, 3.4)

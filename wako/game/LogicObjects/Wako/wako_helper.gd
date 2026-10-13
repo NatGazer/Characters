@@ -916,7 +916,11 @@ func _update_animation(delta: float) -> void:
 				var target := fposmod(gait.phase + gait.phase_rate * delta - .1, 1.0) * length
 				var ahead := fposmod(target - _animation.current_animation_position, length)
 				if ahead < length * .5: playback = clampf(ahead / maxf(delta, .0001), 0.0, 8.0)
-				else: _clip_resync = true
+				# A seek jumps the authored root, which is still visible while the
+				# procedural acting fades in (starts, hits): only seek once it
+				# covers the clip, otherwise let the target catch up slowly.
+				elif gait.locomotion_weight > .9: _clip_resync = true
+				else: playback *= .5
 		else:
 			var stance_distance := .40 if carrying else .50 if clip == "work/run" else .46
 			var nominal_speed := stance_distance * 2.0 / _animation.get_animation(clip).length

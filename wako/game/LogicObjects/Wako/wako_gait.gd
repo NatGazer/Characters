@@ -154,6 +154,8 @@ var _squash_t := 1.0
 var _squash_amp := 0.0
 var _squash_len := .13
 var _act_phase := 0.0
+var _act_speed := 0.0
+var _act_speed_v := 0.0
 var _launch_t := -1.0
 var _launch_side := 0
 var _brake_time := 0.0
@@ -232,7 +234,7 @@ static func bump(x: float, early := .8) -> float:
 	return pow(sin(PI * pow(x, early)), 1.5)
 
 func _bump(tt: float) -> float:
-	return bump(tt, lerpf(.8, .65, run_weight))
+	return bump(tt, lerpf(.8, .7, run_weight))
 
 static func spring(x: float, v: float, target: float, omega: float, dt: float) -> Vector2:
 	# Implicit critically damped spring: unconditionally stable at any tick.
@@ -372,7 +374,7 @@ func validate_landing(side: int, hip: Vector3) -> void:
 	# Corrections must stay absorbable by the fading re-target offset: none
 	# in the last part of the swing, and only small ones once it is late.
 	if state[side] == PLANTED or t[side] < .45 or t[side] > .9: return
-	var rate: float = maxf(min_rate[side], phase_rate / maxf(1.0 - p0[side], .05) if state[side] == SWING and moving else min_rate[side])
+	var rate := _swing_rate(side)
 	var t_rem := (1.0 - t[side]) / maxf(rate, .001)
 	var hip_contact := hip + velocity.slide(Vector3.UP) * t_rem - Vector3.UP * clampf(.2 - body_drop, 0.0, .02)
 	var ankle: Vector3 = landing[side] + Vector3.UP * float(pose._ankle_height[side])
@@ -459,6 +461,17 @@ func _lift_off(side: int, kind: int, rate_floor: float, base_lift: float) -> voi
 	_drop[side] = false
 	_drop_planted[side] = false
 	armed[side] = false
+
+func _phase_swing_rate(side: int) -> float:
+	# Swing progress per second that lands the foot when its phase wraps. A
+	# swing begun late in the phase (an early release, a late landing) still
+	# gets at least half a normal swing: never a few-tick whip.
+	return phase_rate / maxf(1.0 - p0[side], (1.0 - duty) * .5)
+
+func _swing_rate(side: int) -> float:
+	var rate: float = min_rate[side]
+	if state[side] == SWING and moving: rate = maxf(rate, _phase_swing_rate(side))
+	return maxf(rate, .001)
 
 func _swing_start(side: int) -> Vector3:
 	# The lift-off point travels with its support (moving decks).
@@ -587,6 +600,8 @@ func release(delta: float, hard := false) -> void:
 		squash = 0.0
 		_squash_amp = 0.0
 		_brake_time = 0.0
+		_act_speed = 0.0
+		_act_speed_v = 0.0
 		_publish_totals()
 		return
 	if delta <= 0.0: return
@@ -750,7 +765,10 @@ func _events(delta: float) -> void:
 				var may_fly: bool = duty < .49 and not worker.tool_foot_occupied()
 				if not other_planted and not may_fly and not _overreached(side): continue
 				if not other_planted and tool_foot: continue
-				if (armed[side] and p >= d and _launch_hold <= 0.0) or (p > .75 * d and _launch_hold <= 0.0 and _pushed_off(side, delta)):
+				# Push-off only late in a stance this foot actually stood through
+				# (a late landing starts its stance at a late clock phase).
+				var late: bool = p > .75 * d and stance_age[side] > .6 * d / maxf(phase_rate, .5)
+				if (armed[side] and p >= d and _launch_hold <= 0.0) or (late and _launch_hold <= 0.0 and _pushed_off(side, delta)):
 					var first := moving_age < .12
 					_lift_off(side, SWING, 1.0 / (T_FIRST_SWING if first else T_SWING_MAX), _base_lift(side))
 				elif _overreached(side):
@@ -763,7 +781,7 @@ func _events(delta: float) -> void:
 				if _drop[side]: continue
 				var rate := min_rate[side]
 				if state[side] == SWING and not stopping:
-					rate = maxf(rate, phase_rate / maxf(1.0 - p0[side], .05))
+					rate = maxf(rate, _phase_swing_rate(side))
 				if stopping and state[side] == SWING:
 					rate = maxf(rate, (1.0 - t[side]) / T_STOP)
 					min_rate[side] = rate
@@ -803,7 +821,7 @@ func _roll_weight() -> float:
 func _base_lift(side: int) -> float:
 	if _is_tool_foot(side): return .075
 	# A visible knee drive: ~10 cm clearance walking, a high heel tuck running.
-	var l := lerpf(.095, .20, smoothstep(1.2, 3.2, speed))
+	var l := lerpf(.095, .19, smoothstep(1.2, 3.2, speed))
 	return l * .6 if carry else l
 
 func _peel_max() -> float:
@@ -1110,7 +1128,7 @@ func _planted_output(side: int, delta: float) -> void:
 func _swing_output(side: int, delta: float) -> void:
 	# Airborne: locomotion swing or settle/recovery step.
 	var rate: float = maxf(min_rate[side], .001)
-	if state[side] == SWING and moving: rate = maxf(rate, phase_rate / maxf(1.0 - p0[side], .05))
+	if state[side] == SWING and moving: rate = maxf(rate, _phase_swing_rate(side))
 	# Contact registers on a whole tick: predict to that tick, not to the
 	# fractional remainder (else the landing jumps by up to v*dt at contact).
 	var t_rem := (1.0 - t[side]) / rate
@@ -1347,7 +1365,9 @@ func _reversing() -> float:
 
 func _publish_totals() -> void:
 	body_shift = _shift_s + _shift_osc
-	body_roll = clampf(_roll_s + _roll_osc, -.12, .12)
+	# Bank plus waddle stay inside the original .095 roll envelope (the
+	# head fixture's counterroll and the published _sway_roll rely on it).
+	body_roll = clampf(_roll_s + _roll_osc, -.095, .095)
 	body_yaw = _yaw_s + body_twist
 
 func _update_body(delta: float) -> void:
@@ -1365,7 +1385,13 @@ func _update_body(delta: float) -> void:
 	# bob hiccup).
 	_act_phase = fposmod(_act_phase + phase_rate * delta, 1.0)
 	_act_phase = fposmod(_act_phase + clampf(wrapf(phase - _act_phase, -.5, .5) * 14.0 * delta, -.012, .012), 1.0)
-	var v := speed
+	# Acting reads a sprung speed: a hit or a landing changes the physical
+	# velocity in one tick, which must not switch the sway/bob on in one tick.
+	var sv := spring(_act_speed, _act_speed_v, speed, 14.0, delta)
+	_act_speed = maxf(sv.x, 0.0)
+	_act_speed_v = sv.y
+	var v := _act_speed
+	var act_run := 0.0 if carry else smoothstep(1.7, 2.9, v)
 	var load := clampf(float(worker.cargo_mass) / maxf(float(worker.carry_capacity), 1.0), 0.0, 1.0)
 	var steady := lerpf(1.0, .4, load) * (.65 if is_instance_valid(worker.carry_partner) else 1.0)
 	var tool := _tool_mode()
@@ -1405,8 +1431,8 @@ func _update_body(delta: float) -> void:
 	var bounce := 0.0 if carry else smoothstep(1.1, 1.9, v)
 	var walk_amp := (1.0 - bounce) * gait_on * calm
 	var run_amp := bounce * calm
-	body_bob = -(.023 * walk_amp * walk_wave + lerpf(.027, .034, run_weight) * run_amp * run_wave)
-	body_nod = .026 * walk_amp * walk_wave + lerpf(.028, .035, run_weight) * run_amp * run_wave
+	body_bob = -(.023 * walk_amp * walk_wave + lerpf(.027, .034, act_run) * run_amp * run_wave)
+	body_nod = .026 * walk_amp * walk_wave + lerpf(.028, .035, act_run) * run_amp * run_wave
 	_update_squash(delta)
 	# Forward lean from speed and paid acceleration: one owner, continuous,
 	# underdamped. Braking leans back; when the skid ends the cube pitches
@@ -1432,9 +1458,9 @@ func _update_body(delta: float) -> void:
 	# walking, smaller and quicker running, quiet when loaded.
 	var sway := gait_on * steady * (.45 if carry else 1.0) * (.4 if tool else 1.0)
 	var sway_wave := cos(TAU * (_act_phase - duty * .5))
-	_shift_osc = -lerpf(.037, .02, run_weight) * sway * sway_wave
-	_roll_osc = lerpf(.06, .035, run_weight) * sway * sway_wave
-	body_twist = lerpf(.06, .045, run_weight) * sway * sway_wave
+	_shift_osc = -lerpf(.037, .02, act_run) * sway * sway_wave
+	_roll_osc = lerpf(.06, .035, act_run) * sway * sway_wave
+	body_twist = lerpf(.06, .045, act_run) * sway * sway_wave
 	var s := spring(_shift_s, _shift_v, .03 * support_sign * launch, 26.0, delta)
 	_shift_s = s.x
 	_shift_v = s.y
@@ -1495,7 +1521,7 @@ func update_drop(sk: Skeleton3D, root: Transform3D, delta: float) -> void:
 			# Judge a landing from where the hip will be at contact, not from
 			# here: the run's footfall is ~.4 m ahead now but only ~.2 m then.
 			var rate: float = maxf(min_rate[side], .001)
-			if state[side] == SWING and moving: rate = maxf(rate, phase_rate / maxf(1.0 - p0[side], .05))
+			if state[side] == SWING and moving: rate = maxf(rate, _phase_swing_rate(side))
 			hip += velocity.slide(Vector3.UP) * ((1.0 - t[side]) / rate)
 		var reach: float = float(worker._leg_lengths[side]) - .022
 		var horizontal := (hip - ankle).slide(Vector3.UP).length()
