@@ -103,6 +103,8 @@ func _tint_feet() -> void:
 		m.emission_enabled = true
 		m.emission = m.albedo_color * .4
 		ball.material_override = m
+		# Leg bone frames point local +Z toward the knee bend (the face).
+		ball.position = Vector3(0, 0, .07)
 		attach.add_child(ball)
 
 func _build_slopes() -> void:
