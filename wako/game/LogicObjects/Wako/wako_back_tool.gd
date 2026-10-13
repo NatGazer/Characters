@@ -3752,14 +3752,19 @@ func _acting_target(pose: SkeletonModifier3D,sk: Skeleton3D,unbalanced_com: Vect
 	var roll := clampf(-atan2(local.x,height),-roll_size,roll_size)*envelope
 	return {"shift":shift,"roll":roll,"pitch":pitch,"yaw":yaw,"tau":tau,"side":weight_side if envelope > .5 else -1,"point":soles[weight_side]}
 
-## Face hooks for the expression code (_update_expression is not edited here).
-## Wiring, inside _update_expression before the gaze is applied:
-##   var stunt_look: Variant = back_tool.gaze_target() if back_tool else null
-##   if stunt_look is Vector3: looking = stunt_look; gaze_response = maxf(gaze_response,18.0)
-##   (and add "stunt_look is Vector3" to the condition that aims the eyes)
-##   effort = minf(effort, 1.0-.30*back_tool.face_effort())  # brace squint
-##   if back_tool.blink_hold(): _next_blink = maxf(_next_blink,.25)
-##   if back_tool.face_cue() == &"pride": smile_request = maxf(smile_request,.6)
+## Face hooks for the expression code (_update_expression / wako_eyes.gd are
+## not edited here). Wiring validated against the face branch's eye engine
+## (wako_eyes.gd) in a harness-only integration build:
+##   _choose_gaze(), step 4 (thrown tool / flip), first:
+##     var stunt_look: Variant = back.gaze_target() if back and back.has_method("gaze_target") else null
+##     if stunt_look is Vector3: _look_at(stunt_look,hash(str(back.stage))+59); return
+##   _blink_wait_until():
+##     if back_tool and back_tool.has_method("blink_hold") and back_tool.blink_hold(): hold = maxf(hold,_time+.05)
+##   expression update: on face_effort() rising past .5 -> pulse(&"squeeze",.35);
+##     on face_cue() turning &"worry" -> pulse(&"worry",.7)
+## Base helper face (no eye engine): looking = gaze_target(), effort squint
+## from face_effort(), smile on face_cue() == &"pride". Until wired,
+## _hold_blinks() keeps blinks out of the wind-up, kick and flight.
 ## The eyes sit on the front face, so they never aim at the seat behind the
 ## head: the last beat braces forward-up with a squint, the proud beat glances
 ## toward the seated side.
