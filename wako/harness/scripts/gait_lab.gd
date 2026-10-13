@@ -264,6 +264,8 @@ func _run(scenario: String) -> void:
 			wako.face_point(wako.global_position + Vector3(4, 0, 0))
 			await _phase("turn_in_place", 2.0)
 			metrics.neutral_snapshot()
+			# Standing still: the rest layer (breath, weight shifts) must read.
+			await _phase("rest", 5.0)
 		"terrain":
 			wako.walk_speed = float(args.get("speed", "2.1"))
 			wako.navigate_to(Vector3(0, 0, -16))

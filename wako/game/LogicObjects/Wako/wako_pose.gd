@@ -1669,7 +1669,7 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 		var horizontal := hip_to_ankle.slide(Vector3.UP)
 		if horizontal.length_squared()<reach*reach:
 			sole.y += maxf(-sqrt(reach*reach-horizontal.length_squared())-hip_to_ankle.y,0.0)
-		# An airborne foot straightens its knee at most ~9 deg a tick (the
+		# An airborne foot straightens its knee at most ~8 deg a tick (the
 		# planned arc can ask for more as the leg nears extension: a whip). A
 		# contact the limited knee has not reached yet keeps reaching (deferred
 		# below), so the plant is still exact. Extension is always limited (it
@@ -1679,7 +1679,7 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 			var to: Vector3 = sole-ankle_offset-hip
 			var span: float = to.length()
 			var flex: float = gait.knee_flex(side,span)
-			var limit: float = deg_to_rad(9.0)
+			var limit: float = deg_to_rad(8.0)
 			if span>.001 and flex<previous_flex-limit:
 				sole = hip+to/span*gait.knee_span(side,previous_flex-limit)+ankle_offset
 			elif span>.001 and flex>previous_flex+limit and gait.t[side]<.75:
@@ -1688,6 +1688,19 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 				var eased: Vector3 = hip+to/span*gait.knee_span(side,previous_flex+limit)+ankle_offset
 				var below: Dictionary = gait._ground(eased)
 				if below.is_empty() or eased.y>below.position.y+.012: sole = eased
+				else:
+					# A riser met late (a wall climbed at a run) needs a faster fold:
+					# only as much faster as keeps the sole clear of it, not the whole
+					# re-planned arc in one tick.
+					var lo: float = previous_flex+limit
+					var hi: float = flex
+					for i in 4:
+						var mid: float = (lo+hi)*.5
+						var probe: Vector3 = hip+to/span*gait.knee_span(side,mid)+ankle_offset
+						var under: Dictionary = gait._ground(probe)
+						if under.is_empty() or probe.y>under.position.y+.012: hi = mid
+						else: lo = mid
+					sole = hip+to/span*gait.knee_span(side,hi)+ankle_offset
 		if evaluated_valid and gait.speed<=2.4:
 			# Walking feet keep the gait's calm speed ceiling here too, so the
 			# easing above never adds a catch-up jump on top of a fast swing.
