@@ -62,13 +62,25 @@ var _catch_clock := -1.0
 var _ready := 0.0
 var catch_dip_depth := 0.0
 
-static func eligible(source: Node3D) -> bool:
+# A toe flick lobs only light parts; heavier small stock (6-12 kg hinges,
+# bearings, carriers) takes the head-first flip instead.
+const TOSS_MASS := 5.0
+const TOSS_SIZE := .4
+# The toe must reach under the part from the worker's own floor.
+const TOSS_GROUND_STEP := .06
+
+static func eligible(source: Node3D, worker: Node3D = null) -> bool:
 	if not is_instance_valid(source) or source.get("definition") == null: return false
 	var bounds: AABB = Catalogue.bounds_of(source.definition)
 	# Full-size physical stock only: a compact depot display would be rescaled
 	# in place by the yard's cargo preparation (the head path refuses it too).
 	if not source.global_basis.get_scale().is_equal_approx(Vector3.ONE): return false
-	return source.mass <= 5.0 and bounds.size[bounds.size.max_axis_index()] <= .4 and source.definition.get("category", "") != "tool" and source.get("assembly") == null
+	if source.get_meta(&"toss_failed", false): return false
+	if is_instance_valid(worker) and "ride_height" in worker:
+		# Resting on the worker's ground plane (not on a raised support).
+		var bottom: float = (source.global_transform*bounds).position.y
+		if absf(bottom-(worker.global_position.y-float(worker.ride_height)))>TOSS_GROUND_STEP: return false
+	return source.mass <= TOSS_MASS and bounds.size[bounds.size.max_axis_index()] <= TOSS_SIZE and source.definition.get("category", "") != "tool" and source.get("assembly") == null
 
 func setup(owner: RigidBody3D) -> void:
 	worker = owner

@@ -161,8 +161,9 @@ func refresh_jobs() -> void:
 		_work_area_wait.erase(id)
 		if not yard.reserve_job(job, crew): continue
 		# Solo fetch of a light compatible part (wako_pickup.gd limits: <= 5 kg,
-		# <= .4 m, not a tool or installed) uses the toe toss and head catch.
-		job.light_pickup = crew.size() == 1 and job.kind in ["build","replace","salvage"] and Pickup.eligible(job.part)
+		# <= .4 m, on the worker's floor, not a tool or installed, no failed
+		# toss yet) uses the toe toss and head catch.
+		job.light_pickup = crew.size() == 1 and job.kind in ["build","replace","salvage"] and Pickup.eligible(job.part,crew[0])
 		job.head_first_pickup = job.kind in ["build","replace","salvage"] and not job.light_pickup
 		var entry := {"job": job, "crew": crew, "phase": "fetch" if job.kind in ["build", "replace", "salvage"] else "approach",
 			"elapsed": 0.0, "progress": _resume_progress(job), "pickup": false, "contacts": 0, "complete": false}
@@ -648,7 +649,9 @@ func _tick_job(entry: Dictionary, delta: float) -> void:
 		return
 	entry.elapsed += delta
 	if entry.get("light_started", false) and crew[0].pickup.state == "failed":
-		entry.retry_delay = 20.0
+		# One failed toss: the same part is retried through the head-first flip.
+		job.part.set_meta(&"toss_failed", true)
+		entry.retry_delay = 4.0
 		_cancel(entry, crew[0].pickup.reason)
 		return
 	if float(entry.elapsed) - float(entry.get("access_started_at", entry.get("transport_started_at", 0.0))) > 80.0:
@@ -2228,6 +2231,7 @@ func _on_action_finished(_kind: String, worker: Node) -> void:
 		"pickup":
 			if not entry.pickup:
 				entry.retry_delay = 20.0
+				if entry.job.get("light_pickup",false): entry.job.part.set_meta(&"toss_failed", true)
 				_cancel(entry, "Toe pickup out of reach; provide supported access to the part")
 			elif entry.job.get("light_pickup",false) and worker.pickup.state != "caught": entry.phase = "pickup_flight"
 			else: _pickup_finished(entry)
