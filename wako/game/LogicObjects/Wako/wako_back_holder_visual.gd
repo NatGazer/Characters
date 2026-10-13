@@ -16,6 +16,7 @@ const PAD_SIZE := Vector3(.09,.020,.12) # Rubber cradle: base slab (x along the 
 # Shallow U: lips along both sides of the shaft rise above the base's top.
 const LIP_HEIGHT := .016
 const LIP_WIDTH := .014
+const CRADLE_CHAMFER := .005
 const TRAY_SENSOR_SIZE := Vector3(.09,.08,.11) # Deep below its top: a falling step cannot tunnel through.
 const STRAP_SIZE := Vector3(.044,.33,.006)
 const STRAP_X := .215
@@ -370,9 +371,15 @@ static func cradle_mesh() -> ArrayMesh:
 	var hy := PAD_SIZE.y*.5
 	var inner := hz-LIP_WIDTH
 	var top := hy+LIP_HEIGHT
-	# Outline in (z, y), counter-clockwise seen from +X.
-	var outline := PackedVector2Array([Vector2(-hz,-hy),Vector2(hz,-hy),Vector2(hz,top),Vector2(inner,top),
-		Vector2(inner,hy),Vector2(-inner,hy),Vector2(-inner,top),Vector2(-hz,top)])
+	# Outline in (z, y), counter-clockwise seen from +X. The outer corners and
+	# the lip crowns are chamfered so the profile reads as a moulded rubber
+	# cradle (catching a highlight on each lip), not a bare block.
+	var ch := CRADLE_CHAMFER
+	var crown := ch*.6
+	var outline := PackedVector2Array([Vector2(-hz+ch,-hy),Vector2(hz-ch,-hy),Vector2(hz,-hy+ch),Vector2(hz,top-ch),
+		Vector2(hz-ch,top),Vector2(inner+crown,top),Vector2(inner,top-crown),
+		Vector2(inner,hy),Vector2(-inner,hy),Vector2(-inner,top-crown),Vector2(-inner-crown,top),
+		Vector2(-hz+ch,top),Vector2(-hz,top-ch),Vector2(-hz,-hy+ch)])
 	var hx := PAD_SIZE.x*.5
 	var vertices := PackedVector3Array(); var normals := PackedVector3Array()
 	var caps := Geometry2D.triangulate_polygon(outline)
