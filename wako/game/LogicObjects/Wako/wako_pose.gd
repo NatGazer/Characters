@@ -1649,7 +1649,10 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 	var ankle_offset: Vector3 = world_basis*Vector3(0,_ankle_height[side],0)
 	if planted and gait.stance_age[side] < .001:
 		var contact_offset: Vector3 = sole-ankle_offset-hip
-		if contact_offset.length()>worker._leg_lengths[side]-.014 and gait.defer_contact(side,contact_offset):
+		# A contact the shown knee is still far from (the swing's knee rate limit
+		# held it back while the body dropped) keeps reaching instead of popping.
+		var knee_pop: bool = is_finite(gait.knee_prev[side]) and absf(gait.knee_flex(side,contact_offset.length())-gait.knee_prev[side])>deg_to_rad(14.0)
+		if (contact_offset.length()>worker._leg_lengths[side]-.014 or knee_pop) and gait.defer_contact(side,contact_offset,knee_pop):
 			planted = false
 			hit = {}
 	if not planted:
@@ -1676,7 +1679,7 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 			var to: Vector3 = sole-ankle_offset-hip
 			var span: float = to.length()
 			var flex: float = gait.knee_flex(side,span)
-			var limit: float = deg_to_rad(8.0)+deg_to_rad(40.0)*smoothstep(.93,1.0,gait.t[side])
+			var limit: float = deg_to_rad(8.0)+(deg_to_rad(40.0)*smoothstep(.93,1.0,gait.t[side]) if gait._contact_delay[side]==0 else deg_to_rad(4.0))
 			if span>.001 and flex<previous_flex-limit:
 				sole = hip+to/span*gait.knee_span(side,previous_flex-limit)+ankle_offset
 			elif span>.001 and flex>previous_flex+limit and gait.t[side]<.75:
@@ -1693,6 +1696,10 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 		var offset: Vector3 = sole-ankle_offset-hip
 		if offset.length()>reach and absf(offset.y)<reach:
 			var horizontal := offset.slide(Vector3.UP).limit_length(sqrt(reach*reach-offset.y*offset.y))
+			# At most a few centimetres: a longer slide is a visible teleport
+			# (the leg is then shown a little short of the plant instead).
+			var flat_offset := offset.slide(Vector3.UP)
+			horizontal = flat_offset+(horizontal-flat_offset).limit_length(.035)
 			var closer: Dictionary = gait._ground(Vector3(hip.x+horizontal.x,sole.y,hip.z+horizontal.z)+ankle_offset)
 			if not closer.is_empty() and closer.collider is Node3D:
 				hit = closer
