@@ -28,7 +28,7 @@
   "wk_brace_L": {
    "bones": 9,
    "frames": 42,
-   "knee_apex_body_y_min": 0.83,
+   "knee_apex_body_y_min": 0.819,
    "knee_forward_min": 0.961,
    "length": 1.4,
    "loop": 0,
@@ -37,7 +37,7 @@
   "wk_brace_R": {
    "bones": 9,
    "frames": 42,
-   "knee_apex_body_y_min": 0.83,
+   "knee_apex_body_y_min": 0.819,
    "knee_forward_min": 0.961,
    "length": 1.4,
    "loop": 0,
@@ -64,8 +64,8 @@
   "wk_dance_a": {
    "bones": 9,
    "frames": 120,
-   "knee_apex_body_y_min": 0.707,
-   "knee_forward_min": 0.867,
+   "knee_apex_body_y_min": 0.807,
+   "knee_forward_min": 0.931,
    "length": 4.0,
    "loop": 0,
    "tracks": 27
@@ -73,8 +73,8 @@
   "wk_dance_b": {
    "bones": 9,
    "frames": 120,
-   "knee_apex_body_y_min": 0.922,
-   "knee_forward_min": 0.938,
+   "knee_apex_body_y_min": 0.911,
+   "knee_forward_min": 0.953,
    "length": 4.0,
    "loop": 0,
    "tracks": 27
@@ -82,8 +82,8 @@
   "wk_dance_c": {
    "bones": 9,
    "frames": 120,
-   "knee_apex_body_y_min": 0.872,
-   "knee_forward_min": 0.883,
+   "knee_apex_body_y_min": 0.893,
+   "knee_forward_min": 0.919,
    "length": 4.0,
    "loop": 0,
    "tracks": 27
@@ -91,8 +91,8 @@
   "wk_danger": {
    "bones": 9,
    "frames": 30,
-   "knee_apex_body_y_min": 0.969,
-   "knee_forward_min": 0.969,
+   "knee_apex_body_y_min": 0.955,
+   "knee_forward_min": 0.962,
    "length": 1.0,
    "loop": 1,
    "tracks": 27
@@ -110,7 +110,7 @@
    "bones": 9,
    "frames": 120,
    "knee_apex_body_y_min": 0.985,
-   "knee_forward_min": 0.983,
+   "knee_forward_min": 0.982,
    "length": 4.0,
    "loop": 1,
    "tracks": 27
@@ -118,8 +118,8 @@
   "wk_inspect_L": {
    "bones": 9,
    "frames": 39,
-   "knee_apex_body_y_min": 0.737,
-   "knee_forward_min": 0.927,
+   "knee_apex_body_y_min": 0.74,
+   "knee_forward_min": 0.929,
    "length": 1.3,
    "loop": 0,
    "tracks": 27
@@ -127,8 +127,8 @@
   "wk_inspect_R": {
    "bones": 9,
    "frames": 39,
-   "knee_apex_body_y_min": 0.737,
-   "knee_forward_min": 0.927,
+   "knee_apex_body_y_min": 0.74,
+   "knee_forward_min": 0.929,
    "length": 1.3,
    "loop": 0,
    "tracks": 27
@@ -136,8 +136,8 @@
   "wk_interrupted_L": {
    "bones": 9,
    "frames": 21,
-   "knee_apex_body_y_min": 0.985,
-   "knee_forward_min": 0.985,
+   "knee_apex_body_y_min": 0.975,
+   "knee_forward_min": 0.975,
    "length": 0.7,
    "loop": 0,
    "tracks": 27
@@ -145,8 +145,8 @@
   "wk_interrupted_R": {
    "bones": 9,
    "frames": 21,
-   "knee_apex_body_y_min": 0.985,
-   "knee_forward_min": 0.985,
+   "knee_apex_body_y_min": 0.975,
+   "knee_forward_min": 0.975,
    "length": 0.7,
    "loop": 0,
    "tracks": 27
@@ -154,8 +154,8 @@
   "wk_maintenance_L": {
    "bones": 9,
    "frames": 33,
-   "knee_apex_body_y_min": 0.768,
-   "knee_forward_min": 0.948,
+   "knee_apex_body_y_min": 0.664,
+   "knee_forward_min": 0.916,
    "length": 1.1,
    "loop": 0,
    "tracks": 27
@@ -163,8 +163,8 @@
   "wk_maintenance_R": {
    "bones": 9,
    "frames": 33,
-   "knee_apex_body_y_min": 0.768,
-   "knee_forward_min": 0.948,
+   "knee_apex_body_y_min": 0.664,
+   "knee_forward_min": 0.916,
    "length": 1.1,
    "loop": 0,
    "tracks": 27
@@ -172,8 +172,8 @@
   "wk_operate_L": {
    "bones": 9,
    "frames": 36,
-   "knee_apex_body_y_min": 0.819,
-   "knee_forward_min": 0.945,
+   "knee_apex_body_y_min": 0.882,
+   "knee_forward_min": 0.951,
    "length": 1.2,
    "loop": 0,
    "tracks": 27
@@ -181,8 +181,8 @@
   "wk_operate_R": {
    "bones": 9,
    "frames": 36,
-   "knee_apex_body_y_min": 0.819,
-   "knee_forward_min": 0.945,
+   "knee_apex_body_y_min": 0.882,
+   "knee_forward_min": 0.951,
    "length": 1.2,
    "loop": 0,
    "tracks": 27
@@ -262,8 +262,8 @@
   "wk_repair_L": {
    "bones": 9,
    "frames": 33,
-   "knee_apex_body_y_min": 0.723,
-   "knee_forward_min": 0.935,
+   "knee_apex_body_y_min": 0.758,
+   "knee_forward_min": 0.934,
    "length": 1.1,
    "loop": 0,
    "tracks": 27
@@ -271,8 +271,8 @@
   "wk_repair_R": {
    "bones": 9,
    "frames": 33,
-   "knee_apex_body_y_min": 0.723,
-   "knee_forward_min": 0.935,
+   "knee_apex_body_y_min": 0.758,
+   "knee_forward_min": 0.934,
    "length": 1.1,
    "loop": 0,
    "tracks": 27
@@ -280,8 +280,8 @@
   "wk_run": {
    "bones": 9,
    "frames": 16,
-   "knee_apex_body_y_min": 0.881,
-   "knee_forward_min": 0.918,
+   "knee_apex_body_y_min": 0.879,
+   "knee_forward_min": 0.936,
    "length": 0.5333,
    "loop": 1,
    "tracks": 27
@@ -289,8 +289,8 @@
   "wk_sit_down": {
    "bones": 9,
    "frames": 48,
-   "knee_apex_body_y_min": 0.018,
-   "knee_forward_min": 0.764,
+   "knee_apex_body_y_min": 0.095,
+   "knee_forward_min": 0.745,
    "length": 1.6,
    "loop": 0,
    "tracks": 27
@@ -298,8 +298,8 @@
   "wk_sit_idle": {
    "bones": 9,
    "frames": 144,
-   "knee_apex_body_y_min": 0.035,
-   "knee_forward_min": 0.807,
+   "knee_apex_body_y_min": 0.222,
+   "knee_forward_min": 0.881,
    "length": 4.8,
    "loop": 1,
    "tracks": 27
@@ -307,8 +307,8 @@
   "wk_sit_up": {
    "bones": 9,
    "frames": 33,
-   "knee_apex_body_y_min": 0.061,
-   "knee_forward_min": 0.783,
+   "knee_apex_body_y_min": 0.253,
+   "knee_forward_min": 0.879,
    "length": 1.1,
    "loop": 0,
    "tracks": 27
@@ -334,7 +334,7 @@
   "wk_swim": {
    "bones": 9,
    "frames": 30,
-   "knee_apex_body_y_min": 0.859,
+   "knee_apex_body_y_min": 0.866,
    "knee_forward_min": 0.981,
    "length": 1.0,
    "loop": 1,
@@ -343,8 +343,8 @@
   "wk_tool_change_L": {
    "bones": 9,
    "frames": 36,
-   "knee_apex_body_y_min": 0.689,
-   "knee_forward_min": 0.943,
+   "knee_apex_body_y_min": 0.662,
+   "knee_forward_min": 0.938,
    "length": 1.2,
    "loop": 0,
    "tracks": 27
@@ -352,8 +352,8 @@
   "wk_tool_change_R": {
    "bones": 9,
    "frames": 36,
-   "knee_apex_body_y_min": 0.689,
-   "knee_forward_min": 0.943,
+   "knee_apex_body_y_min": 0.662,
+   "knee_forward_min": 0.938,
    "length": 1.2,
    "loop": 0,
    "tracks": 27
@@ -361,8 +361,8 @@
   "wk_unbend_L": {
    "bones": 9,
    "frames": 36,
-   "knee_apex_body_y_min": 0.559,
-   "knee_forward_min": 0.908,
+   "knee_apex_body_y_min": 0.531,
+   "knee_forward_min": 0.902,
    "length": 1.2,
    "loop": 0,
    "tracks": 27
@@ -370,8 +370,8 @@
   "wk_unbend_R": {
    "bones": 9,
    "frames": 36,
-   "knee_apex_body_y_min": 0.559,
-   "knee_forward_min": 0.908,
+   "knee_apex_body_y_min": 0.531,
+   "knee_forward_min": 0.902,
    "length": 1.2,
    "loop": 0,
    "tracks": 27
@@ -553,26 +553,26 @@
  "pose_compare": {
   "clips": {
    "wk_assemble_L": {
-    "bone": "toe.L",
-    "frame": 15,
+    "bone": "toe.L:tail",
+    "frame": 10,
     "frames": 31,
     "worst_mm": 0.0
    },
    "wk_assemble_R": {
-    "bone": "toe.R",
-    "frame": 15,
+    "bone": "toe.R:tail",
+    "frame": 23,
     "frames": 31,
     "worst_mm": 0.0
    },
    "wk_brace_L": {
-    "bone": "toe.L",
-    "frame": 27,
+    "bone": "toe.R:tail",
+    "frame": 21,
     "frames": 43,
     "worst_mm": 0.0
    },
    "wk_brace_R": {
-    "bone": "toe.R:tail",
-    "frame": 21,
+    "bone": "toe.L:tail",
+    "frame": 19,
     "frames": 43,
     "worst_mm": 0.0
    },
@@ -589,14 +589,14 @@
     "worst_mm": 0.0
    },
    "wk_dance_a": {
-    "bone": "Bone.004",
-    "frame": 102,
+    "bone": "toe.L",
+    "frame": 94,
     "frames": 121,
     "worst_mm": 0.0
    },
    "wk_dance_b": {
     "bone": "toe.R:tail",
-    "frame": 94,
+    "frame": 113,
     "frames": 121,
     "worst_mm": 0.0
    },
@@ -608,13 +608,13 @@
    },
    "wk_danger": {
     "bone": "toe.R:tail",
-    "frame": 19,
+    "frame": 5,
     "frames": 31,
     "worst_mm": 0.0
    },
    "wk_greet": {
     "bone": "toe.R:tail",
-    "frame": 6,
+    "frame": 39,
     "frames": 49,
     "worst_mm": 0.0
    },
@@ -626,61 +626,61 @@
    },
    "wk_inspect_L": {
     "bone": "toe.L:tail",
-    "frame": 17,
+    "frame": 23,
     "frames": 40,
     "worst_mm": 0.0
    },
    "wk_inspect_R": {
     "bone": "toe.R:tail",
-    "frame": 31,
+    "frame": 36,
     "frames": 40,
     "worst_mm": 0.0
    },
    "wk_interrupted_L": {
-    "bone": "toe.L:tail",
-    "frame": 7,
+    "bone": "toe.L",
+    "frame": 6,
     "frames": 22,
     "worst_mm": 0.0
    },
    "wk_interrupted_R": {
     "bone": "toe.R:tail",
-    "frame": 2,
+    "frame": 7,
     "frames": 22,
     "worst_mm": 0.0
    },
    "wk_maintenance_L": {
-    "bone": "toe.L:tail",
-    "frame": 12,
+    "bone": "Bone.005",
+    "frame": 20,
     "frames": 34,
     "worst_mm": 0.0
    },
    "wk_maintenance_R": {
     "bone": "toe.R:tail",
-    "frame": 24,
+    "frame": 8,
     "frames": 34,
     "worst_mm": 0.0
    },
    "wk_operate_L": {
     "bone": "toe.L:tail",
-    "frame": 25,
+    "frame": 13,
     "frames": 37,
     "worst_mm": 0.0
    },
    "wk_operate_R": {
     "bone": "toe.R:tail",
-    "frame": 9,
+    "frame": 8,
     "frames": 37,
     "worst_mm": 0.0
    },
    "wk_pickup_L": {
-    "bone": "toe.L:tail",
-    "frame": 31,
+    "bone": "toe.L",
+    "frame": 14,
     "frames": 37,
     "worst_mm": 0.0
    },
    "wk_pickup_R": {
     "bone": "toe.R:tail",
-    "frame": 26,
+    "frame": 21,
     "frames": 37,
     "worst_mm": 0.0
    },
@@ -722,37 +722,37 @@
    },
    "wk_repair_L": {
     "bone": "toe.L",
-    "frame": 11,
+    "frame": 18,
     "frames": 34,
     "worst_mm": 0.0
    },
    "wk_repair_R": {
     "bone": "toe.R:tail",
-    "frame": 17,
+    "frame": 10,
     "frames": 34,
     "worst_mm": 0.0
    },
    "wk_run": {
     "bone": "toe.R:tail",
-    "frame": 5,
+    "frame": 11,
     "frames": 17,
     "worst_mm": 0.0
    },
    "wk_sit_down": {
     "bone": "toe.R:tail",
-    "frame": 39,
+    "frame": 45,
     "frames": 49,
     "worst_mm": 0.0
    },
    "wk_sit_idle": {
-    "bone": "toe.R:tail",
-    "frame": 26,
+    "bone": "toe.L:tail",
+    "frame": 36,
     "frames": 145,
     "worst_mm": 0.0
    },
    "wk_sit_up": {
     "bone": "toe.R:tail",
-    "frame": 1,
+    "frame": 5,
     "frames": 34,
     "worst_mm": 0.0
    },
@@ -769,32 +769,32 @@
     "worst_mm": 0.0
    },
    "wk_swim": {
-    "bone": "toe.L:tail",
-    "frame": 27,
+    "bone": "toe.R",
+    "frame": 15,
     "frames": 31,
     "worst_mm": 0.0
    },
    "wk_tool_change_L": {
-    "bone": "toe.L:tail",
-    "frame": 8,
+    "bone": "toe.L",
+    "frame": 15,
     "frames": 37,
     "worst_mm": 0.0
    },
    "wk_tool_change_R": {
     "bone": "toe.R:tail",
-    "frame": 16,
+    "frame": 7,
     "frames": 37,
     "worst_mm": 0.0
    },
    "wk_unbend_L": {
     "bone": "toe.L:tail",
-    "frame": 9,
+    "frame": 20,
     "frames": 37,
     "worst_mm": 0.0
    },
    "wk_unbend_R": {
     "bone": "toe.R:tail",
-    "frame": 9,
+    "frame": 27,
     "frames": 37,
     "worst_mm": 0.0
    },
