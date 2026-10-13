@@ -66,6 +66,7 @@ const REVIEW := [
 	["gun aim wink .45", {"eye_lids": Vector4(.26, 0, .35, .45), "mouth_shape": Vector4(0, -.2, 0, .4), "gaze_uv_offset": Vector2(0, -.01)}],
 	["annoyed", {"eye_lids": Vector4(.28, .18, .5, 0), "mouth_shape": Vector4(0, -.35, .25, .35)}],
 	["joy grin", {"eye_smile": 1.0, "eye_iris": Vector4(.45, 0, 0, 0), "mouth_shape": Vector4(.38, .9, .3, 0)}],
+	["focus beat, clip state", {"face_alarm": 1.0, "face_startle": .6, "eye_lids": Vector4(.2, .14, -.35, 0), "eye_iris": Vector4(.38, 0, 0, 0), "mouth_shape": Vector4(.03, 0, 0, 0), "gaze_uv_offset": Vector2(-.0035, .0241)}],
 ]
 const DEFAULTS := {"eye_openness": 1.0, "gaze_uv_offset": Vector2.ZERO, "eye_smile": 0.0, "face_alarm": 0.0, "face_startle": 0.0, "eye_lids": Vector4.ZERO, "eye_iris": Vector4.ZERO, "mouth_shape": Vector4.ZERO}
 var wako: RigidBody3D

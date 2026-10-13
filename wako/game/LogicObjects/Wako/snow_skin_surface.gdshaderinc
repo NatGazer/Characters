@@ -168,6 +168,11 @@ void fragment() {
 		gaze.y += side * clamp(eye_iris.y, 0.0, 0.008);
 		vec2 disc_shift = gaze * 0.5;
 		vec2 pupil_shift = gaze * 0.5 / pop;
+		// A worried (outer-lowered) lid never packs the pupil into its
+		// drooped corner: the pupil's own sideways travel toward the outer
+		// side is damped there (the disc still carries the whole gaze).
+		float worry = clamp(0.9 * alarm - eye_lids.z, 0.0, 1.0);
+		pupil_shift.y *= 1.0 - 0.45 * worry * clamp(-side * pupil_shift.y / (0.5 * GAZE_MAX), 0.0, 1.0);
 		vec2 disc = (eye_uv - disc_shift) / pop;
 		float disc_r = length(disc);
 		vec2 from_pupil = disc - pupil_shift;
@@ -210,7 +215,7 @@ void fragment() {
 		float lower_aa = aa_width(vec2(1.0, -slope.y), uv_dx, uv_dy);
 		float seam_aa = aa_width(vec2(1.0, -seam_slope), uv_dx, uv_dy);
 		// Each lid meets the disc rim through a rounded corner (a smooth
-		// intersection of their distances: k ~.12R, growing to ~.34R for a
+		// intersection of their distances: k ~.12R, growing to ~.57R for a
 		// fully slanted lid and .3R for a smiling cheek), so a slanted or
 		// arched lid never leaves a pointed wedge on the rim.
 		// The rim distance sits just outside the painted soft edge, so a lid
@@ -219,7 +224,7 @@ void fragment() {
 		float norm_lower = sqrt(1.0 + slope.y * slope.y);
 		float d_rim = (disc_r - IRIS_R) * pop - 0.0015;
 		float rim_aa = disc_aa * pop;
-		float k_upper = (0.12 + 0.22 * abs(tilt)) * IRIS_R;
+		float k_upper = (0.12 + 0.45 * abs(tilt)) * IRIS_R;
 		float k_lower = (0.12 + 0.18 * smile_shape) * IRIS_R;
 		float d_upper = smooth_max(delta.x / norm_upper, d_rim, k_upper);
 		float d_lower = smooth_max(-delta.y / norm_lower, d_rim, k_lower);
@@ -298,7 +303,7 @@ void fragment() {
 		float half_width = 0.035 * (1.0 + 0.30 * width) * (1.0 - 0.3 * round_shape * clamp(open * 1.4, 0.0, 1.0));
 		// An opening "O" loses the smile/frown bend of its centre line (a bent
 		// centre would flatten its top into a cup).
-		float bend = (curve >= 0.0 ? 1.0 + 0.45 * curve : 1.0 + 1.75 * curve) * (1.0 - round_shape * smoothstep(0.0, 0.3, open));
+		float bend = (curve >= 0.0 ? 1.0 + 0.45 * curve : 1.0 + 1.75 * curve) * (1.0 - smoothstep(0.2, 0.6, round_shape) * smoothstep(0.0, 0.3, open));
 		float s = mouth_uv.y / half_width;
 		float sc = clamp(s, -1.0, 1.0);
 		float s2 = sc * sc;
