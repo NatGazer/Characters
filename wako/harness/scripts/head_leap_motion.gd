@@ -49,11 +49,18 @@ static func _member(rows: Array, tail: float) -> Dictionary:
 	if prepare.size() >= 2:
 		var before: Dictionary = prepare[prepare.size()-2]
 		pre_rate = deg_to_rad(float(last_prepare.turn) - float(before.turn))/(float(last_prepare.t) - float(before.t))
+	# Balls of the feet stay planted (toe joints within 3 mm of where the
+	# push-off started) for this many ticks after the launch tick.
 	var pinned := 0
 	var max_extension := {"knee": 180.0, "heel": 0.0, "root": -INF}
-	for index in range(1, outbound.size()):
+	var planted: Array = prepare[prepare.size()-1].get("toes", [])
+	for index in range(2, outbound.size()):
 		var row: Dictionary = outbound[index]
-		if float(row.low) <= ground + .006:
+		var toes: Array = row.get("toes", [])
+		var still := toes.size() == 2 and planted.size() == 2
+		for side in 2:
+			if still and _vec(toes[side]).distance_to(_vec(planted[side])) > .003: still = false
+		if still:
 			pinned += 1
 			max_extension.knee = minf(max_extension.knee, maxf(float(row.knee[0]), float(row.knee[1])))
 			max_extension.heel = maxf(max_extension.heel, minf(float(row.point[0]), float(row.point[1])))

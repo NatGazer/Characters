@@ -65,8 +65,11 @@ const CREW_RISE_MAX_ASSIST := .62*GRAVITY
 const LONG_RISE_MAX_ASSIST := .7*GRAVITY
 # Supported gather (P0-5): crouch, a moving hold that sinks and leans toward the
 # stock, then a head-leap-owned extension above rest onto the balls of the feet.
-const GATHER := {"crouch":.12,"hold":.25,"extend":.325,"depth":.15,"sink":.015,"lean":deg_to_rad(11.0),"preroll":deg_to_rad(4.5),"rise":.012,"ahead":.04,"knee":deg_to_rad(26.0)}
-const CREW_GATHER := {"crouch":.16,"hold":.36,"extend":.44,"depth":.16,"sink":.015,"lean":deg_to_rad(9.0),"preroll":deg_to_rad(3.5),"rise":.012,"ahead":.035,"knee":deg_to_rad(28.0),"nod":.06}
+# The launch root rises exactly as far as a leg straightened to "knee" with
+# the heel lifted "heel" about the planted ball of the foot reaches ("rise" is
+# only the fallback without that geometry).
+const GATHER := {"crouch":.12,"hold":.25,"extend":.34,"depth":.15,"sink":.015,"lean":deg_to_rad(11.0),"preroll":deg_to_rad(4.5),"rise":.05,"ahead":.04,"knee":deg_to_rad(11.0),"heel":deg_to_rad(32.0)}
+const CREW_GATHER := {"crouch":.16,"hold":.36,"extend":.46,"depth":.16,"sink":.015,"lean":deg_to_rad(9.0),"preroll":deg_to_rad(3.5),"rise":.045,"ahead":.035,"knee":deg_to_rad(12.0),"heel":deg_to_rad(30.0),"nod":.06}
 # Planned leg beats in the cube frame: [hip flexion toward the face, knee
 # flexion, knee adduction toward the midline, foot point] in radians.
 const LEG_TRAIL := [deg_to_rad(2.0),deg_to_rad(8.0),0.0,deg_to_rad(45.0)]
@@ -216,6 +219,8 @@ var _pin_release_pose: Array = []
 var _launch_leg_pose: Array = []
 var _pin_foot_basis: Array[Basis] = []
 var _toe_ankle: Array[Vector3] = []
+var _rest_toe: Array[Vector3] = []
+var _rest_ankle: Array[Vector3] = []
 var _impact_root := Vector3.ZERO
 var _impact_bottom_gather := 0.0
 var flight_stats: Dictionary = {}
@@ -2202,6 +2207,8 @@ func _capture_rest_geometry() -> void:
 	_ankle_rest_root.clear()
 	_shin_rest_root.clear()
 	_toe_ankle.clear()
+	_rest_toe.clear()
+	_rest_ankle.clear()
 	for side in 2:
 		var hip: Vector3 = pose.evaluated_hips[side]
 		var knee: Vector3 = pose.evaluated_knees[side]
@@ -2216,6 +2223,10 @@ func _capture_rest_geometry() -> void:
 		var offset := Vector3.ZERO
 		if toe>=0 and sk and sk.get_bone_parent(toe)==int(pose._chains[side][2]): offset = sk.get_bone_rest(toe).origin
 		_toe_ankle.append(offset)
+		# Standing ankle and ball of the foot (toe joint), body-local.
+		var body: Transform3D = pose.evaluated_worker.affine_inverse()
+		_rest_ankle.append(body*ankle)
+		_rest_toe.append(body*(ankle+pose.evaluated_ankles[side]*offset))
 
 func _face_root() -> Vector3:
 	var face: Vector3 = _rest_root_local.basis.inverse()*_stunt_forward
@@ -2232,9 +2243,34 @@ func _launch_root() -> Transform3D:
 	var pivot := _rest_root_local*((_hip_root[0]+_hip_root[1])*.5)
 	var turn := Basis(axis,float(profile.lean)+float(profile.preroll))
 	var root := Transform3D(turn*_rest_root_local.basis,pivot+turn*(_rest_root_local.origin-pivot))
-	root.origin += (worker.global_basis.inverse()*Vector3.UP).normalized()*float(profile.rise)
 	# Hips ahead of the planted feet: the takeoff leans the whole body forward.
 	root.origin += (worker.global_basis.inverse()*_travel_direction()).normalized()*float(profile.ahead)
+	var up := (worker.global_basis.inverse()*Vector3.UP).normalized()
+	if _rest_toe.size()!=2:
+		root.origin += up*float(profile.rise)
+		return root
+	# Rise until the straightened leg, heel lifted about the planted ball of
+	# the foot, exactly reaches: the launch pose is a real extension.
+	var low := 0.0
+	var high := .12
+	for iteration in 24:
+		var middle := (low+high)*.5
+		var reach := 0.0
+		for side in 2:
+			var arm: Vector3 = _rest_ankle[side]-_rest_toe[side]
+			var hinge := arm.cross(up)
+			if hinge.length_squared()<.000001: continue
+			hinge = hinge.normalized()
+			if hinge.cross(arm).dot(up)<0.0: hinge = -hinge
+			var ankle: Vector3 = _rest_toe[side]+arm.rotated(hinge,float(profile.heel))
+			# A few degrees of reach reserve: the pinned solve still straightens
+			# to the profile knee by lifting the heel a little further.
+			var flexion := float(profile.knee)+deg_to_rad(1.0)
+			var wanted := sqrt(_leg_upper[side]*_leg_upper[side]+_leg_lower[side]*_leg_lower[side]+2.0*_leg_upper[side]*_leg_lower[side]*cos(flexion))
+			reach += ((root.translated(up*middle))*_hip_root[side]).distance_to(ankle)-wanted
+		if reach<0.0: low=middle
+		else: high=middle
+	root.origin += up*(low+high)*.5
 	return root
 
 func _leg_from_angles(side: int, angles: Array) -> Array:
@@ -2428,7 +2464,7 @@ func _capture_pins(sk: Skeleton3D, pose: SkeletonModifier3D) -> void:
 		_pin_foot_basis.append(foot.basis.orthonormalized())
 	_pin_active = true
 
-func _pinned_leg(side: int, root_world: Transform3D, knee_flexion: float) -> Dictionary:
+func _pinned_leg(side: int, root_world: Transform3D, knee_flexion: float, minimum_lift := 0.0) -> Dictionary:
 	# Smallest heel lift about the pinned toe joint that lets this hip keep the
 	# requested knee flexion; refused once even the full point cannot reach.
 	var hip: Vector3 = root_world*_hip_root[side]
@@ -2441,26 +2477,36 @@ func _pinned_leg(side: int, root_world: Transform3D, knee_flexion: float) -> Dic
 	var upper := _leg_upper[side]
 	var lower := _leg_lower[side]
 	var wanted := minf(sqrt(upper*upper+lower*lower+2.0*upper*lower*cos(knee_flexion)),upper+lower-.003)
-	var lift := .0
-	if hip.distance_to(pivot+arm)>wanted:
-		if hip.distance_to(pivot+arm.rotated(axis,MAXIMUM_PIN_POINT))>upper+lower-.003: return {}
-		var low := .0
-		var high := MAXIMUM_PIN_POINT
-		for iteration in 16:
-			var middle := (low+high)*.5
-			if hip.distance_to(pivot+arm.rotated(axis,middle))>wanted: low=middle
-			else: high=middle
-		lift = high
+	# The heel rises at least minimum_lift (toes-last push). The ankle height
+	# about the ball of the foot peaks part-way through the point, so sample
+	# the lift instead of assuming a monotonic reach.
+	var floor_lift := minf(minimum_lift,MAXIMUM_PIN_POINT)
+	var lift := -1.0
+	var nearest := INF
+	var nearest_lift := floor_lift
+	for step in 33:
+		var trial := lerpf(floor_lift,MAXIMUM_PIN_POINT,float(step)/32.0)
+		var distance := hip.distance_to(pivot+arm.rotated(axis,trial))
+		if distance<nearest:
+			nearest = distance
+			nearest_lift = trial
+		if distance<=wanted:
+			lift = trial
+			break
+	if lift<0.0:
+		# Even straightened: refuse once the planted ball is out of reach.
+		if nearest>upper+lower-.003: return {}
+		lift = nearest_lift
 	var ankle := pivot+arm.rotated(axis,lift)
 	var face: Vector3 = worker.global_basis*_stunt_forward
 	var solution := LegGeometry.two_link(hip,ankle,upper,lower,face,.015,.003,face)
 	return {"knee":solution.knee,"ankle":ankle,"foot":Basis(axis,lift)*_pin_foot_basis[side],"lift":lift}
 
-func _pinned_legs(root_world: Transform3D, knee_flexion: float) -> Array:
+func _pinned_legs(root_world: Transform3D, knee_flexion: float, minimum_lift := 0.0) -> Array:
 	var legs: Array = []
 	var inverse := root_world.affine_inverse()
 	for side in 2:
-		var leg := _pinned_leg(side,root_world,knee_flexion)
+		var leg := _pinned_leg(side,root_world,knee_flexion,minimum_lift)
 		if leg.is_empty(): return []
 		legs.append([inverse*(leg.knee as Vector3),inverse*(leg.ankle as Vector3),(root_world.basis.inverse()*(leg.foot as Basis)).orthonormalized(),float(leg.lift)])
 	return legs
@@ -2526,8 +2572,11 @@ func evaluate_airborne(pose: SkeletonModifier3D, sk: Skeleton3D) -> bool:
 		# toes stay down until even full extension cannot reach them.
 		var hold_flexion := deg_to_rad(80.0)
 		var launch_knee := float(_gather_profile().knee)
-		var target := lerpf(hold_flexion,launch_knee,smoothstep(0.0,1.0,_push_fraction())) if pushing else lerpf(launch_knee,deg_to_rad(3.0),smoothstep(0.0,.025,elapsed))
-		legs = _pinned_legs(root_world,target)
+		# The knee straightens on an even schedule while the heel peels up off
+		# the ball of the foot; the launch root is solved for both together.
+		var target := lerpf(hold_flexion,launch_knee,pow(_push_fraction(),1.3)) if pushing else lerpf(launch_knee,deg_to_rad(3.0),smoothstep(0.0,.025,elapsed))
+		var heel := float(_gather_profile().heel)
+		legs = _pinned_legs(root_world,target,heel*smoothstep(.25,1.0,_push_fraction()) if pushing else heel)
 		pinned = not legs.is_empty()
 		if pinned:
 			_pin_release_pose = legs

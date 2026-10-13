@@ -225,13 +225,15 @@ func _row(index: int, w: RigidBody3D, leap: RefCounted, state: String, v: Vector
 	var relative: Basis = cube.basis.orthonormalized()*_start_cube[index].inverse()
 	var q := relative.get_rotation_quaternion()
 	var turn := 2.0*atan2(Vector3(q.x,q.y,q.z).dot(axis),q.w)
-	var face: Vector3 = (cube.basis*leap._face_root()).normalized() if leap._hip_root.size()==2 else -w._model.global_basis.z
+	# Works against older controllers too (round-1 comparison runs).
+	var face: Vector3 = (cube.basis*leap._face_root()).normalized() if leap.has_method("_face_root") and leap._hip_root.size()==2 else -w._model.global_basis.z
 	var down := -up
 	var knees := []
 	var hips := []
 	var points := []
 	var reach := 0.0
 	var lowest := INF
+	var toes := []
 	for side in 2:
 		var hip: Vector3 = pose.evaluated_hips[side]
 		var knee: Vector3 = pose.evaluated_knees[side]
@@ -246,7 +248,10 @@ func _row(index: int, w: RigidBody3D, leap: RefCounted, state: String, v: Vector
 		reach = maxf(reach,maxf((knee-com).length(),(pose.evaluated_soles[side]-com).length()))
 		lowest = minf(lowest,pose.evaluated_soles[side].y)
 		# The evaluated toe joint (skeleton reads between modifiers are stale).
-		if side < leap._toe_ankle.size(): lowest = minf(lowest,(ankle+pose.evaluated_ankles[side]*leap._toe_ankle[side]).y)
+		if "_toe_ankle" in leap and side < leap._toe_ankle.size():
+			var ball: Vector3 = ankle+pose.evaluated_ankles[side]*leap._toe_ankle[side]
+			lowest = minf(lowest,ball.y)
+			toes.append([ball.x,ball.y,ball.z])
 	var gap := INF
 	if is_instance_valid(part) and not leap.contacted:
 		gap = (cube*leap._head_touch_local-(part.global_transform*leap.contact_local)).dot(leap.contact_normal)
@@ -256,7 +261,7 @@ func _row(index: int, w: RigidBody3D, leap: RefCounted, state: String, v: Vector
 		"pitch":rad_to_deg(acos(clampf(up.dot(Vector3.UP),-1.0,1.0))),"turn":rad_to_deg(turn),
 		"body_pitch":rad_to_deg(acos(clampf(w.global_basis.y.normalized().dot(Vector3.UP),-1.0,1.0))),
 		"knee":knees,"hip":hips,"point":points,"reach":reach,"root":[cube.origin.x,cube.origin.y,cube.origin.z],
-		"low":lowest,"gap":gap if is_finite(gap) else null,"ground":w.on_ground,
+		"low":lowest,"toes":toes,"gap":gap if is_finite(gap) else null,"ground":w.on_ground,
 		"part":[part.global_position.x,part.global_position.y,part.global_position.z] if is_instance_valid(part) else null,
 		"gaze":[gaze.x,gaze.y,gaze.z] if gaze is Vector3 else null}
 
@@ -291,7 +296,7 @@ func report(extra: Dictionary = {}) -> Dictionary:
 		member_rows.append(row)
 	out.members = member_rows
 	# Heavy/shared loads touch down slower: the free-fall tail is 0.15 s.
-	var heavy: bool = crew.size() > 1 or (is_instance_valid(crew[0]) and not crew[0].head_leap._small_stock_timing())
+	var heavy: bool = crew.size() > 1 or (is_instance_valid(crew[0]) and crew[0].head_leap.has_method("_small_stock_timing") and not crew[0].head_leap._small_stock_timing())
 	out.motion = Motion.summarize(self.rows, crew.size(), .15 if heavy else .18)
 	if not trace_path.is_empty():
 		var file := FileAccess.open(trace_path, FileAccess.WRITE)
