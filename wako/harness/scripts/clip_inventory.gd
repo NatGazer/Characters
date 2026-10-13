@@ -3,7 +3,8 @@ extends SceneTree
 ##   $GODOT --headless --path <work> -s res://harness/scripts/clip_inventory.gd -- [--json=out.json]
 ##        [--ref=pose_ref.json] [--tol_mm=1.0] [--scene=res://LogicObjects/Wako/Wako.blend]
 ## Prints every animation of res://LogicObjects/Wako/Wako.blend with length, frame count, loop
-## mode and track count, the RESET presence, and the skeleton bone rests (to diff against a
+## mode, track count, the knee checks (kfwd: apex vs the lifted forward reference; kbody: the strict body-frame
+## apex, normalised forward component, must stay >= 0), the RESET presence, and the skeleton bone rests (to diff against a
 ## baseline: only toe.L / toe.R may change in the clip pipeline).
 ## With --ref (written by `wako_actions.py --pose-ref`): samples EVERY source frame of every clip from the
 ## imported tracks and compares each bone head (+ the toe tips) with the Blender solver pose, in mm.  Any
@@ -58,6 +59,7 @@ func _init() -> void:
 			var path := String(anim.track_get_path(t))
 			tracks[[path.get_slice(":", 1), anim.track_get_type(t)]] = t
 		var worst := 1.0
+		var worst_body := 1.0
 		var frames := int(round(anim.length * 30.0))
 		for f in frames + 1:
 			var time := f / 30.0
@@ -82,11 +84,17 @@ func _init() -> void:
 				var ankle: Vector3 = glob[sk.find_bone(c[2])].origin
 				var axis := (ankle - hip).normalized()
 				var off := (knee - hip) - axis * (knee - hip).dot(axis)
+				if off.length() > 0.001:
+					# strict check: the knee apex in the BODY frame never points behind the body's up axis
+					var body_rot := root_pose.basis * sk.get_bone_rest(0).basis.inverse()
+					var bo := body_rot.inverse() * off
+					worst_body = minf(worst_body, -bo.z / bo.length())
 				if off.length() < 0.01:
 					continue
 				var ref := (fwd + Vector3.UP * maxf(0.0, axis.dot(fwd) * 2.0)).normalized()
 				worst = minf(worst, off.normalized().dot(ref))
 		report["animations"][n]["knee_forward_min"] = snappedf(worst, 0.001)
+		report["animations"][n]["knee_apex_body_y_min"] = snappedf(worst_body, 0.001)
 	# Per-frame Blender-vs-Godot pose comparison.
 	var exit_code := 0
 	if ref_path != "":
@@ -154,11 +162,11 @@ func _init() -> void:
 				print("  OVER TOL ", n, " ", cmp[n])
 		if worst_all * 1000.0 > tol_mm:
 			exit_code = 2
-	var line := "%-20s %8s %6s %5s %6s %6s" % ["animation", "length", "frames", "loop", "tracks", "kfwd"]
+	var line := "%-20s %8s %6s %5s %6s %6s %6s" % ["animation", "length", "frames", "loop", "tracks", "kfwd", "kbody"]
 	print(line)
 	for n in names:
 		var a: Dictionary = report["animations"][n]
-		print("%-20s %8.4f %6d %5d %6d %6.3f" % [n, a["length"], a["frames"], a["loop"], a["tracks"], a.get("knee_forward_min", 1.0)])
+		print("%-20s %8.4f %6d %5d %6d %6.3f %6.3f" % [n, a["length"], a["frames"], a["loop"], a["tracks"], a.get("knee_forward_min", 1.0), a.get("knee_apex_body_y_min", 1.0)])
 	print("count %d (RESET %s)" % [names.size(), "yes" if player.has_animation("RESET") else "NO"])
 	for b in report["bones"]:
 		print(b, " ", report["bones"][b])

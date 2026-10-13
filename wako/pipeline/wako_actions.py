@@ -3,7 +3,7 @@
 Usage (Blender 4.5 as a Python module, or ``blender --background --python``)::
 
     python wako_actions.py -- in.blend out.blend [--only wk_idle,wk_assemble] [--report out.json]
-                              [--pose-ref pose_ref.json]
+                              [--pose-ref pose_ref.json] [--no-guards]
 
 What it does
 ------------
@@ -18,7 +18,12 @@ What it does
    leg IK (hip -> knee -> ankle) with the knee plane derived from the body's sagittal plane (knees always
    bend toward the face, +Y, and turn upward for raised legs: no pole flips), explicit foot orientation
    (heel / ball pivots for grounded rolls), toe articulation, and a seated floor contact for the sit family
-   (the bottom rests on the ground for the current pitch/roll).  The solved pose is converted to local bone
+   (the bottom rests on the ground for the current pitch/roll).  Contacts are MESH-AWARE: the skinned mesh of
+   the input file is read once (linear blend skinning in numpy, identical to Blender's armature modifier) and
+   (a) the seat contact uses the rounded cube's real bottom, (b) a planted / pivoting sole whose verts would go
+   below the floor raises its ankle just enough, (c) a curled toe pad conforms to the floor (the curl opens
+   just enough), so nothing ever sinks into the ground -- authored poses are untouched wherever they are clear.
+   The solved pose is converted to local bone
    channels (location + rotation_quaternion) relative to the CURRENT rest, so the library survives rest
    changes that keep the bone names.
 4. Actions are written exportable for the glTF exporter used by Godot's .blend importer: one slot
@@ -30,9 +35,14 @@ What it does
    frames, sole penetration, IK over-reach, knee direction, knee angle jumps, body clearance, loop seams,
    L/R mirror error, work-clip weight timing (shift accepted >= 3 f before the lift, held while airborne,
    released after the plant), fore-aft balance + downward acceleration + bottom touchdown speed for the
-   unsided clips, the work foot's authored contact pose, the sit family's seat-descent curve, bone rests vs
-   input.  ``--pose-ref`` writes every frame's bone heads (Godot skeleton space) for the Godot-side
-   per-frame comparison (harness/scripts/clip_inventory.gd --ref=...).
+   unsided clips, the work foot's authored contact pose, the sit family's seat-descent / travel curves, bone
+   rests vs input, and the mesh probe (lowest sole / toe-pad / body vertex vs the floor, knee / shin / foot
+   vertices inside the cube, seat gap).  Strict knee direction: the knee apex (knee offset from the hip-ankle
+   line) is measured in the BODY frame and must never point behind the body's up axis; upright legs on a body
+   facing +Y must also bend toward +Y in armature space.  ``check_guards`` turns these into library-wide gates
+   (knee apex, splay <= 30 deg, leg-into-body, nothing below the floor, slip, mirror, loop seams): the
+   pipeline aborts on any failure unless ``--no-guards``.  ``--pose-ref`` writes every frame's bone heads
+   (Godot skeleton space) for the Godot-side per-frame comparison (harness/scripts/clip_inventory.gd --ref=...).
 
 Conventions (armature space, Blender): +Y = face (Godot model -Z = runtime forward), +Z = up,
 +X = Wako's right.  Left leg = Bone.001 chain at x = -0.237.  Frames are 30 fps.
@@ -58,20 +68,40 @@ Runtime contract notes (for the integrator)
   at 0.5, carry only subtle root bob/lean (the procedural gait owns it) and are in place (treadmill feet).
 * wk_idle keeps its name (coordinator settle gate); its root acting (irregular breaths, weight shift each
   way, glances, curiosity lean) is what shows under the gait IK.
-* wk_step ends with the root advanced 0.12 m; wk_sit_up ends advanced ~0.30 m over the pulled-in feet.
+* wk_step ends with the root advanced 0.12 m.  The sit family is IN PLACE (root y 0 at both standing ends and
+  while seated; ``seat_travel_m`` in the report is that per-frame root y, all ~0), so the native body never has
+  to move horizontally and the hand-off sit_up -> wk_idle has no slide.
+* Neutral stances: work clips start and end in the shared neutral (work foot o 0.19 / y 0, support foot o 0.175
+  / y -0.01 -- the support sits 1.5 cm narrower and 1 cm back on each side, mirrored, so wk_*_L and wk_*_R do
+  not share one identical neutral); wk_tool_change keeps its -24 deg toe curl (held tool); wk_interrupted ends
+  with the work foot replanted 3 cm back under the hip (protective) and wk_step 0.12 m forward, by design.
+* Quaternion signs: the Blender curves are sign-continuous, but the glTF exporter canonicalises near-w=0
+  rotation keys, so imported rotation tracks contain sign flips (also present in the baseline import).
+  Godot's slerp / blending take the shortest path, so nothing is visible; code that reads keys and lerps
+  quaternion components directly must align signs first.
 * Seat descent ownership: wk_sit_down / wk_sit_idle / wk_sit_up carry the FULL seat descent in root Z so they
   are complete on their own (bottom on the ground, ~-0.80 m).  The report's ``seat_descent_m`` is that curve
   per frame; it is built for a native spring to follow (one continuous descent, <= 1 g downward while the
   legs carry the body; rise with a <= 1 g deceleration).  Recommended: drive the native ``seat_drop`` from
   this curve and subtract the body's ACTUAL drop from the visual root (root keeps pitch/yaw/x/y), so the
   visual and physical bottoms agree; do not add a second descent on top.
-* wk_sit_down: the heels skid forward on purpose while the bottom takes the weight (f25-32, bottom <= 14 cm
-  up, reported as ``authored_slide`` instead of slip); the sumo squat and the rise put the knees up and out
-  beside the body (knee-forward metric ~0.5: knees point up/out, never backward).
+* wk_sit_down / wk_sit_up use a FROG CROUCH (feet planted wide beside the body, knees parked in front of the
+  face's lower corners and pointing at the face): the body lowers / rises straight down / up between its feet
+  with the COM over the soles, reached / left with a two-foot hop (spread / close); the feet swing between the
+  V and the crouch on a circle around the parked knee.  Knee apex >= 0 in the body frame on every frame, splay
+  <= 26 deg, no leg vertex inside the cube.
 * wk_swim legs are authored in the BODY frame (they follow the 20 deg back-pitched body); the root stays at
   rest height (buoyancy owns the native body) apart from a 2.5 cm surge per stroke.
-* wk_dance_a contains one 360 deg root-yaw spin (two ballistic hops landing on 7-and and beat 8) and ends at
-  the start orientation.
+* wk_dance_a contains one 360 deg root-yaw spin (two ballistic hops landing on 7-and and beat 8; the feet do not
+  rotate while planted, the body turns <= 20 deg against them at the mid-spin touch) and ends at the start
+  orientation.  Every hop in the library is an exact parabola at 1.15 g with velocity-continuous take-off and
+  landing; groove dips start <= 1 g and land ON the beat.
+* wk_danger: the authored looks are small (+/-7 deg) -- the runtime gaze owns the big looks; give every Wako a
+  random phase offset into this 1 s loop so groups do not bob in sync.
+* Work-foot retargeting (prominent): during normalised .43-.78 the current runtime retargets the authored work
+  foot to the contact hold (WORK_TIMING), which flattens the authored detail there (repair feints, maintenance
+  cranks, inspect rubs, unbend give).  Adopt the per-clip ``contact_pose`` + ``weight`` lift / plant phases
+  from the report (retarget relative to the authored contact pose) or that detail stays invisible in game.
 """
 
 import argparse
@@ -81,6 +111,7 @@ import os
 import sys
 
 import bpy
+import numpy as np
 from mathutils import Matrix, Vector
 
 # ======================================================================================
@@ -116,14 +147,20 @@ def _tan_codes(spec):
         return "a", "a"
     if isinstance(spec, (tuple, list)):
         return spec[0], spec[1]
-    if isinstance(spec, (int, float)):
+    if isinstance(spec, (int, float)):        # (Slope is a float: same code both sides)
         return spec, spec
     if len(spec) == 1:
         return spec, spec
     return spec[0], spec[1]
 
 
+class Slope(float):
+    """Absolute tangent (value per frame) for a key side, e.g. a take-off velocity."""
+
+
 def _tan_value(code, delta_side, auto):
+    if isinstance(code, Slope):
+        return float(code)
     if isinstance(code, (int, float)):
         return float(code) * delta_side
     if code == "a":
@@ -306,6 +343,7 @@ class Rig:
                                toe_rel=self.rest_inv[an] @ self.rest[toe])
         self.ankle_z = sum(self.leg[s]["ankle"].z for s in "LR") / 2.0
         self.ground_z = self.ankle_z - ANKLE_TO_SOLE
+        self.mesh = None
 
     # --------------------------------------------------------------------------------
     def solve(self, P, t=None, spin=None):
@@ -316,8 +354,7 @@ class Rig:
         root_pose = Matrix.Translation(self.head0 + pos) @ R.to_4x4() @ self.rest_rot4[ROOT]
         D = root_pose @ self.rest_inv[ROOT]
         poses = {ROOT: root_pose}
-        diag = {"root": root_pose, "legs": {}}
-        Rq = R.to_quaternion()
+        diag = {"root": root_pose, "legs": {}, "R": R}
         for s in "LR":
             th, sh, an, toe = LEGS[s]
             L = self.leg[s]
@@ -347,25 +384,43 @@ class Rig:
                 A = A.lerp(Ab, bw)
                 Rf = Rf.to_quaternion().slerp(Rb.to_quaternion(), bw).to_matrix()
             # knee pole: body sagittal plane, rotated 90 deg from the leg (forward for a hanging leg,
-            # up for a leg raised forward, down-forward for a leg reaching behind) + outward splay
+            # up for a leg raised forward, down-forward for a leg reaching behind) + outward splay (k) + a
+            # body-forward bias (kf) that keeps the apex toward the face when the hip-ankle line runs sideways
             dl = R.transposed() @ (A - H)
             ds = Vector((0.0, dl.y, dl.z))
+            sag = ds.length / max(dl.length, 1e-9)          # 1 = leg in the sagittal plane, 0 = sideways
             if ds.length < 1e-6:
                 ds = Vector((0.0, 0.0, -1.0))
             ds.normalize()
-            anat = Vector((0.0, -ds.z, ds.y))
-            pole_l = anat + math.tan(math.radians(fv["k"])) * Vector((sx, 0.0, 0.0))
+            # sideways legs (wide frog gather) have no sagittal direction: their apex defaults to up
+            anat = Vector((0.0, -ds.z, ds.y)) * sag + Vector((0.0, 0.0, 1.0)) * (1.0 - sag)
+            pole_l = (anat + math.tan(math.radians(fv["k"])) * Vector((sx, 0.0, 0.0))).normalized()
+            if fv["pw"] > 0.0:
+                # explicit body-frame knee direction (frog crouch: forward-up-out), blended in by pw
+                pa, pe = math.radians(fv["pa"]), math.radians(fv["pe"])
+                pex = Vector((sx * math.sin(pa) * math.cos(pe), math.cos(pa) * math.cos(pe), math.sin(pe)))
+                pole_l = pole_l.lerp(pex, min(1.0, fv["pw"]))
             pole = R @ pole_l
-            K_, A2, over, dirv, pp = _two_bone(H, A, pole, L["a"], L["b"])
-            lat = dirv.cross(pp).normalized()
-            yt = (K_ - H).normalized()
-            ys = (A2 - K_).normalized()
-            Mt = _cols(lat, yt, lat.cross(yt)) @ L["frame0_t"]
-            Ms = _cols(lat, ys, lat.cross(ys)) @ L["frame0_t"]
-            poses[th] = Matrix.Translation(H) @ Mt.to_4x4() @ self.rest_rot4[th]
-            poses[sh] = Matrix.Translation(K_) @ Ms.to_4x4() @ self.rest_rot4[sh]
-            poses[an] = Matrix.Translation(A2) @ Rf.to_4x4() @ self.rest_rot4[an]
-            poses[toe] = poses[an] @ L["toe_rel"] @ Matrix.Rotation(math.radians(fv["t"]), 4, "X")
+            leg = self._leg_pose(s, poses, H, A, Rf, pole, fv["t"])
+            raise_, toe_fix = 0.0, 0.0
+            if self.mesh is not None and fv["gc"] > 0.5:
+                # ground contact: the sole/heel verts never go below the floor (raise the ankle target), the
+                # toe pad conforms to the floor (the curl opens just enough) -- authored poses stay untouched
+                # whenever they are clear of the ground
+                for _ in range(4):
+                    mats = self.mesh.leg_mats(s, poses)
+                    zf = float(self.mesh.skin(self.mesh.parts[s]["foot"], mats)[:, 2].min())
+                    deficit = self.ground_z - zf
+                    if deficit <= 2e-5:
+                        break
+                    A = A + Vector((0.0, 0.0, deficit))
+                    raise_ += deficit
+                    leg = self._leg_pose(s, poses, H, A, Rf, pole, fv["t"])
+                tt = self._toe_conform(s, poses, fv["t"])
+                if tt != fv["t"]:
+                    toe_fix = tt - fv["t"]
+                    poses[toe] = poses[an] @ L["toe_rel"] @ Matrix.Rotation(math.radians(tt), 4, "X")
+            K_, A2, over, dirv, pp, lat = leg
             # diagnostics
             heel = A2 + Rf @ Vector((0.0, HEEL_Y, -SOLE_DROP))
             ball = A2 + Rf @ Vector((0.0, BALL_Y, -SOLE_DROP))
@@ -373,15 +428,61 @@ class Rig:
             koff = (K_ - H) - line * (K_ - H).dot(line)
             flex = math.degrees(math.pi - math.acos(max(-1.0, min(1.0, (K_ - H).normalized().dot((K_ - A2).normalized())))))
             diag["legs"][s] = dict(H=H, K=K_, A=A2, over=over, heel=heel, ball=ball, koff=koff,
+                                   koff_body=R.transposed() @ koff,
                                    fwd=R @ Vector((0.0, 1.0, 0.0)), pole=pole.normalized(), lat=lat, flex=flex,
-                                   pitch=fv["p"], toe_tip=(poses[toe] @ Matrix.Translation((0.0, 0.13, 0.0))).translation)
+                                   pitch=fv["p"], raise_=raise_, toe_fix=toe_fix,
+                                   toe_tip=(poses[toe] @ Matrix.Translation((0.0, 0.13, 0.0))).translation)
         return poses, diag
 
-    def seat_z(self, rv, eps=0.002):
-        """Root z offset at which the lowest bottom corner of the body touches the ground (+eps)."""
+    def _leg_pose(self, s, poses, H, A, Rf, pole, t_deg):
+        th, sh, an, toe = LEGS[s]
+        L = self.leg[s]
+        K_, A2, over, dirv, pp = _two_bone(H, A, pole, L["a"], L["b"])
+        lat = dirv.cross(pp).normalized()
+        yt = (K_ - H).normalized()
+        ys = (A2 - K_).normalized()
+        Mt = _cols(lat, yt, lat.cross(yt)) @ L["frame0_t"]
+        Ms = _cols(lat, ys, lat.cross(ys)) @ L["frame0_t"]
+        poses[th] = Matrix.Translation(H) @ Mt.to_4x4() @ self.rest_rot4[th]
+        poses[sh] = Matrix.Translation(K_) @ Ms.to_4x4() @ self.rest_rot4[sh]
+        poses[an] = Matrix.Translation(A2) @ Rf.to_4x4() @ self.rest_rot4[an]
+        poses[toe] = poses[an] @ L["toe_rel"] @ Matrix.Rotation(math.radians(t_deg), 4, "X")
+        return K_, A2, over, dirv, pp, lat
+
+    def _toe_conform(self, s, poses, t_deg):
+        """Smallest toe angle >= t_deg (deg, + = toe up) whose toe pad stays on or above the floor."""
+        th, sh, an, toe = LEGS[s]
+        mesh = self.mesh
+        mats = mesh.leg_mats(s, poses)
+        jt = mesh.names.index(toe)
+        idx = mesh.parts[s]["toe"]
+        base = np.array(poses[an] @ self.leg[s]["toe_rel"])
+
+        def low(tt):
+            mats[jt] = base @ np.array(Matrix.Rotation(math.radians(tt), 4, "X")) @ mesh.rest_inv[jt]
+            return float(mesh.skin(idx, mats)[:, 2].min())
+        if low(t_deg) >= self.ground_z - 2e-5:
+            return t_deg
+        lo, hi = t_deg, t_deg + 150.0
+        if low(hi) < self.ground_z:
+            return hi
+        for _ in range(30):
+            mid = 0.5 * (lo + hi)
+            if low(mid) < self.ground_z:
+                lo = mid
+            else:
+                hi = mid
+        return hi
+
+    def seat_z(self, rv, eps=0.0005):
+        """Root z offset at which the lowest point of the body (the skinned cube's rounded bottom when a mesh is
+        present, else the box corners) touches the ground (+eps)."""
         R = _rot_root(rv["p"] + rv["p2"], rv["r"] + rv["r2"], rv["w"] + rv["w2"])
-        low = min((R @ Vector((sx * BODY_HALF[0], sy * BODY_HALF[1], BODY_Z[0]))).z
-                  for sx in (-1, 1) for sy in (-1, 1))
+        if self.mesh is not None:
+            low = self.mesh.body_min_z(R)
+        else:
+            low = min((R @ Vector((sx * BODY_HALF[0], sy * BODY_HALF[1], BODY_Z[0]))).z
+                      for sx in (-1, 1) for sy in (-1, 1))
         return self.ground_z + eps - self.head0.z - low
 
     def local_channels(self, poses):
@@ -396,6 +497,119 @@ class Rig:
             rot.normalize()
             out[name] = (loc, rot)
         return out
+
+
+class MeshModel:
+    """The skinned mesh as a contact / clearance probe.
+
+    Linear blend skinning of the deform mesh (identical to Blender's armature modifier without preserve-volume:
+    verified against the evaluated depsgraph mesh to 2e-7 m) restricted to vertex subsets:
+      * body: pure root-weighted verts (the rounded cube) -> seated floor contact and body-vs-ground checks;
+      * foot / toe (per leg): verts whose dominant weight is the ankle / toe bone -> sole and toe floor contact;
+      * leg (per leg): shin-dominant verts plus thigh verts >= 0.15 m from the hip -> leg-into-body clearance.
+    The geometry is read from the input blend, so contacts adapt to the mesh the pipeline runs on."""
+
+    def __init__(self, arm, rig):
+        meshes = [o for o in bpy.data.objects if o.type == "MESH" and any(
+            m.type == "ARMATURE" and m.object == arm for m in o.modifiers)]
+        if not meshes:
+            raise RuntimeError("no mesh skinned to %s" % arm.name)
+        for o in meshes:
+            for m in o.modifiers:
+                if m.type == "ARMATURE" and (m.use_deform_preserve_volume or not m.use_vertex_groups):
+                    raise RuntimeError("%s: armature modifier must be plain LBS with vertex groups" % o.name)
+        self.names = list(rig.order)
+        nb = len(self.names)
+        A2W_inv = arm.matrix_world.inverted()
+        cos, Ws = [], []
+        for o in meshes:
+            M = A2W_inv @ o.matrix_world
+            n = len(o.data.vertices)
+            co = np.zeros(n * 3)
+            o.data.vertices.foreach_get("co", co)
+            co = co.reshape(-1, 3)
+            Mn = np.array(M)
+            cos.append(co @ Mn[:3, :3].T + Mn[:3, 3])
+            W = np.zeros((n, nb))
+            gi = {g.index: g.name for g in o.vertex_groups}
+            for v in o.data.vertices:
+                for g in v.groups:
+                    nm = gi.get(g.group)
+                    if nm in self.names:
+                        W[v.index, self.names.index(nm)] = g.weight
+            Ws.append(W)
+        co = np.concatenate(cos)
+        W = np.concatenate(Ws)
+        s = W.sum(1)
+        keep = s > 1e-6
+        co, W = co[keep], W[keep] / s[keep][:, None]
+        self.h = np.c_[co, np.ones(len(co))]                     # homogeneous rest verts (armature space)
+        self.W = W
+        self.rest_inv = [np.array(rig.rest_inv[n]) for n in self.names]
+        dom = W.argmax(1)
+        bi = {n: i for i, n in enumerate(self.names)}
+        self.body = np.where(W[:, bi[ROOT]] >= 0.99)[0]
+        self.head0 = np.array(rig.head0)
+        rel = co[self.body] - self.head0
+        self.body_rel = rel
+        # rounded-box model of the cube (root-local, metres) for the leg clearance SDF
+        hx, hy = np.abs(rel[:, 0]).max(), np.abs(rel[:, 1]).max()
+        zlo, zhi = rel[:, 2].min(), rel[:, 2].max()
+        flat = rel[rel[:, 2] < zlo + 0.003]
+        bev = max(0.02, min(hx - np.abs(flat[:, 0]).max(), hy - np.abs(flat[:, 1]).max()))
+        self.box = dict(c=np.array([0.0, 0.0, 0.5 * (zlo + zhi)]), b=np.array([hx, hy, 0.5 * (zhi - zlo)]), r=bev)
+        self.parts = {}
+        for s_ in "LR":
+            th, sh, an, toe = LEGS[s_]
+            hip = np.array(rig.leg[s_]["hip"])
+            dist = np.linalg.norm(co - hip, axis=1)
+            self.parts[s_] = {
+                "foot": np.where(dom == bi[an])[0], "toe": np.where(dom == bi[toe])[0],
+                # knee, shin and foot: must never enter the cube
+                "leg": np.where((dom == bi[sh]) | (dom == bi[an]) | (dom == bi[toe]) | ((dom == bi[th]) & (dist >= 0.30)))[0],
+                # proximal thigh 0.15-0.30 m from the hip: brushes the cube's bottom edge at deep hip flexion
+                # (the hip pivot sits 11 cm inside the cube) -- reported, owned by the mesh junction
+                "thigh": np.where((dom == bi[th]) & (dist >= 0.15) & (dist < 0.30))[0],
+                "chain": [bi[ROOT], bi[th], bi[sh], bi[an], bi[toe]]}
+        self.rest_sole = min(co[self.parts[s_][k]][:, 2].min() for s_ in "LR" for k in ("foot", "toe"))
+        self.rest_body_bottom = rel[:, 2].min()
+
+    def skin(self, idx, mats, cols=None):
+        """Deformed armature-space positions of verts idx; mats = {bone index: 4x4 numpy pose @ rest_inv}."""
+        h = self.h[idx]
+        W = self.W[idx]
+        out = np.zeros((len(idx), 3))
+        for j, M in mats.items():
+            w = W[:, j]
+            if cols is None and not w.any():
+                continue
+            out += w[:, None] * (h @ M[:3, :].T)
+        return out
+
+    def leg_mats(self, s, poses):
+        out = {}
+        for j in self.parts[s]["chain"]:
+            out[j] = np.array(poses[self.names[j]]) @ self.rest_inv[j]
+        return out
+
+    def all_mats(self, poses):
+        return {j: np.array(poses[n]) @ self.rest_inv[j] for j, n in enumerate(self.names)}
+
+    def body_min_z(self, R):
+        Rn = np.array(R)
+        return float((self.body_rel @ Rn.T)[:, 2].min())
+
+    def leg_into_body(self, poses, s, part="leg"):
+        """Deepest leg vertex inside the rounded body cube (m, > 0 = inside)."""
+        D = np.array(poses[ROOT]) @ self.rest_inv[0]
+        Dinv = np.linalg.inv(D)
+        p = self.skin(self.parts[s][part], self.leg_mats(s, poses))
+        q = np.c_[p, np.ones(len(p))] @ Dinv.T                  # back into the rest (root-local) frame
+        rel = q[:, :3] - self.head0
+        bx = self.box
+        d = np.abs(rel - bx["c"]) - (bx["b"] - bx["r"])
+        out = np.linalg.norm(np.maximum(d, 0.0), axis=1) + np.minimum(d.max(1), 0.0) - bx["r"]
+        return float(-out.min())
 
 
 def _two_bone(H, A, pole, a, b):
@@ -422,7 +636,8 @@ def _two_bone(H, A, pole, a, b):
 # Clip description
 # ======================================================================================
 ROOT_DEF = dict(x=0.0, y=0.0, z=Z0, p=P0, r=0.0, w=0.0, z2=0.0, p2=0.0, r2=0.0, w2=0.0)
-FOOT_DEF = dict(o=STANCE_O, y=0.0, h=0.0, p=0.0, w=5.0, r=0.0, t=0.0, k=6.0, bw=0.0, g=0.0)
+FOOT_DEF = dict(o=STANCE_O, y=0.0, h=0.0, p=0.0, w=5.0, r=0.0, t=0.0, k=6.0, pw=0.0, pa=30.0, pe=35.0, bw=0.0,
+                g=0.0, gc=1.0)
 
 
 class Clip:
@@ -554,7 +769,10 @@ def tremor(chan, amp, period_f, t0, t1, ramp=3.0, phase=0.0):
     at 30 fps (period in frames), faded in/out over `ramp` frames."""
     def fn(t, P, ev):
         env = smooth(t0, t0 + ramp, t) * (1.0 - smooth(t1 - ramp, t1, t))
-        P["root"][chan] += amp * env * math.sin(2 * math.pi * (t / period_f) + phase)
+        sgn = 1.0
+        if ev.sigma is not None and chan in ("r2", "w2"):     # sided clips: mirror roll / yaw layers like keys
+            sgn = -ev.sigma if chan == "r2" else ev.sigma
+        P["root"][chan] += sgn * amp * env * math.sin(2 * math.pi * (t / period_f) + phase)
     return fn
 
 
@@ -721,25 +939,26 @@ gait_clip("wk_carry", CARRY, "loaded grounded jog 20 f (no flight), level steady
           "deeper knees, wider track; L contact 0.0, R 0.5")
 
 # ---------------------------------------------------------------- wk_danger (1.0 s loop)
-clip("wk_danger", 1.0, loop=True, notes="wary crouch on the balls of the feet, staggered stance; two DIFFERENT "
-     "looks per loop (a 2 f snap right with overshoot and a short settle, then a slower 4-5 f smaller look left "
+clip("wk_danger", 1.0, loop=True, notes="wary crouch on the balls of the feet (body over the balls), staggered "
+     "stance; two DIFFERENT small looks per loop (+/-7 deg: the runtime gaze owns the big looks; play with a random "
+     "phase offset per Wako) (a 2 f snap right with overshoot and a short settle, then a slower 4-5 f smaller look left "
      "with a longer settle), ready bounces, a one-foot shuffle (weight onto R, the L heel lifts and re-grips), "
      "fear tremor",
      root=[
-         K(0, x=0.0, y=-0.02, z=-0.096, p=-3.0, r=0.0, w=0.0),
-         K(2, w=13.5, r=1.6, z=-0.101, tan="l"),          # snap right (2 f)
-         K(3, w=15.2),                                    # overshoot
-         K(5, w=13.0, z=-0.098),
-         K(8, z=-0.090, w=12.6),                          # ready bounce
-         K(10, z=-0.095, w=12.0),
-         K(12.5, w=10.5, r=1.0),
-         K(17, w=-7.0, r=-1.0, z=-0.100, x=0.0),          # slower, smaller look left (4.5 f)
-         K(18.5, w=-8.2, x=0.020, r=1.6),                 # weight onto R ...
+         K(0, x=0.0, y=0.035, z=-0.096, p=-1.0, r=0.0, w=0.0),   # COM over the balls of the feet
+         K(2, w=6.5, r=1.4, z=-0.101, tan="l"),           # snap right (2 f) -- small: runtime gaze owns the look
+         K(3, w=7.4),                                     # overshoot
+         K(5, w=6.2, z=-0.098),
+         K(8, z=-0.090, w=6.0),                           # ready bounce
+         K(10, z=-0.095, w=5.6),
+         K(12.5, w=4.8, r=0.8),
+         K(17, w=-3.6, r=-0.8, z=-0.100, x=0.0),          # slower, smaller look left (4.5 f)
+         K(18.5, w=-4.2, x=0.020, r=1.6),                 # weight onto R ...
          K(21, z=-0.093),
-         K(23.5, w=-6.8, x=0.022, r=1.8),                 # ... while the L heel re-grips
+         K(23.5, w=-3.4, x=0.022, r=1.8),                 # ... while the L heel re-grips
          K(25.5, x=0.004, r=0.4, z=-0.097),
-         K(28, w=-2.0, r=0.0),
-         K(30, x=0.0, y=-0.02, z=-0.096, p=-3.0, r=0.0, w=0.0),
+         K(28, w=-1.0, r=0.0),
+         K(30, x=0.0, y=0.035, z=-0.096, p=-1.0, r=0.0, w=0.0),
      ],
      layers=[tremor("p2", 0.45, 4.0, -10, 40, ramp=0.1), tremor("r2", 0.3, 5.0, -10, 40, ramp=0.1, phase=1.0)],
      feet={
@@ -775,6 +994,8 @@ def w_peel(lift, t=0.0, peel=1.5, p=-12.0, w=None):
 def w_plant(plant, end, approach, t=0.0, roll=1.5):
     """Work foot lands heel first at `plant` (toe up 5 deg about the heel) and rolls flat; approach = row
     dict for the last airborne key ~1 f before the plant."""
+    # the last airborne key comes down from (nearly) straight above: no horizontal skid into the heel strike
+    approach = dict(approach, y=min(approach.get("y", 0.0), 0.008), h=max(approach.get("h", 0.0), 0.02))
     return [K(plant - 1.0, g=0.0, **approach),
             K(plant, o=0.19, h=0.0, y=0.0, p=5.0, t=t, g=1.0, tan="f"),
             K(plant + roll, p=0.0, g=1.0, tan="f"),
@@ -862,18 +1083,23 @@ clip("wk_inspect", 1.3, sided=True, contact=C, notes="curious probe: eyes/body o
          ] + w_plant(33.5, 39, dict(h=0.03, y=0.04, p=8.0, t=3.0)),
      })
 
-# A12 precision repair: lean in, two feints, short draw, 2-3 f tap at 0.56, hold, inspect lift, nod
+# A12 precision repair: lean in, two feints, short draw, 2 f tap at 0.56, hold, inspect lift, nod
 C = C_of(1.1)
-clip("wk_repair", 1.1, sided=True, contact=C, notes="craftsman taps: still body (<0.5 deg f6-18), choked "
-     "mallet feints 6 cm then 3.5 cm stopping 1 cm short, 11 cm draw, 2.9 f tap at 0.56, hold, 3 cm check "
-     "lift, satisfied nod, heel plants f28.5, weight returns",
+clip("wk_repair", 1.1, sided=True, contact=C, notes="craftsman taps: weight accepted, the choked mallet (foot) "
+     "aims and holds 1 cm above the joint (f8), feint 1 lifts 8 cm and stops dead 1 cm above (f8-11), feint 2 lifts "
+     "4.5 cm and stops 1 cm above (f11-13.5), a 13 cm draw with a slow-in hang at the top (f13.5-16.6), a 2 f tap "
+     "that accelerates into contact at 0.56 (steps ~1.5 / 5 / 7.5 cm: the largest one lands it), a squeezed hold, "
+     "a 3 cm check lift, satisfied nod, heel plants f28.5, weight returns.  Body nearly still while aiming "
+     "(<= 0.6 deg f8-18)",
      layers=[weight_shift(3.5, 5.5, 28.5, 33.0, u=-0.08, r=4.0, z=-0.018)],
      root=[
          work_root0(),
          K(3, p=5.0, w=4.0, z=Z0 - 0.004),
-         K(6, z=Z0 - 0.012, p=8.0, w=5.0, y=0.01),
-         K(C, p=8.4, z=Z0 - 0.014, w=5.2),
-         K(C + 2.0, p=8.1, z=Z0 - 0.013),
+         K(7, z=Z0 - 0.012, p=8.0, w=5.0, y=0.01),                # lean in, focus
+         K(13.5, p=8.3, z=Z0 - 0.013, w=5.1),
+         K(16.6, p=7.6, z=Z0 - 0.011),                            # tiny counter-lean at the top of the draw
+         K(C, p=8.6, z=Z0 - 0.015, w=5.2, tan=(2.0, "f")),        # tap: the body leads it by a hair
+         K(C + 2.0, p=8.2, z=Z0 - 0.014),
          K(22, w=2.5),
          K(24, w=6.5, p=8.6),
          K(26, p=11.5, w=5.0),                                    # satisfied nod
@@ -883,35 +1109,42 @@ clip("wk_repair", 1.1, sided=True, contact=C, notes="craftsman taps: still body 
      feet={
          "S": SUPPORT,
          "W": w_peel(5.5, t=-4.0) + [
-             K(6.8, h=0.09, y=0.13, p=6.0, t=-8.0, g=0.0),
-             K(8.2, o=0.175, h=0.19, y=0.30, p=-14.0, t=-20.0),
-             K(9.2, h=0.222, y=0.31, p=-6.0),
-             K(10.4, h=0.158, y=0.33, p=-20.0, tan="f"),          # feint 1 stops 1 cm short
-             K(11.6, h=0.192, y=0.325, p=-12.0),
-             K(12.8, h=0.156, y=0.335, p=-20.0, tan="f"),         # feint 2
-             K(15.6, h=0.265, y=0.31, p=4.0, tan="f"),            # short draw
-             K(C, h=0.145, y=0.345, p=-25.0, t=-16.0, tan=(2.0, "f")),
-             K(C + 1.0, h=0.153, y=0.344, p=-23.0),
-             K(C + 2.0, h=0.148, y=0.345, p=-24.0, tan="f"),
-             K(23, h=0.178, y=0.335, p=-18.0, t=-20.0),           # check lift
-             K(25.5, h=0.10, y=0.18, p=-4.0, t=-8.0),
+             K(6.8, h=0.09, y=0.15, p=4.0, t=-8.0, g=0.0),
+             K(8.0, o=0.175, h=0.155, y=0.335, p=-20.0, t=-18.0, tan="f"),     # aim: 1 cm above the joint
+             K(9.4, h=0.247, y=0.325, p=-6.0, t=-16.0),                         # feint 1: up 8-9 cm ...
+             K(11.0, h=0.155, y=0.338, p=-21.0, t=-18.0, tan="f"),              # ... stops dead 1 cm short
+             K(12.2, h=0.207, y=0.332, p=-11.0),                                # feint 2: 5 cm
+             K(13.5, h=0.155, y=0.340, p=-21.0, tan="f"),
+             K(16.0, h=0.282, y=0.322, p=5.0, t=-14.0),                         # draw 13 cm (slow-in) ...
+             K(16.6, h=0.285, y=0.320, p=6.0, tan="f"),                         # ... hang
+             K(C, h=0.145, y=0.345, p=-25.0, t=-18.0, tan=(3.0, "f")),          # TAP (largest step into contact)
+             K(19.6, h=0.148, y=0.345, p=-23.5),                                # squeeze / micro rebound
+             K(20.6, h=0.146, y=0.345, p=-24.0, tan="f"),
+             K(22.6, h=0.176, y=0.338, p=-18.0, t=-20.0),                       # check lift 3 cm
+             K(24.0, h=0.160, y=0.30, p=-12.0),
+             K(26.0, h=0.08, y=0.15, p=-2.0, t=-8.0),
          ] + w_plant(28.5, 33, dict(h=0.03, y=0.03, p=7.0, t=-2.0)),
      })
 
-# Maintenance: ratchet phrase -- foot twists the tool twice (second harder, click at 0.56), listens, returns
+# Maintenance: ratchet phrase -- three readable wrench cranks (yaw twists of the gripping foot), click at 0.56
 C = C_of(1.1)
-clip("wk_maintenance", 1.1, sided=True, contact=C, notes="service ratchet: weight onto the support, foot sets "
-     "on the fitting, quick twist + reset, harder twist with body counter-yaw clicking at 0.56, little shake, "
-     "listen tilt (weight still held), heel plants f28.5, weight returns",
+clip("wk_maintenance", 1.1, sided=True, contact=C, notes="service ratchet: weight onto the support, the foot sets "
+     "its toe-grip on the fitting (f9), then three wrench cranks -- the whole foot twists 22-30 deg about the "
+     "fitting with the toe clamped and the body counter-yawing, each followed by a quick open-toe reset -- a "
+     "small one, a bigger one, and the hardest one clicking at 0.56 (body jolts down, 1 f shudder), a little "
+     "check wiggle, listen tilt (weight still held), heel plants, weight returns",
      layers=[weight_shift(3.5, 5.5, 28.5, 33.0, u=-0.08, r=4.0, z=-0.018)],
      root=[
          work_root0(),
          K(3, p=4.0, w=4.0),
          K(8, p=7.0, z=Z0 - 0.006, w=5.0),
-         K(12, w=2.0, p=8.0),
-         K(14, w=5.0, p=7.0),
-         K(C, w=1.0, p=9.0, z=Z0 - 0.012, tan="f"),
-         K(C + 1.5, w=2.2, p=8.0, z=Z0 - 0.008),
+         K(10.5, w=1.5, z=Z0 - 0.009, p=7.6),                     # crank 1: body counter-yaws ...
+         K(11.6, w=5.0, z=Z0 - 0.006),                            # ... reset
+         K(14.3, w=0.0, z=Z0 - 0.011, p=8.4),                     # crank 2 (bigger)
+         K(15.4, w=5.2, z=Z0 - 0.007, p=7.6),                     # reset
+         K(C, w=-1.5, p=9.4, z=Z0 - 0.015, tan=(2.0, "f")),       # crank 3: CLICK
+         K(C + 1.0, w=0.2, p=8.2, z=Z0 - 0.010),                  # 1 f shudder
+         K(C + 2.5, w=-0.6, p=8.8, z=Z0 - 0.012),
          K(23, r=4.5, w=5.0, p=6.0),                              # listen tilt
          K(26, r=2.0, p=5.0),
          K(28.5, r=0.5, p=3.5, w=2.0, z=Z0 - 0.004),
@@ -919,41 +1152,46 @@ clip("wk_maintenance", 1.1, sided=True, contact=C, notes="service ratchet: weigh
      ],
      feet={
          "S": SUPPORT,
-         "W": w_peel(5.5, t=4.0) + [
-             K(0, r=0.0), K(5.5, r=0.0),
-             K(7.5, h=0.12, y=0.18, p=10.0, t=10.0, o=0.18, g=0.0),
-             K(10, h=0.20, y=0.33, p=-14.0, t=-24.0, o=0.165, r=-6.0),
-             K(11, r=-8.0),
-             K(12.8, r=22.0, tan="2f"),
-             K(14.6, r=-10.0),
-             K(C, r=31.0, y=0.335, tan="2f"),
-             K(C + 1.0, r=26.0),
-             K(C + 2.0, r=29.0),
-             K(C + 3.0, r=27.0, tan="f"),
-             K(23.5, h=0.22, y=0.29, r=10.0, t=-18.0),
-             K(26, h=0.10, y=0.13, p=0.0, r=0.0, t=-6.0),
-         ] + w_plant(28.5, 33, dict(h=0.03, y=0.03, p=7.0, t=-2.0, r=0.0)),
+         "W": w_peel(5.5, t=4.0, w=5.0) + [
+             K(7.0, h=0.10, y=0.16, p=10.0, t=12.0, o=0.18, g=0.0),
+             K(9.0, h=0.19, y=0.33, p=-12.0, t=-26.0, o=0.17, w=4.0, tan="f"),   # toe clamps the fitting
+             K(10.5, h=0.180, y=0.33, w=26.0, t=-30.0, tan=(2.0, "f")),          # crank 1 (+22 deg)
+             K(11.6, h=0.190, y=0.335, w=6.0, t=-12.0),                          # reset: toe opens, foot back
+             K(12.4, w=2.0, t=-28.0, h=0.188, tan="f"),                          # re-grip
+             K(14.3, h=0.175, y=0.33, w=30.0, t=-32.0, tan=(2.0, "f")),          # crank 2 (+28 deg)
+             K(15.4, h=0.190, y=0.335, w=8.0, t=-12.0),                          # reset
+             K(16.4, w=0.0, t=-30.0, h=0.188, tan="f"),                          # re-grip, wind further back
+             K(C, h=0.172, y=0.33, w=34.0, t=-34.0, tan=(2.5, "f")),             # crank 3: CLICK at 0.56
+             K(C + 1.0, h=0.177, w=30.0),
+             K(C + 2.0, h=0.175, w=33.0),                                        # check wiggle
+             K(C + 3.0, h=0.176, w=31.0, tan="f"),
+             K(23.5, h=0.22, y=0.29, w=12.0, t=-12.0),                           # lets go
+             K(26, h=0.10, y=0.13, p=0.0, w=5.0, t=-6.0),
+         ] + w_plant(28.5, 33, dict(h=0.03, y=0.03, p=7.0, t=-2.0, w=5.0)),
      })
 
-# A13 unbend: whole sole on the joint, brace, slow-in push with tremor, give at 0.56, lurch, relief
+# A13 unbend: the whole sole settles ON TOP of a bent joint at knee height and presses it down: slow-in load with
+# tremor, the joint gives at 0.56 (foot drops 5 cm, body lurches down/forward), relief
 C = C_of(1.2)
-clip("wk_unbend", 1.2, sided=True, contact=C, notes="sustained diagonal sole push: weight accepted over 5 f, "
-     "sole settles low and far on the joint, brace, slow-in push along the diagonal with 7.5 Hz tremor (work "
-     "knee extends ~65 -> ~35 deg), give at 0.56 (foot and body lurch 3-4 cm), support absorbs, exhale, "
-     "heel plants f31, weight returns.  Silhouette: one long diagonal support foot -> body -> push leg",
+clip("wk_unbend", 1.2, sided=True, contact=C, notes="straighten a bent joint by pressing DOWN on it: weight "
+     "accepted over 5 f, the foot climbs and sets its whole sole flat on the joint at knee height (sole ~30 cm "
+     "up), the body rises over it then loads it: support knee sinks, pitch 8 -> 19 deg with an 8 Hz tremor, the "
+     "work knee straightening as it presses, the joint gives at 0.56 (the foot drops 5 cm, the body lurches down "
+     "and forward 3 cm), the support absorbs, exhale, the foot steps down, weight returns.  Silhouette: high bent "
+     "work leg pressing down (push is low and horizontal, brace is an upright sole at hip height)",
      layers=[weight_shift(5.0, 7.0, 31.0, 36.0, u=-0.08, r=4.0, z=-0.02),
-             tremor("p2", 0.6, 4.0, 13, C, ramp=3.0), tremor("z2", 0.0015, 4.0, 13, C, ramp=3.0, phase=1.3),
-             foot_tremor("W", "y", 0.003, 4.0, 13, C, ramp=3.0, phase=0.6)],
+             tremor("p2", 0.6, 3.75, 13, C, ramp=3.0), tremor("z2", 0.0015, 3.75, 13, C, ramp=3.0, phase=1.3),
+             foot_tremor("W", "h", 0.0025, 3.75, 13, C, ramp=3.0, phase=0.6)],
      root=[
          work_root0(),
          K(3, p=4.0, w=2.0),
-         K(7, z=Z0 - 0.008, p=7.0, w=3.0),
-         K(10.5, z=Z0 - 0.016, p=12.0, y=0.006, w=3.5),          # brace
-         K(C - 0.8, z=Z0 - 0.026, p=19.5, y=0.032, tan="f"),      # push, slow-in
-         K(C + 1.4, z=Z0 - 0.032, p=22.5, y=0.068),               # give: lurch
-         K(24, z=Z0 - 0.030, p=18.0, y=0.048),
-         K(27, z=Z0 - 0.038, p=12.0, y=0.026),                    # exhale drop
-         K(29.5, z=Z0 - 0.014, p=7.5, y=0.014),
+         K(8, z=Z0 - 0.002, p=6.0, w=3.0),
+         K(11.5, z=Z0 + 0.010, p=8.0, y=0.010, w=3.5),           # rises over the joint
+         K(C - 0.8, z=Z0 - 0.022, p=19.0, y=0.030, tan="f"),      # loads it: slow-in press
+         K(C + 1.4, z=Z0 - 0.050, p=23.0, y=0.058),               # give: lurch down / forward
+         K(24, z=Z0 - 0.044, p=18.0, y=0.046),
+         K(27, z=Z0 - 0.050, p=12.0, y=0.026),                    # exhale drop
+         K(29.5, z=Z0 - 0.016, p=7.5, y=0.014),
          K(31, z=Z0 - 0.010, p=5.5, y=0.008),
          K(33.5, p=2.8, y=0.002),
          work_root_end(36),
@@ -961,13 +1199,13 @@ clip("wk_unbend", 1.2, sided=True, contact=C, notes="sustained diagonal sole pus
      feet={
          "S": SUPPORT,
          "W": w_peel(7.0, t=2.0) + [
-             K(9, h=0.10, y=0.16, p=10.0, t=4.0, g=0.0),
-             K(11.5, o=0.175, h=0.16, y=0.33, p=30.0, t=4.0),
-             K(13, h=0.15, y=0.35, p=34.0, t=2.0, tan="f"),       # whole sole set on the joint
-             K(C - 0.8, h=0.125, y=0.40, p=36.0, t=2.0, tan="f"),
-             K(C + 1.4, h=0.11, y=0.435, p=33.0, t=0.0),          # give
-             K(24, h=0.115, y=0.425, p=34.0),
-             K(27, h=0.16, y=0.36, p=20.0, t=4.0),
+             K(9, h=0.16, y=0.12, p=14.0, t=6.0, g=0.0),
+             K(11.5, o=0.18, h=0.33, y=0.27, p=4.0, t=4.0),        # climbs onto the joint
+             K(13, h=0.305, y=0.30, p=-2.0, t=0.0, tan="f"),       # whole sole set on top
+             K(C - 0.8, h=0.288, y=0.305, p=-5.0, t=-4.0, tan="f"),  # presses: the joint yields 1.7 cm
+             K(C + 1.4, h=0.238, y=0.322, p=-9.0, t=-6.0),         # GIVE: the foot drops 5 cm
+             K(24, h=0.242, y=0.318, p=-7.0),
+             K(27, h=0.20, y=0.25, p=4.0, t=2.0),
          ] + w_plant(31.0, 36, dict(h=0.035, y=0.05, p=8.0, t=2.0)),
      })
 
@@ -1012,10 +1250,13 @@ clip("wk_tool_change", 1.2, sided=True, contact=C, notes="tool fetch/fit: weight
 C = C_of(1.4)
 clip("wk_brace", 1.4, sided=True, contact=C, notes="brace (team load): weight accepted over 5 f, the foot "
      "rises to set its sole upright against the load at hip height (thigh near horizontal), the body sits back "
-     "into a low strong stance, sustained hold kept alive by load pulses and effort tremor, re-press accent at "
+     "into a low strong stance, sustained hold kept alive by load pulses and an 8.6 Hz +/-0.5 deg effort tremor "
+     "(pitch, roll, foot), re-press accent at "
      "0.56 (foot drives 1.5 cm, body pushes back), release, heel plants f37, weight returns",
      layers=[weight_shift(5.0, 7.5, 37.0, 42.0, u=-0.085, r=4.5, z=-0.026),
-             tremor("p2", 0.35, 4.0, 14, 34, ramp=4.0), tremor("z2", 0.0018, 9.0, 14, 34, ramp=4.0, phase=0.7)],
+             tremor("p2", 0.5, 3.5, 13, 34, ramp=3.0), tremor("r2", 0.25, 4.5, 13, 34, ramp=3.0, phase=0.9),
+             tremor("z2", 0.0018, 9.0, 14, 34, ramp=4.0, phase=0.7),
+             foot_tremor("W", "y", 0.0025, 3.5, 13, 34, ramp=3.0, phase=0.4)],
      root=[
          work_root0(),
          K(3, p=3.0, w=2.0),
@@ -1046,38 +1287,43 @@ clip("wk_brace", 1.4, sided=True, contact=C, notes="brace (team load): weight ac
          ] + w_plant(37.0, 42, dict(h=0.03, y=0.025, p=7.0, t=0.0)),
      })
 
-# Push: low horizontal sole push with the body driving forward, shove at 0.56, follow-through, release
+# Push: LOW and HORIZONTAL: the sole stands vertical just off the floor, the body drives forward over a support leg
+# that straightens into one long diagonal behind it, shove at 0.56, follow-through, release
 C = C_of(1.4)
-clip("wk_push", 1.4, sided=True, contact=C, notes="push: weight accepted over 5 f, low vertical-sole contact, "
-     "deep support knee, body drives forward with tremor, shove at 0.56 (foot extends 8 cm, body lurches "
-     "forward), follow-through, release, heel plants f37, weight returns",
-     layers=[weight_shift(5.0, 7.5, 37.0, 42.0, u=-0.07, r=3.5, z=-0.022),
-             tremor("p2", 0.55, 4.0, 15, C, ramp=3.0), foot_tremor("W", "y", 0.003, 4.0, 15, C, ramp=3.0)],
+clip("wk_push", 1.4, sided=True, contact=C, notes="push: weight accepted over 5 f, the work foot sets its sole "
+     "upright against the object just off the floor (ankle ~18 cm up), the body drives forward and down over "
+     "it (+0.10 m, pitch 24 deg) so the support leg straightens into one long diagonal behind the body, a "
+     "trembling effort hold, shove at 0.56 (the foot extends 9 cm, the body lurches forward), follow-through, "
+     "release, heel plants, weight returns.  Silhouette: support foot -> body -> push foot is one low line",
+     layers=[weight_shift(5.0, 7.5, 37.0, 42.0, u=-0.07, r=3.5, z=-0.010),
+             tremor("p2", 0.55, 3.75, 15, C, ramp=3.0), foot_tremor("W", "y", 0.003, 3.75, 15, C, ramp=3.0)],
      root=[
          work_root0(),
          K(3, p=4.0, w=1.0),
-         K(8, p=6.0, z=Z0 - 0.006, w=2.0),
-         K(11.5, z=Z0 - 0.018, p=12.0, y=0.025),
-         K(15.5, z=Z0 - 0.024, p=14.5, y=0.035),
-         K(C - 0.5, z=Z0 - 0.027, p=18.5, y=0.045, tan="f"),
-         K(C + 1.5, z=Z0 - 0.030, p=21.0, y=0.075),               # shove lurch
-         K(28, z=Z0 - 0.024, p=15.0, y=0.05),
-         K(32, z=Z0 - 0.012, p=9.0, y=0.03),
-         K(35, p=6.0, y=0.02),
-         K(37, p=4.0, y=0.01, z=Z0 - 0.006),
+         K(8, p=7.0, z=Z0 - 0.004, w=2.0),
+         K(11.5, z=Z0 - 0.016, p=15.0, y=0.045),
+         K(15.5, z=Z0 - 0.030, p=21.0, y=0.072),                  # drives in: support leg becomes the diagonal
+         K(C - 0.5, z=Z0 - 0.036, p=23.5, y=0.082, tan="f"),
+         K(C + 1.5, z=Z0 - 0.044, p=26.0, y=0.108),               # shove: lurch forward
+         K(28, z=Z0 - 0.036, p=20.0, y=0.090),
+         K(32, z=Z0 - 0.014, p=11.0, y=0.050),
+         K(35, p=6.0, y=0.022),
+         K(37, p=4.0, y=0.010, z=Z0 - 0.006),
          K(39.5, p=2.4, y=0.002),
          work_root_end(42),
      ],
      feet={
-         "S": SUPPORT,
+         "S": [K(0, o=0.175, y=-0.01, w=6.0, k=7.0, p=0.0, g=1.0, t=0.0),
+               K(13, p=0.0, g=1.0), K(C, p=-7.0, g=1.0, t=8.0), K(28, p=-5.0, g=1.0),   # heel rises: drive
+                         K(33, p=0.0, g=1.0, t=0.0, tan="f")],
          "W": w_peel(7.5, t=4.0) + [
-             K(9.5, h=0.09, y=0.10, p=18.0, t=8.0, g=0.0),
-             K(11.5, o=0.17, h=0.125, y=0.27, p=56.0, t=10.0),
-             K(13, h=0.12, y=0.29, p=58.0, tan="f"),
-             K(C - 0.5, h=0.118, y=0.34, p=56.0, tan="f"),
-             K(C + 1.5, h=0.112, y=0.42, p=50.0),
-             K(28, h=0.118, y=0.40, p=52.0),
-             K(32, h=0.13, y=0.24, p=26.0, t=4.0),
+             K(9.5, h=0.08, y=0.12, p=20.0, t=8.0, g=0.0),
+             K(11.5, o=0.18, h=0.075, y=0.30, p=62.0, t=12.0),     # sole upright, low
+             K(13, h=0.068, y=0.33, p=70.0, tan="f"),
+             K(C - 0.5, h=0.066, y=0.35, p=72.0, tan="f"),
+             K(C + 1.5, h=0.064, y=0.43, p=70.0),                  # shove: extends 8 cm
+             K(28, h=0.066, y=0.41, p=68.0),
+             K(32, h=0.09, y=0.26, p=30.0, t=4.0),
              K(35, h=0.05, y=0.07, p=9.0, t=2.0),
          ] + w_plant(37.0, 42, dict(h=0.015, y=0.015, p=6.0, t=0.0)),
      })
@@ -1163,10 +1409,11 @@ clip("wk_place", 1.1, sided=True, contact=C, notes="place/install: weight to sup
          K(9, z=Z0 - 0.030, p=9.0, y=0.02),
          K(15, z=Z0 - 0.058, p=12.5, y=0.032),
          K(C, z=Z0 - 0.072, p=15.0, y=0.036, tan="f"),
-         K(C + 1.5, z=Z0 - 0.068, p=14.0),
-         K(23, z=Z0 + 0.006, p=1.0, y=0.01, tan="f"),             # relief pop (4.5 f)
-         K(25.5, z=Z0 - 0.006, p=2.5),
-         K(28, z=Z0 - 0.002, p=2.2, y=0.003),
+         K(C + 1.5, z=(Z0 - 0.068, "f"), p=14.0),
+         # relief pop over 5 f: quick push, then a <= 1 g ease into the top (rises faster than it lowered)
+         K(C + 3.0, z=(Z0 - 0.068 + 0.0255, Slope(0.034)), p=9.5),
+         K(C + 6.3, z=(Z0 + 0.006, "f"), p=1.0, y=0.01),
+         K(C + 8.3, z=Z0 - 0.004, p=2.5),
          work_root_end(33),
      ],
      feet={
@@ -1177,7 +1424,8 @@ clip("wk_place", 1.1, sided=True, contact=C, notes="place/install: weight to sup
              K(16, h=0.19, y=0.325, p=34.0, tan="f"),
              K(C, h=0.18, y=0.345, p=36.0, tan="2f"),
              K(C + 1.5, h=0.18, y=0.34, p=35.0),
-             K(23, h=0.13, y=0.22, p=14.0, t=4.0),
+             K(C + 3.5, h=0.17, y=0.30, p=28.0),                  # the foot lets go as the body pops
+             K(24.5, h=0.10, y=0.16, p=10.0, t=4.0),
          ] + w_plant(28.0, 33, dict(h=0.03, y=0.03, p=7.0, t=0.0)),
      })
 
@@ -1266,64 +1514,141 @@ clip("wk_interrupted", 0.7, sided=True, notes="startle/interrupt: 2 f flinch (le
      })
 
 
-# ---------------------------------------------------------------- V-leg sit family (unsided)
-# Seat-descent ownership: the clips carry the FULL descent in root Z (-0.779 m seated) so they are complete
-# on their own; the runtime should drive the native seat_drop FROM the authored curve (seat_drop(t) =
-# -root_z(t), see the report's "seat_descent" table: <= 1 g downward everywhere, so the spring can track it)
-# and subtract the native body's actual drop from the visual root.  Root pitch/yaw/x/y stay authored.
-SEAT_Z = -0.810           # seated root target; the seat floor contact raises it until the bottom rests
-SEAT_Y = -0.085
-SEAT_P = -9.0
-V_O, V_Y = 0.50, 0.77     # seated ankle reference (heel pivot moves the ankle ~0.11 back): knees ~0.25 m
-V_P = 48.0                # foot rests on its heel, toe up
-SQ_O, SQ_Y = 0.25, 0.20   # sumo-squat stance after the two wide steps (toes out, knees over the toes)
-SL_O, SL_Y = 0.45, 0.66   # where the unweighted heels have skidded to when the bottom lands
-GA_O, GA_Y = 0.50, 0.22   # rise: feet gathered back wide (the body rocks forward between the legs)
+def retime_release(name, t_a, new_plant):
+    """Plant the work foot earlier and spread the weight release: time-warp the work-foot and root keys
+    piecewise linearly ([t_a, old plant] -> [t_a, new plant], [old plant, end] -> [new plant, end]) and rebuild
+    the support envelope with the new plant, so the weight comes back over 5.5-7 f with its overshoot instead of
+    snapping back in ~3 f."""
+    c = [x for x in LIBRARY if x.name == name][0]
+    lay = [fn for fn in c.layers if hasattr(fn, "weight")][0]
+    wd = lay.weight
+    old, end = wd["plant"], wd["end"]
 
-clip("wk_sit_down", 1.6, notes="supported lower into the V-sit: glance down, weight onto R and a wide forward "
-     "L step, weight onto L and the R step (toes out), the body travels forward over the feet and sumo-squats "
-     "(COM over the soles, counter-pitch +14 deg, knees over the toes), then rocks back: the unweighting heels "
-     "skid forward (authored slide f25-32) as the bottom lands at <= 2 cm/f (one continuous descent, <= 1 g "
-     "down), 1 cm settle bump, the feet lift-and-place into the V (L then R), lean back face up; root Z "
-     "carries the full seat descent",
-     slides={"L": (25, 32), "R": (25, 32)}, seat=(31.0, 48.0),
+    def warp(f):
+        if f <= t_a + 1e-6 or f >= end - 1e-6:
+            return f
+        if f <= old:
+            return t_a + (f - t_a) * (new_plant - t_a) / (old - t_a)
+        return new_plant + (f - old) * (end - new_plant) / (end - old)
+    c.feet_rows["W"] = [(round(warp(f), 4), tan, ch) for f, tan, ch in c.feet_rows["W"]]
+    c.root_rows = [(round(warp(f), 4), tan, ch) for f, tan, ch in c.root_rows]
+    c.layers[c.layers.index(lay)] = weight_shift(wd["t_full"], wd["lift"], new_plant, end, u=wd["u"], r=wd["r"],
+                                                 z=wd["z"], **wd.get("extra", {}))
+    c.notes += "; weight released over %.1f f after the heel plants at f%.1f" % (end - new_plant, new_plant)
+
+
+for _n, _ta, _np in (("wk_assemble", C_of(1.0) + 3.0, 24.5), ("wk_inspect", C_of(1.3) + 6.0, 32.0),
+                     ("wk_repair", 20.6, 27.0), ("wk_maintenance", C_of(1.1) + 3.0, 27.0),
+                     ("wk_unbend", 24.0, 29.5), ("wk_tool_change", C_of(1.2) + 2.0, 29.5),
+                     ("wk_brace", 33.0, 35.5), ("wk_push", 28.0, 35.5), ("wk_pull", 28.0, 35.5),
+                     ("wk_operate", 24.0, 29.5), ("wk_place", C_of(1.1) + 3.5, 27.0), ("wk_pickup", 29.0, 31.0)):
+    retime_release(_n, _ta, _np)
+
+
+# ---------------------------------------------------------------- V-leg sit family (unsided)
+# Why it is staged this way: the hips sit 11 cm above the cube's bottom and 19 cm inside its side walls, so with
+# the bottom on (or near) the floor a deeply bent knee has nowhere to go but INTO the cube -- unless the feet are
+# set beside the body.  Both transitions therefore use a FROG CROUCH: feet planted wide beside the body, a hair
+# behind its centre (COM over the soles: the body rises / lowers straight up and down between its feet, fully
+# supported, no plop), knees bent up and FORWARD in front of the face's lower corners (knee pole biased to the
+# face: body-frame apex 60-80 deg forward, outward splay <= 16 deg), so no leg vertex enters the cube
+# (mesh-checked every frame).  The wide stance is reached / left with a two-foot hop (spread / close): no single
+# support far from the COM.  Travel contract: the family is IN PLACE (root y 0 throughout, seat included), so
+# both standing ends sit at the clip origin and no native body advance is needed; the report still exports
+# seat_travel_m (root y) next to seat_descent_m (root z) per frame.
+# Seat-descent ownership: the clips carry the FULL descent in root Z (-0.79 m seated); the runtime can drive the
+# native seat_drop FROM the authored curve and subtract the native body's actual drop from the visual root.
+BAL_UP = (1.0, 2.0)       # take-off key: in = secant (push), out = parabola slope
+BAL_DN = (2.0, 1.6)       # landing key: in = parabola slope, out = carries the fall into the absorb
+HOP_G = 1.15 * 9.81       # every hop falls at the same believable, slightly snappy 1.15 g
+SEAT_Z = -0.86            # below the seated contact: the seat clamp raises the root until the bottom rests on the floor
+SEAT_REST = -0.806        # nominal seated root (bottom on the floor at the seat pitch); the clamp makes it exact
+SEAT_P = -9.0
+SEAT_Y = 0.0              # in place
+V_O, V_Y = 0.50, SEAT_Y + 0.855   # seated ankle reference (the heel pivot moves the ankle ~0.11 back): knees ~0.25 m
+V_P = 48.0                # foot rests on its heel, toe up
+# Frog crouch: the knee stays parked in front of the face's lower corner (KNEE_C, plan view) while the shin swings
+# around it like a wiper between the V (in front) and the frog stance (beside the body): the foot travels on a
+# circle of radius SWEEP_R around the knee, the pole points at the knee (pa/pe), so nothing sweeps through the cube.
+KNEE_C, SWEEP_R = (0.45, 0.34), 0.386
+FR_PA, FR_PE = 30.0, 17.0
+FR_TH = 160.0             # sweep angle of the frog stance (0 = V, in front)
+
+
+def _sweep_xy(th):
+    return KNEE_C[0] + SWEEP_R * math.sin(math.radians(th)), KNEE_C[1] + SWEEP_R * math.cos(math.radians(th))
+
+
+FR = dict(o=round(_sweep_xy(FR_TH)[0], 4), y=round(_sweep_xy(FR_TH)[1], 4), h=0.0, p=0.0, w=24.0, k=0.0, pw=1.0,
+          pa=FR_PA, pe=FR_PE, g=1.0, t=0.0)   # frog-crouch foot (planted wide beside the body, a hair forward)
+
+
+def _sweep(f0, f1, th0, th1, p0, p1, w0, w1, lift=0.06, n=6):
+    """Airborne foot rows sweeping on the knee circle from th0 to th1 (lift arc, pitch / toe-out blend); the end
+    keys are left to the caller (planted poses)."""
+    rows = []
+    for i in range(1, n):
+        u = i / n
+        e = u * u * (3 - 2 * u)
+        th = th0 + (th1 - th0) * e
+        o, y = _sweep_xy(th)
+        rows.append(K(round(f0 + (f1 - f0) * u, 4), o=o, y=y, h=lift * math.sin(math.pi * u), p=p0 + (p1 - p0) * e,
+                      w=w0 + (w1 - w0) * e, g=0.0, pw=1.0, pa=FR_PA, pe=FR_PE, k=0.0))
+    return rows
+FR_RISE_Z = -0.10         # highest root the wide frog stance allows (legs ~straight at +-0.58)
+_RISE_PK = 17.35          # sit_up: end of the push phase (fastest rise)
+
+
+def _hop_rows(t0, t1, z0, z1=None):
+    """Ballistic root z rows between a take-off at t0 (height z0) and a landing at t1 (height z1, default z0):
+    take-off / landing keys carry the exact flight velocities (absolute slopes), so the push flows into the
+    parabola and the parabola into the absorb without a velocity kink."""
+    z1 = z0 if z1 is None else z1
+    T = (t1 - t0) / FPS
+    v0 = (z1 - z0) / T + 0.5 * HOP_G * T                 # take-off speed for the given flight (m/s)
+    ta = v0 / HOP_G                                      # time to the apex
+    za = z0 + v0 * ta - 0.5 * HOP_G * ta * ta
+    v1 = v0 - HOP_G * T
+    return [K(t0, z=(z0, Slope(v0 / FPS))), K(round(t0 + ta * FPS, 4), z=(za, "f")), K(t1, z=(z1, Slope(v1 / FPS)))]
+
+
+clip("wk_sit_down", 1.6, notes="supported lower into the V-sit: glance down at the spot, a dip and a two-foot "
+     "hop that spreads the feet wide beside the body (frog stance, lands sinking), the body lowers straight down "
+     "between its feet with the COM over the soles (<= 1 g down, knees up and forward in front of the face's "
+     "lower corners), the bottom touches at <= 2 cm/f with a 1 cm settle bump, the feet lift-and-place forward "
+     "into the V (L then R) and the body leans back -9 deg, face up; in place (root y 0)",
+     seat=(0.0, 48.0),
      root=[
          K(0, x=0.0, y=0.0, z=Z0, p=P0, r=0.0, w=0.0),
-         K(2.5, p=7.0, z=-0.032),                         # glance down at the spot
-         K(3.5, x=0.032, r=2.6),                          # weight onto R
-         K(6.5, x=0.026, y=0.03, z=-0.040),
-         K(9, x=0.008, r=0.5),
-         K(11, x=-0.030, r=-2.6, y=0.06, z=-0.058, tan=("a", "f")),   # weight onto L
-         K(13.5, x=-0.024, r=-2.0),
-         K(16, x=0.0, r=0.0, y=0.105, p=10.0),
-         K(17, z=-0.20),
-         K(20, y=0.145, p=13.0),
-         K(22, z=-0.42),
-         K(23, y=0.155, p=14.0),                          # deepest balanced squat (COM over the soles)
-         K(26, z=-0.60, y=0.10, p=10.0),                  # rock back
-         K(29, z=-0.725, y=0.0, p=4.0),
-         K(32, z=-0.803, y=-0.085, p=-1.0, tan=(0.55, "f")),  # bottom touches (decelerated)
-         K(33.5, z=-0.787),                               # settle bump
-         K(35.5, z=-0.810, tan="f"),
-         K(40, p=-4.0, r=1.5),
-         K(44, p=-10.0, r=-1.0, w=2.0),
+         K(3, p=7.5, z=-0.032),                           # glance down at the spot
+         K(5.5, z=-0.062, p=4.0, y=0.05, tan="f"),        # dip (anticipation), COM over the balls
+         K(7.5, y=0.05),
+     ] + _hop_rows(7.0, 11.5, -0.050, -0.120) + [
+         K(9.0, p=-1.0, r=1.2), K(11.5, p=3.0, r=0.0, y=0.0),
+         K(13.5, z=-0.200, p=6.0),                        # lands sinking: the descent continues
+         K(18.0, z=-0.400, p=4.0),
+         K(24.0, z=-0.640, p=0.0),
+         K(29.0, z=-0.770, p=-4.0),
+         K(31.0, z=(SEAT_REST, (0.6, "f")), p=-6.0),      # bottom touches (decelerated)
+         K(32.5, z=SEAT_REST + 0.010),                    # 1 cm settle bump
+         K(34.5, z=SEAT_Z, p=-8.0, tan="f"),
+         K(38, p=-9.5, r=1.2),
+         K(44, p=-11.0, r=-0.8, w=2.0),                   # leans back, face up to the point of interest
          K(48, x=0.0, y=SEAT_Y, z=SEAT_Z, p=SEAT_P, r=0.0, w=0.0),
      ],
-     feet={g: [K(0, o=0.19, y=0.0, h=0.0, p=0.0, w=5.0, k=6.0, g=1.0, t=0.0, tan="f"),
-               K(a, o=0.19, y=0.0, h=0.0, p=0.0, w=5.0, g=1.0, tan="f"),
-               K(a + 1.5, o=0.19, y=0.0, h=0.0, p=-12.0, w=5.0, g=1.0),
-               K(a + 3.3, h=0.07, o=0.23, y=0.11, p=4.0, g=0.0, w=10.0),
-               K(a + 5.0, h=0.02, o=0.248, y=0.195, p=6.0, g=0.3),
-               K(a + 6.0, o=SQ_O, y=SQ_Y, h=0.0, p=0.0, k=10.0, w=14.0, g=1.0, tan="f"),
-               K(20, k=16.0),
-               K(25, o=SQ_O, y=(SQ_Y, ("f", 1.6)), p=0.0, k=22.0, w=14.0, g=1.0, tan="f"),
-               K(26.8, k=28.0), K(29.5, k=28.0),                                      # knees fall open as it sits
-               K(32, o=SL_O, y=SL_Y, p=30.0, k=34.0, t=6.0, w=16.0, g=1.0, tan="f"),   # heels skid forward
-               K(b, o=SL_O, y=SL_Y, h=0.0, p=30.0, k=26.0, w=16.0, g=1.0, tan="f"),
-               K(b + 2.5, h=0.05, o=0.47, y=0.65, p=38.0, k=18.0, g=0.4, t=2.0),
-               K(b + 5.0, o=V_O, y=V_Y, h=0.0, p=V_P, w=14.0, k=16.0, g=1.0, t=0.0, tan="f"),
-               K(48, o=V_O, y=V_Y, h=0.0, p=V_P, w=14.0, k=16.0)]
-           for g, a, b in (("L", 3.5, 34.0), ("R", 10.0, 37.5))},
+     feet={g: [K(0, o=0.19, y=0.0, h=0.0, p=0.0, w=5.0, k=6.0, pw=0.0, pa=FR_PA, pe=FR_PE, g=1.0, t=0.0, tan="f"),
+               K(5.5, o=0.19, y=0.0, h=0.0, p=0.0, pw=0.0, g=1.0, tan="f"),
+               K(7.0, o=0.19, y=0.0, h=0.0, p=-14.0, t=0.0, g=1.0, tan="f"),         # push-off on the balls
+               K(8.0, h=0.04, o=0.26, y=0.0, p=-8.0, g=0.4, pw=0.5),
+               K(9.3 + d, h=0.06 + 0.02 * d, o=0.46, y=-0.01, p=4.0, g=0.0, w=18.0),  # R tucks a little higher
+               K(11.1, h=0.012, o=FR["o"] - 0.02, y=FR["y"], p=4.0, g=0.6, pa=12.0),
+               K(11.5, tan="f", **dict(FR, pa=12.0)),                                 # lands wide (frog)
+               K(19.0, pa=FR_PA),                                                     # knees open as they bend
+               K(b, tan="f", **FR),
+               ] + _sweep(b, b + 7.0, FR_TH, 4.0, 0.0, 40.0, FR["w"], 15.0, lift=0.07, n=7) + [
+               K(b + 7.0, o=V_O, y=V_Y, h=0.0, p=V_P, w=14.0, k=16.0, pw=0.0, g=1.0, tan="f"),   # heel lands in the V
+               K(48, o=V_O, y=V_Y, h=0.0, p=V_P, w=14.0, k=16.0, pw=0.0, g=1.0)]
+           for g, d, b in (("L", 0.0, 33.0), ("R", 1.0, 36.0))},
      )
 
 
@@ -1357,69 +1682,59 @@ clip("wk_sit_idle", 4.8, loop=True, seat=(0.0, 144.0), notes="attentive V-sit: b
                  K(97, t=0.0)],
      })
 
-clip("wk_sit_up", 1.1, notes="supported rise: eyes snap (head lifts), feet pulled back wide beside the body (two "
-     "placements, toes out, knees up and out), a small rock back, then the body throws itself forward rolling onto "
-     "its front-bottom edge between the legs (pitch +31 deg) so the bottom lifts with the COM arriving over the "
-     "soles; push up forward-first then up with an ease-out; weight onto R and the L closing step during the "
-     "last of the rise, weight onto L and the R closing step after L has planted, dip and settle; root advances "
-     "~0.30 m over the feet",
-     seat=(0.0, 14.0),
+clip("wk_sit_up", 1.1, notes="supported rise (in place): eyes snap and the head lifts, the feet are pulled in "
+     "(L then R, one quick placement each) to the frog crouch beside the body, weight rocks onto the feet, the "
+     "body pushes straight up between them (COM over the soles, knees forward; ~1.6 g push, 1 g ease-out) "
+     "into a two-foot hop that closes the feet to the stance (L lands a half frame first), absorb and settle; "
+     "ends at the clip origin (root y 0)",
+     seat=(0.0, 33.0),
      root=[
          K(0, x=0.0, y=SEAT_Y, z=SEAT_Z, p=SEAT_P, r=0.0, w=0.0),
-         K(2, p=-6.5),                                     # eyes snap: head lifts
-         K(5.5, p=-7.0),
-         K(9.5, p=-11.0, y=-0.095),                        # small rock back (anticipation)
-         K(11.5, p=0.0, y=-0.07, z=-0.83),
-         K(13, p=18.0, y=0.0, z=-0.82),
-         K(14.5, p=31.0, y=0.075, z=-0.746),               # on the front-bottom edge: the bottom lifts
-         # explosive push (~3 g for 3 f), then a long <= 0.8 g deceleration: the ease-out of a rise
-         K(15.5, z=-0.7298), K(16.5, z=-0.6811),
-         K(17.5, p=26.0, y=0.165, z=-0.603),               # forward over the feet first ...
-         K(19, x=0.004, r=0.4, z=-0.469),
-         K(20.5, p=18.0, y=0.197, z=-0.354),               # ... then up (<= 0.8 g deceleration)
-         K(21.5, x=0.034, r=2.8),                          # weight onto R for the L closing step
-         K(22, z=-0.258),
-         K(23.5, p=10.0, y=0.207, z=-0.180),
-         K(25, p=6.0, y=0.212, z=-0.121),
-         K(26, x=0.012, r=0.8),
-         K(26.5, z=-0.081),
-         K(27.5, x=-0.022, r=-2.2),                        # weight onto L for the R closing step
-         K(28, z=-0.0588, p=3.0),
-         K(29.2, z=-0.055, tan="f"),
-         K(31.2, z=-0.050, p=3.2, x=-0.012, r=-1.4),       # R plants: absorb dip
-         K(32, x=0.002, r=0.2),
-         K(33, x=0.0, y=0.212, z=Z0, p=P0, r=0.0, w=0.0),
+         K(1.5, p=-13.0),                                 # eyes snap: the head lifts
+         K(4.0, p=-14.0),
+         K(8.5, p=-10.0, z=SEAT_Z),
+         K(11.0, z=(SEAT_REST, "f"), p=-7.0),             # weight onto the feet
+         # push: ~1.4 g up for 6.4 f, then a 1 g deceleration that carries straight into the hop-in take-off
+         K(_RISE_PK, z=(SEAT_REST + 0.317, Slope(0.0997)), p=-1.0),
+         K(23.0, p=1.0),
+     ] + _hop_rows(23.0, 27.0, FR_RISE_Z, -0.048) + [
+         K(25.0, p=-3.0, r=1.0),                          # face up "ta!"
+         K(27.0, p=1.5, r=0.0),
+         K(29.0, z=Z0 - 0.026, p=4.0, tan="f"),           # absorb
+         K(31.0, z=Z0 - 0.005, p=2.0),
+         K(33, x=0.0, y=0.0, z=Z0, p=P0, r=0.0, w=0.0),
      ],
-     feet={g: [K(0, o=V_O, y=V_Y, h=0.0, p=V_P, w=14.0, k=16.0, g=1.0, t=0.0, tan="f"),
-               K(a, o=V_O, y=V_Y, h=0.0, p=V_P, w=14.0, k=16.0, g=1.0, tan="f"),
-               K(a + 2.0, h=0.06, o=0.49, y=0.47, p=22.0, g=0.3, w=20.0),
-               K(a + 4.0, o=go, y=GA_Y, h=0.0, p=0.0, w=24.0, k=40.0, g=1.0, tan="f"),
-               K(16, k=40.0), K(20.5, k=18.0),
-               K(c, o=go, y=GA_Y, h=0.0, p=0.0, t=0.0, w=24.0, g=1.0, tan="f"),
-               K(c + 1.5, o=go, y=GA_Y, h=0.0, p=-6.0, w=24.0, g=1.0, k=12.0),
-               K(c + 3.0, h=0.06, o=0.33, y=fy + 0.005, p=2.0, g=0.0, w=12.0),
-               K(c + 4.5, o=fo, y=fy, h=0.0, p=0.0, w=6.0, k=7.0, g=1.0, tan="f"),
-               K(33, o=fo, y=fy, h=0.0, p=0.0, w=6.0, k=7.0, g=1.0)]
-           for g, a, c, fo, fy, go in (("L", 2.5, 21.5, 0.21, 0.25, GA_O), ("R", 5.0, 26.5, 0.22, 0.23, GA_O))},
+     feet={g: [K(0, o=V_O, y=V_Y, h=0.0, p=V_P, w=14.0, k=16.0, pw=0.0, pa=FR_PA, pe=FR_PE, g=1.0, t=0.0, tan="f"),
+               K(a, o=V_O, y=V_Y, h=0.0, p=V_P, w=14.0, k=16.0, pw=0.0, g=1.0, tan="f"),
+               K(a + 0.8, o=0.47, y=_sweep_xy(4.0)[1], h=0.025, p=40.0, w=15.0, k=4.0, pw=0.8, g=0.0),   # heel lifts
+               ] + _sweep(a + 0.8, a + 7.0, 4.0, FR_TH, 40.0, 0.0, 15.0, FR["w"], lift=0.07, n=7) + [
+               K(a + 7.0, tan="f", **FR),                                                  # planted beside the body
+               K(17.0, pa=FR_PA),                                                          # knees close in as they straighten
+               K(22.0, tan="f", **dict(FR, pa=12.0)),
+               K(23.0, o=FR["o"], y=FR["y"], h=0.0, p=-14.0, t=0.0, g=1.0, w=FR["w"], tan="f"),   # push-off
+               K(24.2 + d, h=0.05 + 0.02 * d, o=0.44, y=-0.02, p=-4.0, g=0.3),                 # R tucks higher
+               K(25.8, h=0.03, o=0.25, y=-0.005, p=3.0, g=0.0, w=8.0, k=6.0, pw=0.2),
+               K(27.0, o=0.19, y=0.0, h=0.0, p=0.0, w=5.0, k=6.0, pw=0.0, g=1.0, tan="f"),
+               K(33, o=0.19, y=0.0, h=0.0, p=0.0, w=5.0, k=6.0, pw=0.0, g=1.0)]
+           for g, a, d in (("L", 1.6, 0.0), ("R", 3.8, 1.0))},
      )
 
 
 # ---------------------------------------------------------------- social / acting
-# Airborne root segments use ballistic tangents: (.., 2) out of a take-off key and (2, ..) into a landing key
-# with a flat apex reproduce a free-fall parabola exactly (cubic Hermite through a quadratic).
-BAL_UP = (1.0, 2.0)       # take-off key: in = secant (push), out = parabola slope
-BAL_DN = (2.0, 1.6)       # landing key: in = parabola slope, out = carries the fall into the absorb
+# Airborne root segments use ballistic tangents (BAL_UP / BAL_DN, defined with the sit family): (.., 2) out of a
+# take-off key and (2, ..) into a landing key with a flat apex reproduce a free-fall parabola exactly.
 
-clip("wk_greet", 1.6, notes="greeting: 'oh!' rise onto the toes, weight onto L and a small R adjust step back "
+clip("wk_greet", 1.6, notes="greeting (starts from the wk_idle frame-0 pose: weight on R, feet 5.7 cm offset, "
+     "2 deg roll): 'oh!' rise onto the toes, weight onto L and a small R adjust step back "
      "(feet end offset 7 cm, never twin posts), dip wind-up, bow-hop (~5 cm, ballistic) with a 12 deg nod at "
      "the apex and the R foot tucked higher, landing absorb, happy glow: weight on L with a 6-7 deg side-tilt, "
      "free R heel pops on the tiny bounce, eased release, R steps back to the stance",
      root=[
-         K(0, x=0.0, y=0.0, z=Z0, p=P0, r=0.0, w=0.0),
-         K(2, z=Z0, p=P0),
-         K(5.5, z=-0.010, p=-3.0, y=0.045, tan="f"),      # "oh!" up on the toes (body over the balls)
-         K(9, z=-0.032, p=-0.5, x=-0.030, r=-2.0, y=0.006),   # weight onto L
-         K(13.5, x=-0.030, r=-2.0, z=-0.036, y=0.0),
+         K(0, x=0.012, y=0.0, z=-0.024, p=2.0, r=2.0, w=0.0),   # = wk_idle f0 (weight on R, feet offset)
+         K(2, z=-0.026, p=2.6, x=0.010, r=1.6),           # notices
+         K(5.5, z=-0.010, p=-3.0, y=0.045, x=0.004, r=0.8, tan="f"),   # "oh!" up on the toes (body over the balls)
+         K(9, z=-0.032, p=-0.5, x=-0.060, r=-3.0, y=0.006),   # weight well onto L before R moves
+         K(13.5, x=-0.050, r=-2.6, z=-0.036, y=0.0),
          K(15, z=-0.060, p=-3.0, x=-0.010, r=-0.5),
          K(16.5, z=-0.074, p=-4.0, x=-0.008, r=0.0, tan="f"),   # wind-up dip
          K(18.5, z=-0.012, p=3.0, tan=BAL_UP),            # take-off
@@ -1431,23 +1746,23 @@ clip("wk_greet", 1.6, notes="greeting: 'oh!' rise onto the toes, weight onto L a
          K(35, z=-0.052, r=-7.0, w=-4.0),                 # tiny bounce, aww tilt
          K(38, z=-0.042, r=-5.8, p=-3.0),
          K(41, r=-6.2, w=-3.0, z=-0.044, x=-0.044),
-         K(43.5, x=-0.040, r=-3.0, p=0.0, z=-0.036),
-         K(45.5, x=-0.018, r=-1.0),
+         K(43.0, x=-0.062, r=-3.4, p=0.0, z=-0.036),           # over L while R steps home
+         K(46.0, x=-0.026, r=-1.2),
          K(48, x=0.0, y=0.0, z=Z0, p=P0, r=0.0, w=0.0),
      ],
      feet={
-         "L": [K(0, o=0.19, y=0.0, h=0.0, p=0.0, w=6.0, g=1.0, t=0.0, tan="f"),
+         "L": [K(0, o=0.175, y=0.045, h=0.0, p=0.0, w=9.0, g=1.0, t=0.0, tan="f"),   # = wk_idle f0
                K(2, h=0.0, p=0.0, t=0.0, g=1.0, tan="f"),
                K(5.5, h=0.0, p=-12.0, t=-4.0, g=1.0, tan="f"),
                K(9, h=0.0, p=0.0, t=0.0, g=1.0, tan="f"),
-               K(16.5, h=0.0, p=0.0, y=0.0, g=1.0, tan="f"),
-               K(18, h=0.0, y=0.0, o=0.19, p=-22.0, t=-8.0, g=1.0, tan="f"),     # push-off on the ball
+               K(16.5, h=0.0, p=0.0, y=0.045, g=1.0, tan="f"),
+               K(18, h=0.0, y=0.045, o=0.175, p=-22.0, t=-8.0, g=1.0, tan="f"),     # push-off on the ball
                K(19.3, h=0.03, p=-14.0, t=-6.0, g=0.6),
-               K(21.3, h=0.075, y=0.03, p=-2.0, t=-2.0, g=0.0),
-               K(23.6, h=0.012, y=0.005, p=5.0, g=0.6),
-               K(24.2, h=0.0, y=0.0, p=0.0, t=0.0, g=1.0, tan="f"),
-               K(48, h=0.0, p=0.0, t=0.0)],
-         "R": [K(0, o=0.19, y=-0.01, h=0.0, p=0.0, w=6.0, g=1.0, t=0.0, tan="f"),
+               K(21.3, h=0.075, y=0.025, o=0.185, p=-2.0, t=-2.0, g=0.0),       # the hop brings L home
+               K(23.6, h=0.012, y=0.003, p=5.0, g=0.6),
+               K(24.2, h=0.0, y=0.0, o=0.19, p=0.0, t=0.0, g=1.0, tan="f"),
+               K(48, h=0.0, y=0.0, o=0.19, p=0.0, t=0.0)],
+         "R": [K(0, o=0.19, y=-0.012, h=0.0, p=0.0, w=5.0, g=1.0, t=0.0, tan="f"),   # = wk_idle f0
                K(2, h=0.0, p=0.0, t=0.0, g=1.0, tan="f"),
                K(5.5, h=0.0, p=-12.0, t=-4.0, g=1.0, tan="f"),
                K(9, o=0.19, y=-0.01, h=0.0, p=0.0, t=0.0, g=1.0, tan="f"),
@@ -1497,7 +1812,7 @@ clip("wk_cheer", 0.9, notes="completion cheer: quick dip, springy ballistic hop 
                K(14.2 + d, h=0.18 + e, y=0.05, p=6.0),
                K(16.6 + d, h=0.015, p=3.0, y=0.0, o=0.19, g=0.6),
                K(17 + d, h=0.0, p=0.0, t=0.0, g=1.0, y=0.0, tan="f"),
-               K(27, h=0.0, p=0.0)] for g, d, e in (("L", 0.0, 0.0), ("R", 0.5, 0.03))})
+               K(27, h=0.0, p=0.0)] for g, d, e in (("L", 0.0, 0.0), ("R", 0.3, 0.03))})
 
 
 # ---------------------------------------------------------------- dances (120 BPM, beat = 15 f, 8 beats)
@@ -1505,10 +1820,9 @@ clip("wk_cheer", 0.9, notes="completion cheer: quick dip, springy ballistic hop 
 # (and the phrase end) are asymmetric poses -- weight on one leg, knees out 18-24 deg, the other foot offset or
 # pointed -- held 4-6 f with life; every hop is ballistic with a real tuck (feet >= 10 cm up relative to the body)
 # and the two feet never move as twins (offset timing / height / placement).
-HOP_G = 1.15 * 9.81       # slightly snappier than real gravity (quick, light character)
 
 
-def dance_stance(dz=-0.022, dk=10.0, t_in=(0.0, 6.0), t_out=(112.0, 120.0)):
+def dance_stance(dz=-0.022, dk=8.0, t_in=(0.0, 6.0), t_out=(112.0, 120.0)):
     """Dance base: a lower, springier stance (knees bent ~40 deg) with the knees splayed out, eased in over
     the first beat and out over the last, so the legs never read as straight posts between the accents."""
     def fn(t, P, ev):
@@ -1517,14 +1831,6 @@ def dance_stance(dz=-0.022, dk=10.0, t_in=(0.0, 6.0), t_out=(112.0, 120.0)):
         for leg in "LR":
             P[leg]["k"] += dk * env
     return fn
-
-
-def _hop(t0, t1, z0):
-    """Ballistic root hop rows (take-off, apex, landing at the same height): the apex height follows from the
-    flight time, so every hop in the library falls at the same believable 1.15 g."""
-    half = (t1 - t0) * 0.5 / FPS
-    return [K(t0, z=(z0, BAL_UP)), K(t0 + (t1 - t0) * 0.5, z=(z0 + 0.5 * HOP_G * half * half, "f")),
-            K(t1, z=(z0, BAL_DN))]
 
 
 def _tuck(t0, t1, h, y=0.04, o=None, p_air=10.0, lead=0.0, settle=None, y0=0.0, o0=0.19, w0=5.0):
@@ -1550,39 +1856,40 @@ clip("wk_dance_a", 4.0, notes="phrase A: TA-DA jump-out hit (b1: wide asymmetric
            (120, 360.0, "f")],
      root=[
          K(0, x=0.0, y=0.0, z=Z0, p=P0, r=0.0, w=0.0),
-         K(1.0, z=-0.062, p=0.0, tan="f"),                       # dip
-         K(5.0, r=6.0, p=-4.0, x=-0.010),                        # jump-out (ballistic 2 -> 5) ...
+         K(2.0, z=-0.050, p=0.0, tan="f"),                       # 2 f anticipation dip ...
+         K(5.5, r=6.0, p=-4.0, x=-0.010),                        # ... jump-out (ballistic 3 -> 5.5) ...
          K(7.5, z=-0.078, r=8.0, p=-5.0, x=-0.012, tan="f"),     # ... TA-DA hit (b1)
-         K(9.5, z=-0.070),
-         K(10, z=-0.082, r=8.6, p=-5.5),
-         K(13.5, z=-0.050, r=1.0, p=1.0, x=0.0),
-         K(15, z=(-0.05, "f")), K(17.5, z=(-0.096, (2.0, "f"))), K(17.5, r=-7.0, w=-8.0),                    # b2 groove
-         K(22.5, z=(-0.052, "f")), K(25.0, z=(-0.097, (2.0, "f"))), K(22.5, w=4.0, r=-2.0), K(25, r=7.0, w=8.0),
-         K(29, z=-0.055, r=2.0, w=0.0),
-         K(30, z=(-0.052, "f"), x=0.0), K(32.5, z=(-0.092, (2.0, "f")), r=3.0),          # b3 step R
+         K(11, r=8.6, p=-5.5),
+         # groove dips land ON the beat / the 'and' (2.5 f down at <= 1 g, then up)
+         K(12.5, z=(-0.058, "f"), r=1.0, p=1.0, x=0.0),
+         K(15, z=(-0.082, (2.0, "f")), r=-7.0, w=-8.0),                                  # b2 groove
+         K(20, z=(-0.052, "f"), w=4.0, r=-2.0), K(22.5, z=(-0.084, (2.0, "f")), r=7.0, w=8.0),
+         K(27, z=-0.055, r=2.0, w=0.0),
+         K(27.5, z=(-0.052, "f"), x=0.0), K(30, z=(-0.084, (2.0, "f")), r=3.0),          # b3 step R
          K(34.5, x=0.075, r=7.5, z=-0.065),
          K(37.5, z=-0.098, tan="f"),
          K(40.5, x=0.14, r=4.0, z=-0.058),
          K(43, x=0.15, r=1.5),
-         K(45, z=(-0.052, "f")), K(47.5, z=(-0.092, (2.0, "f")), r=-3.0),                # b4 step L
+         K(42.5, z=(-0.052, "f")), K(45, z=(-0.084, (2.0, "f")), r=-3.0),                # b4 step L
          K(49.5, x=0.075, r=-7.5, z=-0.065),
-         K(52.5, z=-0.098, tan="f"),
-         K(55, x=-0.03, r=-5.0, z=-0.058),
+         K(52.5, z=-0.090, tan="f"),
+         K(55, x=-0.03, r=-5.0, z=-0.070),
          K(57, x=-0.065, r=-7.0, z=-0.062, p=0.0),                                     # weight onto L
          K(58.5, z=-0.048, p=-5.0),
          K(60, z=-0.040, p=-9.0, r=-7.5, tan="f"),                                     # KICK hit (b5)
          K(62.5, z=-0.046, p=-8.0, r=-6.5),
          K(65, z=-0.042, p=-9.0, r=-7.2),
          K(68.5, z=-0.060, p=-2.0, x=-0.05, r=-4.0),
-         K(72, z=-0.068, x=-0.01, r=-1.0, p=1.0),
-         K(75, z=(-0.052, "f")), K(77.5, z=(-0.1, (2.0, "f"))), K(75, x=0.0, r=0.0), K(77.5, r=7.0, w=7.0),   # b6 knee pops
-         K(82.5, z=(-0.054, "f")), K(85.0, z=(-0.1, (2.0, "f"))), K(82.5, w=-3.0, r=0.0), K(85, r=-7.0, w=-7.0),
-         K(89, z=-0.06, r=0.0, w=0.0),
-         K(90.5, w=0.0),
-         K(91.5, w=-30.0, z=-0.074, p=4.0, tan="f"),                                     # wind-up dip (b7)
+         K(70.5, z=-0.064, x=-0.01, r=-1.0, p=1.0),
+         K(72.5, z=(-0.052, "f"), x=0.0, r=0.0), K(75, z=(-0.086, (2.0, "f")), r=7.0, w=7.0),   # b6 knee pops
+         K(80, z=(-0.054, "f"), w=-3.0, r=0.0), K(82.5, z=(-0.086, (2.0, "f")), r=-7.0, w=-7.0),
+         K(87, z=-0.06, r=0.0), K(88.5, w=0.0),
+         K(91.0, w=-26.0),
+         K(92.0, w=-30.0, z=-0.058, p=4.0, tan="f"),                                     # wind-up dip, 1 f hang (b7)
          K(95.5, w=70.0, p=-1.0),
-         K(97.5, w=170.0, p=3.0),
-         K(98.5, z=-0.052, w=186.0, tan="f"),                                           # 7-and: touch, re-bound
+         K(97.5, w=172.0, p=3.0),                                                       # 7-and: touch ...
+         K(98.5, z=-0.052, tan="f"),                                                    # ... re-bound (feet planted:
+         K(99.5, w=192.0),                                                              #  body turns only 20 deg)
          K(102.25, w=290.0, p=-3.0),
          K(105, w=360.0, p=-4.0, x=0.0),                                                # beat 8: land ...
          K(107.5, z=-0.094, r=8.0, p=-5.5, tan="f"),                                    # ... TA-DA hit
@@ -1590,32 +1897,34 @@ clip("wk_dance_a", 4.0, notes="phrase A: TA-DA jump-out hit (b1: wide asymmetric
          K(111.5, z=-0.086, r=7.6, p=-4.5),
          K(115.5, z=-0.050, r=1.5, p=1.0),
          K(120, x=0.0, y=0.0, z=Z0, p=P0, r=0.0, w=360.0),
-     ] + _hop(2.0, 5.0, -0.030) + _hop(93.5, 97.5, -0.032) + _hop(99.5, 105.0, -0.042),
+     ] + _hop_rows(3.0, 5.5, -0.038) + _hop_rows(93.5, 97.5, -0.032) + _hop_rows(99.5, 105.0, -0.042),
      feet={
          "L": [K(0, o=0.19, y=0.0, h=0.0, p=0.0, w=5.0, g=1.0, t=0.0, k=6.0, tan="f"),
-               K(2.0, h=0.0, o=0.19, y=0.0, p=-14.0, w=5.0, g=1.0, tan="f"), K(3.5, h=0.06, o=0.27, y=0.02, p=0.0, g=0.0),
-               K(5.0, h=0.0, o=0.34, y=0.03, k=22.0, w=14.0, g=1.0, tan="f"),               # wide, toe out
-               K(14, k=10.0), K(17, p=0.0, g=1.0, tan="f"), K(18.5, p=-18.0, g=1.0),   # heel pop (b2)
-               K(21, p=0.0, g=1.0, tan="f"),
+               K(2.0, h=0.0, o=0.19, y=0.0, p=0.0, w=5.0, g=1.0, tan="f"),
+               K(3.0, h=0.0, o=0.19, y=0.0, p=-14.0, w=5.0, g=1.0, tan="f"), K(4.3, h=0.06, o=0.27, y=0.02, p=0.0, g=0.0),
+               K(5.5, h=0.0, o=0.34, y=0.03, k=20.0, w=14.0, g=1.0, tan="f"),               # wide, toe out
+               K(12, k=10.0), K(13.5, p=0.0, g=1.0, tan="f"), K(15, p=-18.0, g=1.0),   # heel pop ON b2
+               K(17.5, p=0.0, g=1.0, tan="f"),
                K(37.5, o=0.34, y=0.03, h=0.0, tan="f"),                                # L closes (b3)
                K(39, h=0.05, o=0.27), K(40.5, o=0.19, y=0.02, h=0.0, tan="f"),
                K(45, o=0.19, y=0.02, h=0.0, tan="f"), K(47, h=0.06, o=0.27, y=0.0),          # L steps out (b4)
                K(49.5, o=0.34, y=-0.01, h=0.0, k=14.0, tan="f"),
-               K(73, o=0.34, y=-0.01, h=0.0, p=0.0, g=1.0, k=14.0, tan="f"),
-               K(75, h=0.0, p=0.0, g=1.0, k=20.0, tan="f"), K(77, p=-16.0, g=1.0),    # knee pop L (b6)
-               K(80, p=0.0, g=1.0, k=10.0, tan="f"),
+               K(72.5, o=0.34, y=-0.01, h=0.0, p=0.0, g=1.0, k=14.0, tan="f"),
+               K(73.5, h=0.0, p=0.0, g=1.0, k=18.0, tan="f"), K(75, p=-16.0, g=1.0),  # knee pop L ON b6
+               K(78, p=0.0, g=1.0, k=10.0, tan="f"),
                K(86.5, o=0.34, y=-0.01, h=0.0, tan="f"), K(88, h=0.04, o=0.27),        # close for the spin
                K(89.5, o=0.21, y=0.0, h=0.0, w=5.0, tan="f"),
                ] + _tuck(93.5, 97.5, 0.15, y=0.05, o=0.21, lead=-0.3, o0=0.21)[1:] + _tuck(99.5, 105.0, 0.23, y=0.07, o=0.33, o0=0.21)[1:] + [
-               K(105, k=22.0, w=14.0),
+               K(105, k=20.0, w=14.0),
                K(112, o=0.33, y=0.0, h=0.0, p=0.0, g=1.0, k=18.0, tan="f"),
                K(113.5, h=0.04, o=0.27), K(115.5, o=0.19, y=0.0, h=0.0, k=6.0, w=5.0, tan="f"),
                K(120, o=0.19, y=0.0, h=0.0, k=6.0, w=5.0)],
          "R": [K(0, o=0.19, y=0.0, h=0.0, p=0.0, w=5.0, g=1.0, t=0.0, k=6.0, tan="f"),
-               K(2.0, h=0.0, o=0.19, y=0.0, p=-14.0, w=5.0, g=1.0, tan="f"), K(3.6, h=0.05, o=0.25, y=-0.02, p=0.0, g=0.0),
-               K(5.0, h=0.0, o=0.29, y=-0.05, k=18.0, w=8.0, g=1.0, tan="f"),
-               K(14, k=10.0), K(24.5, p=0.0, g=1.0, tan="f"), K(26, p=-16.0, g=1.0),
-               K(28.5, p=0.0, g=1.0, tan="f"),
+               K(2.0, h=0.0, o=0.19, y=0.0, p=0.0, w=5.0, g=1.0, tan="f"),
+               K(3.0, h=0.0, o=0.19, y=0.0, p=-14.0, w=5.0, g=1.0, tan="f"), K(4.4, h=0.05, o=0.25, y=-0.02, p=0.0, g=0.0),
+               K(5.5, h=0.0, o=0.29, y=-0.05, k=18.0, w=8.0, g=1.0, tan="f"),
+               K(12, k=10.0), K(21, p=0.0, g=1.0, tan="f"), K(22.5, p=-16.0, g=1.0),
+               K(25, p=0.0, g=1.0, tan="f"),
                K(30, o=0.29, y=-0.05, h=0.0, tan="f"), K(32, h=0.06, o=0.37, y=-0.03),   # R steps out (b3)
                K(34.5, o=0.45, y=-0.02, h=0.0, k=14.0, tan="f"),
                K(52.5, o=0.45, y=-0.02, h=0.0, tan="f"), K(54, h=0.05, o=0.37),        # R closes (b4)
@@ -1627,9 +1936,9 @@ clip("wk_dance_a", 4.0, notes="phrase A: TA-DA jump-out hit (b1: wide asymmetric
                K(65, h=0.31, y=0.505, p=-35.0, t=-14.0, tan="f"),
                K(68, h=0.12, y=0.14, p=8.0, t=0.0, o=0.28),
                K(70.5, h=0.0, y=0.0, p=0.0, o=0.30, g=1.0, k=14.0, tan="f"),
-               K(82.5, h=0.0, p=0.0, g=1.0, k=20.0, tan="f"), K(84.5, p=-16.0, g=1.0),  # knee pop R (b6)
-               K(87.5, p=0.0, g=1.0, k=10.0, tan="f"),
-               K(89, o=0.30, y=0.0, h=0.0, tan="f"), K(90.5, h=0.04, o=0.25),
+               K(80.5, h=0.0, p=0.0, g=1.0, k=18.0, tan="f"), K(82.5, p=-16.0, g=1.0),  # knee pop R on the and
+               K(85.5, p=0.0, g=1.0, k=10.0, tan="f"),
+               K(90.0, o=0.30, y=0.0, h=0.0, tan="f"), K(91.0, h=0.04, o=0.25),
                K(92, o=0.20, y=0.0, h=0.0, w=5.0, tan="f"),
                ] + _tuck(93.5, 97.5, 0.18, y=0.04, o=0.20, lead=0.3, o0=0.20)[1:] + _tuck(99.5, 105.0, 0.25, y=0.05, o=0.28, settle=-0.05, o0=0.20)[1:] + [
                K(105, k=18.0, w=8.0),
@@ -1640,55 +1949,78 @@ clip("wk_dance_a", 4.0, notes="phrase A: TA-DA jump-out hit (b1: wide asymmetric
 
 
 def _taps():
-    """Phrase B beats 1-4: alternating forward heel taps on the 8ths with yaw/roll wiggles."""
+    """Phrase B beats 1-4: taps land ON the 8ths (f 7.5 ... 52.5) and change every beat so the groove never
+    loops: forward heel taps (b1), diagonal-out heel taps (b2), toe taps behind with the roll reversed (b3), a
+    beat-4 accent (deep dip + 2 f freeze) and a long forward heel tap.  The body sways over the support foot on
+    every tap (no single support far from the COM), yaws toward the tap (away from it on back taps) and dips ON
+    the beat (2 f down, 5 f up; 2 cm on the 'and's)."""
+    kinds = ["fwd", "fwd", "diag", "diag", "back", "back", "far"]
     L, R, root = [], [], []
-    for i in range(8):
-        f = i * 7.5
-        leg = L if i % 2 == 0 else R
-        if f > 0:
-            leg.append(K(f, h=0.0, y=0.0, p=0.0, g=1.0, tan="f"))
-        reach = 0.20 if i % 4 != 3 else 0.24                     # the 4th tap of each pair reaches further
-        leg += [K(f + 2.0, h=0.045, y=0.10, p=8.0, g=0.0),
-                K(f + 3.5, h=0.0, y=reach, p=24.0, g=1.0, tan="f"), K(f + 5.5, h=0.035, y=0.08, p=4.0, g=0.0),
-                K(f + 7.0, h=0.0, y=0.0, p=0.0, g=1.0, tan="f")]
-        sgn = -1.0 if i % 2 == 0 else 1.0
-        if i > 0:
-            root.append(K(f, w=-sgn * 10.0))
-        root.append(K(f + 3.0, w=sgn * 13.0, r=sgn * 5.0, tan="f"))
+    for i, kind in enumerate(kinds):
+        g = 7.5 * (i + 1)                                        # contact ON the 8th
+        side = "L" if i % 2 == 0 else "R"
+        leg = L if side == "L" else R
+        sgn = -1.0 if side == "L" else 1.0                       # tapping side (x sign)
+        tap = {"fwd": dict(y=0.20, o=0.20, p=24.0, w=5.0), "diag": dict(y=0.16, o=0.31, p=22.0, w=22.0),
+               "back": dict(y=-0.13, o=0.20, p=-28.0, w=5.0, t=-14.0), "far": dict(y=0.25, o=0.19, p=26.0, w=8.0)}[kind]
+        mid = dict(h=0.045, y=0.4 * tap["y"], o=0.5 * (0.19 + tap["o"]), p=0.3 * tap["p"], g=0.0)
+        hold = 1.0 if i == 5 else 0.0                            # beat-4 freeze
+        lift = 2.2 if i == 6 else 2.8
+        leg += [K(g - lift, h=0.0, y=0.0, o=0.19, p=0.0, w=5.0, t=0.0, g=1.0, tan="f"),
+                K(g - 0.5 * lift, **mid),
+                K(g, h=0.0, g=1.0, tan="f", **tap),               # tap lands on the grid
+                K(g + 1.5 + hold, h=0.0, g=1.0, tan="f", **tap),
+                K(g + 2.9 + hold, h=0.035, y=0.3 * tap["y"], o=0.5 * (0.19 + tap["o"]),
+                  p=0.2 * tap["p"], t=0.0, g=0.0),
+                K(g + 4.2 + hold, h=0.0, y=0.0, o=0.19, p=0.0, w=5.0, t=0.0, g=1.0, tan="f")]
+        back = -1.0 if kind == "back" else 1.0
+        root += [K(g - 3.0, x=0.0, r=0.0),
+                 K(g, x=-sgn * 0.042, r=-sgn * 3.5 * back, w=sgn * 11.0 * back, tan="f"),   # over the support foot
+                 K(g + 3.5 + (1.0 if i == 5 else 0.0), w=0.0)]
+        beat = abs(g / 15.0 - round(g / 15.0)) < 1e-6
+        depth = (-0.090 if i == 5 else -0.084) if beat else -0.068      # <= 1 g down: 3 cm in 2.5 f
+        if i != 6:
+            root += [K(g - (3.0 if i == 5 else 2.5), z=(-0.052, "f"))]
+        root += [K(g, z=(depth, (2.0, "f")))]
+        if i == 5:      # beat-4 accent: freeze in the dip, then a slow rise into the last tap
+            root += [K(g + 2.0, z=(depth + 0.002, "f")), K(g + 3.5, z=-0.075)]
+        elif i == 6:
+            root += [K(g + 4.0, z=-0.055)]
+        else:
+            root += [K(g + 4.0, z=-0.055)]
     return L, R, root
 
 
 _tL, _tR, _troot = _taps()
-clip("wk_dance_b", 4.0, notes="phrase B: alternating heel taps on the 8ths with yaw/roll wiggles and 4.5 cm "
-     "groove dips (b1-4), hop and hop (b5, b6: ballistic, feet tucked 9-12 cm above the body's lift, alternating "
+clip("wk_dance_b", 4.0, notes="phrase B: taps ON the 8ths that change every beat (forward heel taps, diagonal-out "
+     "taps, toe taps behind with the roll reversed, a beat-4 accent dip + 2 f freeze, a long heel tap), the body "
+     "sways over the support foot on each tap and dips ON the beat (b1-4), hop and hop (b5, b6: ballistic, feet tucked 9-12 cm above the body's lift, alternating "
      "which foot tucks higher), big gathered HOP with a 15 cm tuck (b7), pose hit on b8 with the weight on L and "
      "the R toe pointed out to the side, settle",
      layers=[dance_stance()],
      root=[K(0, x=0.0, y=0.0, z=Z0, p=P0, r=0.0, w=0.0)] + _troot + [
-         K(15, z=(-0.052, "f")), K(17.5, z=(-0.094, (2.0, "f"))), K(22, z=-0.055),
-         K(30, z=(-0.052, "f")), K(32.5, z=(-0.094, (2.0, "f"))), K(37, z=-0.055),
-         K(45, z=(-0.052, "f")), K(47.5, z=(-0.094, (2.0, "f"))), K(52, z=-0.055),
-         K(57.5, w=0.0, r=0.0, z=(-0.050, "f")),
-         K(60, z=(-0.090, (2.0, "f")), p=2.0),                                           # hop (b5)
+         K(57.5, w=0.0, r=0.0, x=0.0, z=(-0.052, "f")),
+         K(60, z=(-0.084, (2.0, "f")), p=2.0),                                           # hop (b5)
          K(68, z=-0.070, p=3.0, r=2.0, tan="f"),
-         K(72, z=-0.050, r=0.0),
-         K(75, z=-0.090, p=2.0, tan="f"),                                               # hop (b6)
+         K(71.5, z=-0.054, r=0.0),
+         K(74.5, z=-0.086, p=2.0, tan="f"),                                             # hop (b6)
          K(83, z=-0.070, p=3.0, r=-2.0, tan="f"),
          K(88, z=-0.108, p=5.0, r=0.0, tan="f"),                                        # big gather
          K(95, p=-8.0, r=4.0),                                                          # HOP apex (b7)
          K(102.5, z=-0.105, p=4.0, r=0.0, tan="f"),
-         K(105, z=-0.072, p=-5.0, r=-8.0, x=-0.05),                                    # pose hit (b8)
+         K(105, z=-0.072, p=-5.0, r=-8.0, x=-0.10),                                    # pose hit (b8): over L
          K(107, z=-0.075, p=-6.0, r=-8.6),
-         K(111, z=-0.064, p=-5.5, r=-8.0, x=-0.05),
-         K(116, z=-0.034, p=1.5, r=0.0, x=0.0),
+         K(111, z=-0.064, p=-5.5, r=-8.0, x=-0.10),
+         K(115.5, z=-0.040, p=1.0, r=-1.5, x=-0.04),                                   # R steps home ...
+         K(117.5, x=0.0, r=0.0),                                                       # ... then L adjusts
          K(120, x=0.0, y=0.0, z=Z0, p=P0, r=0.0, w=0.0),
-     ] + _hop(61.5, 67.0, -0.042) + _hop(76.5, 82.0, -0.042) + _hop(90.5, 100.0, -0.025),
+     ] + _hop_rows(61.5, 67.0, -0.042) + _hop_rows(76.5, 82.0, -0.042) + _hop_rows(90.5, 100.0, -0.025),
      feet={
          "L": [K(0, o=0.19, y=0.0, h=0.0, p=0.0, w=5.0, g=1.0, t=0.0, tan="f")] + _tL + [
              K(58, h=0.0, y=0.0, p=0.0, tan="f")]
              + _tuck(61.5, 67.0, 0.14, y=0.05, lead=-0.3)[1:] + _tuck(76.5, 82.0, 0.11, y=0.03, lead=0.3)[1:]
              + _tuck(90.5, 100.0, 0.27, y=0.07, o=0.23, lead=-0.4)[1:] + [
-             K(110, h=0.0, o=0.23, tan="f"), K(113, h=0.04, o=0.21), K(116, h=0.0, o=0.19, tan="f"),
+             K(115.5, h=0.0, o=0.23, tan="f"), K(117.3, h=0.035, o=0.21), K(119, h=0.0, o=0.19, tan="f"),
              K(120, h=0.0, o=0.19)],
          "R": [K(0, o=0.19, y=0.0, h=0.0, p=0.0, w=5.0, g=1.0, t=0.0, tan="f")] + _tR + [
              K(60, h=0.0, p=0.0, t=0.0, g=1.0, tan="f")]
@@ -1698,9 +2030,8 @@ clip("wk_dance_b", 4.0, notes="phrase B: alternating heel taps on the 8ths with 
              K(104, h=0.03, o=0.33, y=0.03, p=-10.0, g=0.0),
              K(105, h=0.0, o=0.42, y=0.06, p=-34.0, t=-14.0, w=24.0, g=1.0, tan="f"),     # toe pointed out
              K(111, o=0.42, y=0.06, h=0.0, w=24.0, p=-32.0, t=-12.0, g=1.0, tan="f"),
-             K(113, h=0.04, o=0.32, y=0.03, p=-6.0, t=0.0, g=0.0),
-             K(116, h=0.0, o=0.22, y=0.0, p=0.0, w=5.0, g=1.0, tan="f"),
-             K(117.5, h=0.03, o=0.20), K(119, h=0.0, o=0.19, tan="f"),
+             K(113, h=0.04, o=0.30, y=0.03, p=-6.0, t=0.0, g=0.0),
+             K(115.5, h=0.0, o=0.19, y=0.0, p=0.0, w=5.0, g=1.0, tan="f"),
              K(120, h=0.0, o=0.19)],
      })
 
@@ -1714,8 +2045,8 @@ clip("wk_dance_c", 4.0, notes="phrase C: heel-toe taps with body counter-rolls (
          K(3, p=-4.0, r=6.0, z=-0.058, x=0.04), K(10, p=3.0, r=-3.0, z=-0.045),          # b1 heel / toe
          K(15, z=-0.045), K(18, p=-4.0, r=-6.0, z=-0.058, x=-0.04),
          K(25, p=3.0, r=3.0, z=-0.045, x=0.0),                                          # b2
-         K(30, z=(-0.045, "f")), K(32.5, z=(-0.092, (2.0, "f"))), K(30, r=0.0), K(32.5, r=7.5), K(36, z=-0.050),   # b3 pops
-         K(37.5, z=(-0.05, "f")), K(40.0, z=(-0.096, (2.0, "f"))), K(40, r=-7.5), K(44, z=-0.050, r=0.0),
+         K(27.5, z=(-0.045, "f"), r=0.0), K(30, z=(-0.078, (2.0, "f")), r=7.5), K(34, z=-0.050),   # b3 pops ON the beat
+         K(35, z=(-0.05, "f")), K(37.5, z=(-0.082, (2.0, "f")), r=-7.5), K(42, z=-0.050, r=0.0),
          K(45, p=2.0, w=0.0), K(49, p=10.0, w=-9.0, z=-0.068), K(53, p=-8.0, w=5.0, z=-0.036),   # b4 wave
          K(57, p=4.0, w=9.0, z=-0.055, x=0.0),
          K(59, p=0.0, w=2.0, x=-0.07, r=-4.0, z=-0.055),
@@ -1725,17 +2056,17 @@ clip("wk_dance_c", 4.0, notes="phrase C: heel-toe taps with body counter-rolls (
          K(73, z=-0.056, x=0.05, r=4.0),
          K(75, z=-0.052, x=0.085, r=8.5, p=-4.0, tan="f"),                             # b6 swap (R stands)
          K(79, r=7.0), K(82, r=8.4), K(85, z=-0.055, x=0.03, r=2.0, p=0.0),
-         K(87.5, z=-0.060, x=0.0, r=0.0),
-         K(88.5, z=-0.094, x=0.0, tan="f"),                                             # hop R (b7)
+         K(86, z=-0.058, x=0.0, r=0.0),
+         K(88.5, z=-0.086, x=0.0, tan="f"),                                             # hop R (b7)
          K(93.5, x=0.06, r=4.0),
-         K(97.5, z=-0.086, x=0.11, r=2.0, tan="f"),                                    # absorb, hop L
+         K(97.3, z=-0.068, x=0.11, r=2.0, tan="f"),                                    # absorb, hop L
          K(101.25, x=0.05, r=-4.0),
          K(105.5, z=-0.096, r=-8.5, p=-5.5, x=-0.03, tan="f"),                         # TA-DA (b8) landing hit
          K(108, z=-0.078, r=-9.0, p=-6.0),
          K(111.5, z=-0.084, r=-8.4, p=-5.4),
          K(116, z=-0.042, r=0.0, p=1.0, x=0.0),
          K(120, x=0.0, y=0.0, z=Z0, p=P0, r=0.0, w=0.0),
-     ] + _hop(90.5, 96.5, -0.046) + _hop(98.5, 104.0, -0.046),
+     ] + _hop_rows(90.5, 96.0, -0.046) + _hop_rows(98.5, 104.0, -0.046),
      feet={
          "L": [K(0, o=0.19, y=0.0, h=0.0, p=0.0, w=5.0, g=1.0, t=0.0, k=6.0, tan="f"),
                K(1.5, h=0.04, y=0.09, p=8.0, g=0.0), K(3.5, h=0.0, y=0.22, p=26.0, g=1.0, tan="f"),   # heel tap fwd
@@ -1743,16 +2074,16 @@ clip("wk_dance_c", 4.0, notes="phrase C: heel-toe taps with body counter-rolls (
                K(8.5, h=0.0, y=-0.14, p=-28.0, t=-12.0, g=1.0, tan="f"),  # toe tap back
                K(9.3, h=0.0, y=-0.14, p=-28.0, g=1.0, tan="f"),
                K(10.5, h=0.035, y=-0.05, p=-6.0, t=-2.0, g=0.0), K(12.5, h=0.0, y=0.0, p=0.0, t=0.0, g=1.0, tan="f"),
-               K(30, p=0.0, g=1.0, k=6.0, tan="f"), K(32, p=-18.0, g=1.0, k=22.0),            # knee pop L
-               K(35, p=0.0, g=1.0, k=8.0, tan="f"), K(39.5, k=20.0), K(43, k=8.0),
-               K(71, h=0.0, y=0.0, p=0.0, g=1.0, tan="f"),
-               K(73, h=0.11, y=0.10, p=6.0, t=0.0, g=0.0), K(75, h=0.21, y=0.18, p=-18.0, t=-8.0, k=14.0, tan="f"),   # knee up L (b6)
+               K(28, p=0.0, g=1.0, k=6.0, tan="f"), K(30, p=-18.0, g=1.0, k=20.0),            # knee pop L ON b3
+               K(33, p=0.0, g=1.0, k=8.0, tan="f"), K(37.5, k=18.0), K(41, k=8.0),
+               K(71.5, h=0.0, y=0.0, p=0.0, g=1.0, tan="f"),
+               K(73.3, h=0.11, y=0.10, p=6.0, t=0.0, g=0.0), K(75, h=0.21, y=0.18, p=-18.0, t=-8.0, k=14.0, tan="f"),   # knee up L (b6)
                K(80, h=0.20, y=0.17, p=-16.0), K(83, h=0.21, y=0.18, tan="f"),
                K(86.5, h=0.0, y=0.0, p=0.0, t=0.0, g=1.0, k=6.0, tan="f"),
                K(89, h=0.0, o=0.19, y=0.0, w=5.0, p=0.0, g=1.0, tan="f"),
-               ] + _tuck(90.5, 96.5, 0.13, y=0.04, o=0.08, lead=-0.3)[1:] + _tuck(98.5, 104.0, 0.16, y=0.05, o=0.32, lead=0.2, o0=0.08)[1:] + [
+               ] + _tuck(90.5, 96.0, 0.13, y=0.04, o=0.08, lead=-0.3)[1:] + _tuck(98.5, 104.0, 0.16, y=0.05, o=0.32, lead=0.2, o0=0.08)[1:] + [
                K(104, k=20.0, w=14.0),
-               K(113, h=0.0, o=0.32, y=0.0, tan="f"), K(115, h=0.035, o=0.25), K(117, h=0.0, o=0.19, y=0.0, k=6.0, w=5.0, tan="f"),
+               K(111.5, h=0.0, o=0.32, y=0.0, tan="f"), K(113, h=0.035, o=0.25), K(114.5, h=0.0, o=0.19, y=0.0, k=6.0, w=5.0, tan="f"),
                K(120, h=0.0, o=0.19, y=0.0, k=6.0, w=5.0)],
          "R": [K(0, o=0.19, y=0.0, h=0.0, p=0.0, w=5.0, g=1.0, t=0.0, k=6.0, tan="f"),
                K(15, h=0.0, y=0.0, p=0.0, g=1.0, tan="f"),
@@ -1761,25 +2092,25 @@ clip("wk_dance_c", 4.0, notes="phrase C: heel-toe taps with body counter-rolls (
                K(23.5, h=0.0, y=-0.14, p=-28.0, t=-12.0, g=1.0, tan="f"),
                K(24.3, h=0.0, y=-0.14, p=-28.0, g=1.0, tan="f"),
                K(25.5, h=0.035, y=-0.05, p=-6.0, t=-2.0, g=0.0), K(27.5, h=0.0, y=0.0, p=0.0, t=0.0, g=1.0, tan="f"),
-               K(32, k=20.0), K(35, k=8.0),
-               K(37.5, p=0.0, g=1.0, k=8.0, tan="f"), K(39.5, p=-18.0, g=1.0, k=22.0),         # knee pop R
-               K(42.5, p=0.0, g=1.0, k=8.0, tan="f"),
+               K(30, k=18.0), K(33, k=8.0),
+               K(35.5, p=0.0, g=1.0, k=8.0, tan="f"), K(37.5, p=-18.0, g=1.0, k=20.0),         # knee pop R on the and
+               K(40.5, p=0.0, g=1.0, k=8.0, tan="f"),
                K(58, h=0.0, y=0.0, p=0.0, g=1.0, tan="f"),
                K(60, h=0.13, y=0.11, p=6.0, g=0.0), K(62, h=0.34, y=0.22, p=-22.0, t=-10.0, k=16.0, tan="f"),   # FLAMINGO knee
                K(65, h=0.33, y=0.21), K(68, h=0.34, y=0.22),
-               K(70.5, h=0.10, y=0.07, p=0.0, t=0.0), K(72.5, h=0.0, y=0.0, p=0.0, g=1.0, k=6.0, tan="f"),
-               K(72.5, w=5.0), K(89, h=0.0, o=0.19, y=0.0, w=5.0, p=0.0, g=1.0, tan="f"),
-               ] + _tuck(90.5, 96.5, 0.15, y=0.05, o=0.30, lead=0.3)[1:] + _tuck(98.5, 104.0, 0.12, y=0.03, o=0.26, lead=-0.2, settle=-0.06, o0=0.30)[1:] + [
+               K(69.5, h=0.10, y=0.07, p=0.0, t=0.0), K(71.0, h=0.0, y=0.0, p=0.0, g=1.0, k=6.0, tan="f"),
+               K(71.0, w=5.0), K(89, h=0.0, o=0.19, y=0.0, w=5.0, p=0.0, g=1.0, tan="f"),
+               ] + _tuck(90.5, 96.0, 0.15, y=0.05, o=0.30, lead=0.3)[1:] + _tuck(98.5, 104.0, 0.12, y=0.03, o=0.26, lead=-0.2, settle=-0.06, o0=0.30)[1:] + [
                K(104, k=16.0, w=8.0),
-               K(115, h=0.0, o=0.26, y=-0.06, tan="f"), K(117, h=0.035, o=0.22, y=-0.03), K(119, h=0.0, o=0.19, y=0.0, k=6.0, w=5.0, tan="f"),
+               K(115.5, h=0.0, o=0.26, y=-0.06, tan="f"), K(117.2, h=0.035, o=0.22, y=-0.03), K(119, h=0.0, o=0.19, y=0.0, k=6.0, w=5.0, tan="f"),
                K(120, h=0.0, o=0.19, y=0.0, k=6.0, w=5.0)],
      })
 
 
 # ---------------------------------------------------------------- swim (1.0 s loop, body-frame legs)
 def _paddle(off):
-    """Dog-paddle leg in the BODY frame: 5 f power sweep down/back under the chest, 10 f recovery (knee draws
-    up below the face, foot reaches forward).  Compact: the leg never straightens below the body (power end
+    """Dog-paddle leg in the BODY frame: 5 f power sweep down/back under the chest (the fast beat: 25 cm in 5 f),
+    10 f recovery (knee draws up below the face, foot glides forward and up to the reach).  Compact: the leg never straightens below the body (power end
     stays >= 10 cm up and >= 5 cm forward in the body frame)."""
     rows = []
     for c in (0.0, 15.0):
@@ -1787,11 +2118,11 @@ def _paddle(off):
 
         def at(df):
             return (f + df) % 30.0
-        rows += [K(at(0.0), o=0.20, y=0.31, h=0.25, p=8.0, t=-6.0),            # reach (power start)
-                 K(at(2.5), o=0.215, y=0.17, h=0.15, p=-20.0, t=12.0),
+        rows += [K(at(0.0), o=0.20, y=0.31, h=0.28, p=8.0, t=-6.0),            # reach: highest, most forward
+                 K(at(2.5), o=0.215, y=0.17, h=0.16, p=-20.0, t=12.0),      # POWER: 5 f down/back sweep
                  K(at(5.0), o=0.225, y=0.06, h=0.11, p=-34.0, t=16.0),       # power end, under the chest
-                 K(at(9.0), o=0.21, y=0.10, h=0.21, p=-8.0, t=-10.0),        # knee draws up
-                 K(at(12.5), o=0.20, y=0.25, h=0.27, p=12.0, t=-8.0)]
+                 K(at(8.0), o=0.215, y=0.08, h=0.18, p=-12.0, t=-8.0),       # recovery (10 f): knee draws up
+                 K(at(11.5), o=0.205, y=0.21, h=0.255, p=6.0, t=-10.0)]      # foot glides forward to the reach
     return sorted(rows, key=lambda k: k[0])
 
 
@@ -1872,13 +2203,16 @@ def bake_clip(rig, clip, side):
     for f in range(N + 1):
         t = float(f % N) if clip.loop else float(f)
         P = ev.values(t)
+        seated = False
         if clip.seat and clip.seat[0] - 1e-6 <= t <= clip.seat[1] + 1e-6:
             rv = P["root"]
             zc = rig.seat_z(rv)
-            if rv["z"] + rv["z2"] < zc:
+            if rv["z"] + rv["z2"] < zc + 1e-4:
                 rv["z"] = zc - rv["z2"]
+                seated = True
         spin = ev.spin_at(t, P)
         poses, diag = rig.solve(P, t, spin)
+        diag["seated"] = seated
         frames.append((P, poses, diag))
     return ev, frames
 
@@ -1970,6 +2304,21 @@ def body_clearance(rig, diag):
     return worst
 
 
+def knee_metrics(diag, s):
+    """Knee apex (offset of the knee from the hip-ankle line) in the BODY frame: forward angle (deg, + = toward
+    the face, measured from the body's up axis: atan2(y, z)), outward splay (deg) and the raw armature-space
+    forward component (m)."""
+    d = diag["legs"][s]
+    o = d["koff_body"]
+    n = o.length
+    if n < 1e-3:
+        return None
+    sx = SIDE_X[s]
+    fwd = math.degrees(math.atan2(o.y, o.z))
+    out = math.degrees(math.atan2(sx * o.x, math.hypot(o.y, o.z)))
+    return dict(fwd_deg=fwd, y_body=o.y / n, out_deg=out, y_arm=d["koff"].y, len=n)
+
+
 def verify_clip(rig, clip, side, frames):
     N = clip.frames
     clip_depth = -1.0
@@ -1980,9 +2329,17 @@ def verify_clip(rig, clip, side, frames):
     knee_fwd_min = 1e9
     knee_pole_min = 1e9
     flex_jump = 0.0
+    flex_jump_f = None
     lat_jump = 0.0
     prev = None
     max_flex = 0.0
+    kb_min, kb_min_f, ko_max, ko_max_f, karm_min, karm_min_f = 1e9, None, -1e9, None, 1e9, None
+    arm_bad = []
+    mesh = rig.mesh
+    m_sole, m_sole_f, m_toe, m_toe_f, m_body, m_body_f = 1e9, None, 1e9, None, 1e9, None
+    leg_in, leg_in_f, raise_max, toe_fix_max, toe_fix_n = -1e9, None, 0.0, 0.0, 0
+    thigh_in = -1e9
+    seat_gap = []
     for f, (P, poses, diag) in enumerate(frames):
         for s in "LR":
             d = diag["legs"][s]
@@ -1997,10 +2354,29 @@ def verify_clip(rig, clip, side, frames):
                 # 'forward' reference: body forward, blended toward up for raised legs (sit / kicks)
                 ref = (fw + up * max(0.0, (d["A"] - d["H"]).normalized().dot(fw) * 2.0)).normalized()
                 knee_fwd_min = min(knee_fwd_min, d["koff"].normalized().dot(ref))
+            km = knee_metrics(diag, s)
+            if km is not None:
+                if km["y_body"] < kb_min:
+                    kb_min, kb_min_f = km["y_body"], (f, s)
+                if km["out_deg"] > ko_max:
+                    ko_max, ko_max_f = km["out_deg"], (f, s)
+                if km["y_arm"] < karm_min:
+                    karm_min, karm_min_f = km["y_arm"], (f, s)
+                # armature-space check where it is meaningful: an upright-ish leg (hip-ankle line > 45 deg from
+                # horizontal) on a body facing +Y (|yaw| < 45 deg) must also bend toward +Y in armature space
+                line = (d["A"] - d["H"]).normalized()
+                yaw = math.degrees(math.atan2(-d["fwd"].x, d["fwd"].y))
+                if abs(line.z) > 0.707 and abs(yaw) < 45.0 and km["y_arm"] < -0.003:
+                    arm_bad.append((f, s, round(km["y_arm"] * 1000, 1)))
             max_flex = max(max_flex, d["flex"])
+            raise_max = max(raise_max, d["raise_"])
+            if abs(d["toe_fix"]) > 1e-6:
+                toe_fix_n += 1
+                toe_fix_max = max(toe_fix_max, d["toe_fix"])
             if prev is not None:
                 p = prev["legs"][s]
-                flex_jump = max(flex_jump, abs(d["flex"] - p["flex"]))
+                if abs(d["flex"] - p["flex"]) > flex_jump:
+                    flex_jump, flex_jump_f = abs(d["flex"] - p["flex"]), (f, s)
                 lat_jump = max(lat_jump, math.degrees(d["lat"].angle(p["lat"], 0.0)))
                 # support slip: both frames grounded flat-ish -> contact point must not move
                 for key in ("heel", "ball"):
@@ -2014,14 +2390,50 @@ def verify_clip(rig, clip, side, frames):
                             slide[s] = max(slide[s], mv)
                         else:
                             slip[s] = max(slip[s], mv)
+        if mesh is not None:
+            for s in "LR":
+                mats = mesh.leg_mats(s, poses)
+                zs = mesh.skin(mesh.parts[s]["foot"], mats)[:, 2].min() - rig.ground_z
+                zt = mesh.skin(mesh.parts[s]["toe"], mats)[:, 2].min() - rig.ground_z
+                if zs < m_sole:
+                    m_sole, m_sole_f = zs, (f, s)
+                if zt < m_toe:
+                    m_toe, m_toe_f = zt, (f, s)
+                li = mesh.leg_into_body(poses, s)
+                if li > leg_in:
+                    leg_in, leg_in_f = li, (f, s)
+                thigh_in = max(thigh_in, mesh.leg_into_body(poses, s, "thigh"))
+            zb = mesh.body_min_z(diag["R"]) + diag["root"].translation.z - rig.ground_z
+            if zb < m_body:
+                m_body, m_body_f = zb, f
+            if diag.get("seated"):
+                seat_gap.append(zb)
         clip_depth = max(clip_depth, body_clearance(rig, diag))
         prev = diag
     rep = dict(frames=N, seconds=round(clip.seconds, 4), loop=clip.loop,
                slip_mm={s: round(v * 1000, 2) for s, v in slip.items()},
                penetration_mm=round(pen * 1000, 2), overreach_mm=round(over * 1000, 2),
                knee_forward_min=round(knee_fwd_min, 3), knee_pole_min=round(knee_pole_min, 3),
+               # strict knee direction: the apex in the BODY frame must never point behind the body's up axis
+               knee_apex_body_y_min=round(kb_min, 3), knee_apex_body_y_min_at=kb_min_f,
+               knee_apex_out_max_deg=round(ko_max, 1), knee_apex_out_max_at=ko_max_f,
+               knee_apex_arm_y_min_mm=round(karm_min * 1000, 1), knee_apex_arm_y_min_at=karm_min_f,
+               knee_apex_arm_violations=arm_bad[:20],
                knee_flex_max_deg=round(max_flex, 1), knee_flex_jump_deg_per_f=round(flex_jump, 1),
+               knee_flex_jump_at=flex_jump_f,
                knee_plane_jump_deg_per_f=round(lat_jump, 1), body_clip_mm=round(max(0.0, clip_depth) * 1000, 1))
+    if mesh is not None:
+        rep["mesh"] = {"sole_min_mm": round(m_sole * 1000, 1), "sole_min_at": m_sole_f,
+                       "toe_min_mm": round(m_toe * 1000, 1), "toe_min_at": m_toe_f,
+                       "body_min_mm": round(m_body * 1000, 1), "body_min_at": m_body_f,
+                       "leg_into_body_mm": round(max(0.0, leg_in) * 1000, 1), "leg_into_body_at": leg_in_f,
+                       "proximal_thigh_into_body_mm": round(max(0.0, thigh_in) * 1000, 1),
+                       "contact_raise_max_mm": round(raise_max * 1000, 1),
+                       "toe_conform_frames": toe_fix_n, "toe_conform_max_deg": round(toe_fix_max, 1)}
+        if seat_gap:
+            # bottom-to-floor gap on the frames where the seat contact holds the body (min, max)
+            rep["mesh"]["seat_gap_mm"] = [round(min(seat_gap) * 1000, 2), round(max(seat_gap) * 1000, 2)]
+            rep["mesh"]["seated_frames"] = len(seat_gap)
     if clip.slides:
         rep["authored_slide"] = {s: {"frames": list(clip.slides[s]), "max_mm_per_f": round(slide[s] * 1000, 1)}
                                  for s in clip.slides}
@@ -2061,28 +2473,95 @@ def body_points(rig, diag):
     return cs, sum(cs, Vector()) / 8.0
 
 
+def _hull(pts):
+    pts = sorted(set((round(p[0], 6), round(p[1], 6)) for p in pts))
+    if len(pts) <= 2:
+        return pts
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    lo, up = [], []
+    for p in pts:
+        while len(lo) >= 2 and cross(lo[-2], lo[-1], p) <= 0:
+            lo.pop()
+        lo.append(p)
+    for p in reversed(pts):
+        while len(up) >= 2 and cross(up[-2], up[-1], p) <= 0:
+            up.pop()
+        up.append(p)
+    return lo[:-1] + up[:-1]
+
+
+def _outside(h, q):
+    """Distance (m) of point q outside the convex polygon h (0 when inside)."""
+    def seg(a, b):
+        ax, ay = b[0] - a[0], b[1] - a[1]
+        L2 = ax * ax + ay * ay
+        t = 0.0 if L2 < 1e-12 else max(0.0, min(1.0, ((q[0] - a[0]) * ax + (q[1] - a[1]) * ay) / L2))
+        return math.hypot(q[0] - a[0] - t * ax, q[1] - a[1] - t * ay)
+    if len(h) == 1:
+        return math.hypot(q[0] - h[0][0], q[1] - h[0][1])
+    if len(h) == 2:
+        return seg(h[0], h[1])
+    inside = all((b[0] - a[0]) * (q[1] - a[1]) - (b[1] - a[1]) * (q[0] - a[0]) >= 0.0
+                 for a, b in zip(h, h[1:] + h[:1]))
+    if inside:
+        return 0.0
+    return min(seg(a, b) for a, b in zip(h, h[1:] + h[:1]))
+
+
 def balance_metrics(rig, frames):
-    """Unsided clips: fore-aft balance of the body centre over the grounded sole points while the bottom is
-    off the ground, and the bottom touchdown speed (sit)."""
-    worst, worst_f, bottoms, outside = 0.0, None, [], []
+    """Unsided clips: balance of the body centre over the support polygon (convex hull of the skinned sole and
+    toe-pad vertices within 6 mm of the floor) while the bottom is off the ground, both
+    static (COM) and dynamic (extrapolated COM, XCoM = COM + v / omega0 with omega0 = sqrt(g / COM height):
+    a body moving toward its support may be outside it as long as its XCoM is inside), plus the downward
+    acceleration of the carried body and the bottom touchdown speed (sit)."""
+    worst, worst_f, xworst, xworst_f, bottoms, outside, cens = 0.0, None, 0.0, None, [], [], []
+    hulls = []
     for f, (P, poses, diag) in enumerate(frames):
         cs, cen = body_points(rig, diag)
-        bottom = min(p.z for p in cs) - rig.ground_z
+        if rig.mesh is not None:
+            bottom = rig.mesh.body_min_z(diag["R"]) + diag["root"].translation.z - rig.ground_z
+        else:
+            bottom = min(p.z for p in cs) - rig.ground_z
         bottoms.append(bottom)
-        ys = []
-        for s in "LR":
-            d = diag["legs"][s]
-            for key in ("heel", "ball", "toe_tip"):
-                if d[key].z - rig.ground_z < 0.006:
-                    ys.append(d[key].y)
-        if bottom > 0.02 and ys:
-            out = max(min(ys) - cen.y, cen.y - max(ys), 0.0)
-            if out > 0.03:
-                outside.append((f, round(bottom, 3), round(out * 1000)))
-            if out > worst:
-                worst, worst_f = out, f
+        cens.append(cen)
+        pts = []
+        if rig.mesh is not None:
+            # support polygon = the skinned sole / toe-pad vertices within 6 mm of the floor
+            for s in "LR":
+                mats = rig.mesh.leg_mats(s, poses)
+                for part in ("foot", "toe"):
+                    v = rig.mesh.skin(rig.mesh.parts[s][part], mats)
+                    g = v[v[:, 2] < rig.ground_z + 0.006]
+                    pts += [(float(x), float(y)) for x, y in g[:, :2]]
+        else:
+            for s in "LR":
+                d = diag["legs"][s]
+                for key in ("heel", "ball", "toe_tip"):
+                    if d[key].z - rig.ground_z < 0.006:
+                        for e in (-0.045, 0.045):
+                            pts.append((d[key].x + e, d[key].y))
+        hulls.append(_hull(pts) if pts else None)
+    for f, cen in enumerate(cens):
+        h = hulls[f]
+        if bottoms[f] <= 0.02 or not h:
+            continue
+        out = _outside(h, (cen.x, cen.y))
+        if out > 0.03:
+            outside.append((f, round(bottoms[f], 3), round(out * 1000)))
+        if out > worst:
+            worst, worst_f = out, f
+        a, b = cens[max(0, f - 1)], cens[min(len(cens) - 1, f + 1)]
+        dt = (min(len(cens) - 1, f + 1) - max(0, f - 1)) / FPS
+        v = (b - a) / dt if dt > 0 else Vector()
+        w0 = math.sqrt(9.81 / max(0.15, cen.z - rig.ground_z))
+        xo = _outside(h, (cen.x + v.x / w0, cen.y + v.y / w0))
+        if xo > xworst:
+            xworst, xworst_f = xo, f
     rep = {"com_outside_support_max_mm": round(worst * 1000, 1), "com_outside_support_frame": worst_f,
-           # (frame, bottom height m, COM distance outside the grounded soles mm) for every frame > 30 mm
+           "xcom_outside_support_max_mm": round(xworst * 1000, 1), "xcom_outside_support_frame": xworst_f,
+           # (frame, bottom height m, COM distance outside the support polygon mm) for every frame > 30 mm
            "com_outside_frames": outside}
     # downward acceleration of the body while the LEGS carry it (bottom off the ground): legs can only push,
     # so anything well above 1 g reads as being yanked down (or a rise stopping dead)
@@ -2198,6 +2677,7 @@ def main(argv):
     ap.add_argument("--report", default="")
     ap.add_argument("--dump", default="", help="print per-frame armature-space samples of these variants")
     ap.add_argument("--issues", action="store_true", help="with --dump: only frames with slip/penetration/reach")
+    ap.add_argument("--no-guards", action="store_true", help="write the file even when a quality guard fails (debug)")
     ap.add_argument("--pose-ref", default="", help="write per-frame bone heads (Godot skeleton space) to this JSON "
                     "for harness/scripts/clip_inventory.gd --ref=")
     args = ap.parse_args(argv)
@@ -2217,10 +2697,16 @@ def main(argv):
         pb.rotation_mode = "QUATERNION"
     removed = remove_old_actions(arm)
     rig = Rig(arm)
+    rig.mesh = MeshModel(arm, rig)
+    mesh_probe = {"verts": int(len(rig.mesh.h)), "body_verts": int(len(rig.mesh.body)),
+                  "rest_sole_above_contract_floor_mm": round((rig.mesh.rest_sole - rig.ground_z) * 1000, 2),
+                  "rest_body_bottom_below_root_m": round(-float(rig.mesh.rest_body_bottom), 4),
+                  "body_bevel_m": round(float(rig.mesh.box["r"]), 4)}
 
     only = set(x for x in args.only.split(",") if x)
     built = []
     report = {"input": os.path.abspath(args.inp), "output": os.path.abspath(args.out), "toe_flip": toe_report,
+              "mesh_probe": mesh_probe,
               "removed_actions": removed, "bones_changed": changed, "clips": {}}
     dump = set(x for x in args.dump.split(",") if x)
     roundtrip_src = {}
@@ -2243,12 +2729,15 @@ def main(argv):
                 wm = weight_metrics(rig, c, side, frames)
                 if wm:
                     rep["weight"] = wm
-            else:
+            elif c.treadmill is None:
                 rep["balance"] = balance_metrics(rig, frames)
             if c.seat:
                 # authored seat descent per frame (m below the rest root height); the runtime can drive the
                 # native seat_drop from this curve and subtract the body's actual drop from the visual root
                 rep["seat_descent_m"] = [round(rig.head0.z - fr[2]["root"].translation.z, 4) for fr in frames]
+                # root travel along the face direction (m, + = forward of the clip origin) per frame: the sit
+                # family is authored in place (0 at both standing ends), so the native body never has to move
+                rep["seat_travel_m"] = [round(fr[2]["root"].translation.y - rig.head0.y, 4) for fr in frames]
             if args.pose_ref:
                 pose_ref[vname] = pose_reference(rig, frames)
             rep["contact_normalized"] = 0.56 if c.contact is not None else None
@@ -2262,6 +2751,10 @@ def main(argv):
                 rep["mirror_error_mm"] = round(mirror_error(baked["L"], baked["R"]) * 1000, 3)
     if not any(a.name == "wk_idle" for a, s in built):
         raise RuntimeError("wk_idle must be built (runtime settle gate)")
+    report["guards"] = check_guards(report)
+    if report["guards"]["failures"] and not args.no_guards:
+        _print_report(dict(report, actions_written=len(built), roundtrip_max_mm=float("nan")))
+        raise RuntimeError("quality guards failed:\n  " + "\n  ".join(report["guards"]["failures"]))
     attach_actions(arm, built)
     report["roundtrip_max_mm"] = round(roundtrip_check(arm, built, roundtrip_src) * 1000, 4)
     set_active(arm, built, "wk_idle")      # the round trip leaves its last clip assigned
@@ -2291,6 +2784,40 @@ def main(argv):
         with open(args.report, "w") as fh:
             json.dump(report, fh, indent=1, sort_keys=True)
     return report
+
+
+GUARD = dict(knee_apex_body_y_min=-0.002,     # knee apex never behind the body's up axis (normalised component)
+             knee_apex_out_max_deg=30.0,      # outward splay of the knee plane (A18 / 5.1)
+             leg_into_body_mm=1.0,            # knee / shin / foot vertices inside the cube
+             sole_min_mm=-1.0, toe_min_mm=-1.0, body_min_mm=-1.0,   # nothing below the floor
+             slip_mm=5.0, mirror_error_mm=0.05, loop_seam=1e-4)
+
+
+def check_guards(report):
+    """Library-wide quality gates; any failure aborts the pipeline (unless --no-guards)."""
+    fails = []
+    for n, r in report["clips"].items():
+        if r["knee_apex_body_y_min"] < GUARD["knee_apex_body_y_min"]:
+            fails.append("%s: knee apex behind the body (body-frame y %.3f at %s)" % (
+                n, r["knee_apex_body_y_min"], r["knee_apex_body_y_min_at"]))
+        if r["knee_apex_arm_violations"]:
+            fails.append("%s: upright leg bends away from +Y in armature space %s" % (n, r["knee_apex_arm_violations"][:3]))
+        if r["knee_apex_out_max_deg"] > GUARD["knee_apex_out_max_deg"]:
+            fails.append("%s: knee splay %.1f deg at %s" % (n, r["knee_apex_out_max_deg"], r["knee_apex_out_max_at"]))
+        m = r.get("mesh")
+        if m:
+            if m["leg_into_body_mm"] > GUARD["leg_into_body_mm"]:
+                fails.append("%s: leg %.1f mm inside the body at %s" % (n, m["leg_into_body_mm"], m["leg_into_body_at"]))
+            for k in ("sole_min_mm", "toe_min_mm", "body_min_mm"):
+                if m[k] < GUARD[k]:
+                    fails.append("%s: %s %.1f below the floor" % (n, k, m[k]))
+        if max(r["slip_mm"].values()) > GUARD["slip_mm"]:
+            fails.append("%s: support slip %s" % (n, r["slip_mm"]))
+        if r.get("mirror_error_mm", 0.0) > GUARD["mirror_error_mm"]:
+            fails.append("%s: L/R mirror error %.3f mm" % (n, r["mirror_error_mm"]))
+        if r.get("loop_seam", 0.0) > GUARD["loop_seam"]:
+            fails.append("%s: loop seam %.6f" % (n, r["loop_seam"]))
+    return {"limits": GUARD, "failures": fails}
 
 
 def _dump(rig, name, frames, only_issues=False, clip_tm=None):
@@ -2334,9 +2861,11 @@ def _print_report(rep):
     print("toe flip:", json.dumps(rep["toe_flip"]))
     print("removed %d old actions; wrote %d; written-action round trip max error %.4f mm; active %s" % (
         len(rep["removed_actions"]), rep["actions_written"], rep["roundtrip_max_mm"], rep.get("active_action")))
-    hdr = "%-18s %4s %6s %4s %6s %6s %5s %5s %5s %6s %5s %5s | %s" % (
-        "clip", "frm", "sec", "loop", "slipL", "slipR", "pen", "over", "kfwd", "flexmx", "dflex", "bclip",
-        "weight: lift plant accept@-3f min-airborne at-plant frames-after | balance: COM-out max, down-accel g")
+    if "mesh_probe" in rep:
+        print("mesh probe:", json.dumps(rep["mesh_probe"]))
+    hdr = "%-18s %4s %6s %4s %5s %5s %5s %5s %5s %5s %6s %5s %5s | %-21s | %s" % (
+        "clip", "frm", "sec", "loop", "slipL", "slipR", "over", "kbody", "kout", "karm", "flexmx", "dflex", "bclip",
+        "mesh sole toe body leg", "weight: lift plant accept@-3f min-airborne at-plant frames-after | balance")
     print(hdr)
     for n, r in rep["clips"].items():
         extra = ""
@@ -2346,17 +2875,21 @@ def _print_report(rep):
                                                     w["shift_min_airborne"], w["shift_at_plant"], w["frames_after_plant"])
         b = r.get("balance")
         if b:
-            extra = "b %.0fmm %.2fg" % (b["com_outside_support_max_mm"], b["root_down_accel_max_g"])
+            extra = "b %.0fmm x%.0fmm %.2fg" % (b["com_outside_support_max_mm"], b["xcom_outside_support_max_mm"],
+                                               b["root_down_accel_max_g"])
             if "bottom_touch_frame" in b:
                 extra += " touch f%d @%.1fcm/f" % (b["bottom_touch_frame"], b["bottom_touch_speed_cm_per_f"])
         if "loop_seam" in r:
             extra += "  seam %.5f" % r["loop_seam"]
         if "mirror_error_mm" in r:
             extra += "  mirror %.3fmm" % r["mirror_error_mm"]
-        print("%-18s %4d %6.3f %4s %6.2f %6.2f %5.1f %5.1f %5.2f %6.1f %5.1f %5.1f | %s" % (
+        m = r.get("mesh", {})
+        ms = "%5.1f %5.1f %5.1f %4.1f" % (m.get("sole_min_mm", 0), m.get("toe_min_mm", 0), m.get("body_min_mm", 0),
+                                          m.get("leg_into_body_mm", 0)) if m else ""
+        print("%-18s %4d %6.3f %4s %5.2f %5.2f %5.1f %5.2f %5.1f %5.0f %6.1f %5.1f %5.1f | %-21s | %s" % (
             n, r["frames"], r["seconds"], "Y" if r["loop"] else "-", r["slip_mm"]["L"], r["slip_mm"]["R"],
-            r["penetration_mm"], r["overreach_mm"], r["knee_forward_min"], r["knee_flex_max_deg"],
-            r["knee_flex_jump_deg_per_f"], r["body_clip_mm"], extra))
+            r["overreach_mm"], r["knee_apex_body_y_min"], r["knee_apex_out_max_deg"], r["knee_apex_arm_y_min_mm"],
+            r["knee_flex_max_deg"], r["knee_flex_jump_deg_per_f"], r["body_clip_mm"], ms, extra))
 
 
 if __name__ == "__main__":
