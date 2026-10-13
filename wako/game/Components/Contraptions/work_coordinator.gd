@@ -2303,10 +2303,11 @@ func _publish_attention(entry: Dictionary) -> void:
 	elif phase in ["fetch_outside", "fetch_route", "fetch", "head_pickup", "pickup", "pickup_flight"]: focus = job.get("part")
 	if not is_instance_valid(focus) or not focus is Node3D: focus = job.get("target")
 	var node: Node3D = focus if is_instance_valid(focus) and focus is Node3D else null
-	var point: Vector3 = node.global_position if node else Vector3.INF
 	for member: Variant in entry.crew:
 		if is_instance_valid(member) and "attention_point" in member and member.attention_node!=node:
-			member.attention_point = point
+			# Positions are read only when a member's focus changes (and only
+			# from a node inside the tree).
+			member.attention_point = node.global_position if node and node.is_inside_tree() else Vector3.INF
 			member.attention_node = node
 
 func _clear_attention(entry: Dictionary) -> void:

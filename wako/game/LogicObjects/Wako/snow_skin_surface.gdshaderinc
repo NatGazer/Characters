@@ -76,21 +76,25 @@ vec3 lid_shape(float yn, float side, float uc, float lr, float tilt, float smile
 	float slant = abs(tilt);
 	// Upper lid: an arc that hugs the disc at rest (no flat cap) and stays
 	// convex as it lowers, its corners .4-.5R below its middle. Worry and
-	// determination lean the whole lid (a straight slant across the disc on
-	// a flatter arc), never a pinched corner that meets the rim at an
-	// acute angle.
-	float upper = 1.0 - 1.5 * uc - mix(0.5, 0.42, smoothstep(0.0, 0.7, uc)) * (1.0 - 0.6 * slant) * y2 + 0.75 * lift;
-	upper -= slant * (0.16 + 0.36 * clamp(tilt >= 0.0 ? inward : -inward, -1.0, 1.0));
+	// determination lean the whole lid by a modest slant while it keeps its
+	// full arc, so the drooped corner stays round even foreshortened at 3/4
+	// (never a pinched teardrop meeting the rim at an acute angle).
+	float upper = 1.0 - 1.5 * uc - mix(0.5, 0.42, smoothstep(0.0, 0.7, uc)) * y2 + 0.75 * lift;
+	upper -= slant * (0.16 + 0.25 * clamp(tilt >= 0.0 ? inward : -inward, -1.0, 1.0));
 	// Lower lid: rests under the disc; the cheek lifts it as a gentle
 	// upward arc, so partial openings are lenses rather than bars.
 	float lower = -1.04 + 0.6 * lr + mix(0.5, 0.2, lr) * y2 + 0.35 * lift;
-	// The original happy crescent: an arched raised lower lid. Partial
-	// smiles push a wide, flatter arch up from below (the cheek rises most
-	// in the middle), so the lower edge is convex at every smile amount.
+	// The original happy crescent: an arched raised lower lid. A partial
+	// smile lifts the lower edge as an ellipse through the disc's own side
+	// points (the cheek squashes the eye from below into a convex lens; it
+	// can never cross the rim inside the disc, so no rim tabs or notch), and
+	// the same family curves on into the crescent's arch as it completes.
 	float happy_seam = (0.017 * (1.0 - y2) - 0.004 * y2) / IRIS_R;
 	float happy_upper = (0.061 * (1.0 - y2) + 0.047 * y2) / IRIS_R;
 	upper = mix(upper, min(upper, happy_upper), smile_shape);
-	lower = smooth_max(lower, mix(-1.15, 0.436, smile_shape) - mix(0.25, 0.58, smile_shape) * y2, 0.18);
+	float cheek = mix(-1.0, 0.436, pow(smile_shape, 1.3)) * sqrt(max(1.0 - y2, 0.0));
+	lower = mix(lower, cheek, smoothstep(0.0, 0.25, smile_shape));
+	lower = mix(lower, 0.436 - 0.58 * y2, smoothstep(0.65, 1.0, smile_shape));
 	// Closed seam: a gentle low curve (the upper lid travels furthest); a
 	// smile or wink closes into the happy arch, a squeeze into a raised arch.
 	float seam = -0.55 + 0.16 * y2 + 0.25 * lr + 0.4 * lift;
@@ -224,8 +228,8 @@ void fragment() {
 		float norm_lower = sqrt(1.0 + slope.y * slope.y);
 		float d_rim = (disc_r - IRIS_R) * pop - 0.0015;
 		float rim_aa = disc_aa * pop;
-		float k_upper = (0.12 + 0.45 * abs(tilt)) * IRIS_R;
-		float k_lower = (0.12 + 0.18 * smile_shape) * IRIS_R;
+		float k_upper = (0.12 + 0.58 * abs(tilt)) * IRIS_R;
+		float k_lower = (0.12 + 0.18 * smoothstep(0.0, 0.3, smile_shape)) * IRIS_R;
 		float d_upper = smooth_max(delta.x / norm_upper, d_rim, k_upper);
 		float d_lower = smooth_max(-delta.y / norm_lower, d_rim, k_lower);
 		float lid_rule = clamp(0.5 + 0.5 * (delta.x / norm_upper - d_rim) / k_upper, 0.0, 1.0);

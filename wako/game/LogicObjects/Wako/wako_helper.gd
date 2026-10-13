@@ -157,7 +157,9 @@ var idle_play: RefCounted
 var pickup: RefCounted
 var back_tool: RefCounted
 var head_leap: RefCounted
-# Uploaded pupil gaze (atlas UV), mirrored from the face engine each tick.
+# Uploaded pupil gaze (atlas UV), mirrored from the face engine each tick
+# (written by wako_eyes.gd, read by the head-presentation checks).
+@warning_ignore("unused_private_class_variable")
 var _eye_gaze := Vector2.ZERO
 var _eye_smile_source: WeakRef
 const Eyes := preload("res://LogicObjects/Wako/wako_eyes.gd")

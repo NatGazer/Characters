@@ -6,8 +6,9 @@ extends "res://harness/scripts/stage.gd"
 ##    same tick, with one startle blink and no flutter afterwards;
 ## 3. a board event whose actor was freed is never attended (a live one is);
 ## 4. a real notice: no blink during the widen/focus beat;
-## 5. watching a hostile behind it, the cube turns only into a 3/4 stance
-##    (the eyes cover the last ~45 deg) instead of turning its back to the yard.
+## 5. watching a hostile behind it, the cube turns until the eyes sit near
+##    half their range (a sustained watch is worry, not side-eye), leaving
+##    the residual on the camera side (a 3/4 face, not the back of the cube).
 const Props := preload("res://harness/scripts/face_props.gd")
 const Attention := preload("res://LogicObjects/Wako/wako_attention.gd")
 var service: Node
@@ -140,13 +141,23 @@ func scenario(_delta: float) -> void:
 	if clock > 12.0 and _once("final"):
 		_check(_notice_windows > 0 and _notice_blinks == 0, "no blink during the notice widen/focus beat (%d blinks over %d notices)" % [_notice_blinks, _notice_windows])
 		_check(_gap_after >= .2, "the first blink after the beat waits a personal beat (min gap %.2fs)" % _gap_after)
-		var three_quarter := 0
+		var staged := 0
 		var offsets := []
+		var deflections := []
 		for w in wakos:
 			var to: Vector3 = (hostile._core.global_position - w.global_position).slide(Vector3.UP)
-			var off := absf(wrapf(atan2(-to.x, -to.z) - w._heading, -PI, PI))
-			offsets.append("%.0f" % rad_to_deg(off))
-			if off > .45 and off < 1.15: three_quarter += 1
-		_check(three_quarter >= 3, "watching a hostile behind, the cube turns into a 3/4 stance (offsets %s deg)" % str(offsets))
+			var bearing := atan2(-to.x, -to.z)
+			var off := wrapf(bearing - w._heading, -PI, PI)
+			var to_cam: Vector3 = (camera.global_position - w.global_position).slide(Vector3.UP)
+			var cam_side := signf(wrapf(atan2(-to_cam.x, -to_cam.z) - bearing, -PI, PI))
+			# The face turns from the hostile toward the camera side.
+			var toward_camera: bool = signf(wrapf(w._heading - bearing, -PI, PI)) == cam_side
+			# The deflection the eyes need to hold the hostile (alert glances to
+			# peers or the way out come and go on top of it).
+			var deflection: float = w.eyes._uv_toward(hostile._core.global_position).length() / w.eyes.G_MAX
+			offsets.append("%.0f" % rad_to_deg(absf(off)))
+			deflections.append("%.0f%%" % (100.0 * deflection))
+			if absf(off) > .12 and absf(off) < .5 and toward_camera and deflection < .7: staged += 1
+		_check(staged >= 3, "watching a hostile behind, the cube turns until the eyes sit near half range, face toward the camera (offsets %s deg, eye deflection %s)" % [str(offsets), str(deflections)])
 		print("FACE_CHECK_C %s %d failures" % ["PASS" if _failures == 0 else "FAIL", _failures])
 		get_tree().quit(0 if _failures == 0 else 1)

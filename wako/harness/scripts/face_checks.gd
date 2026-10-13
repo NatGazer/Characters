@@ -10,7 +10,6 @@ var service: Node
 var wakos: Array[RigidBody3D] = []
 var hostile: Node3D
 var _phase := "setup"
-var _results := {}
 var _gun_point := Vector3(-3.0, 1.2, -4.0)
 var _gun_ok := 0
 var _gun_samples := 0
@@ -27,7 +26,6 @@ var _paused: Array[RigidBody3D] = []
 var _closed := [false, false]
 var _async_blink := false
 var _finite := true
-var _shared_material := false
 var _vor_err_max := 0.0
 var _vor_err_sum := 0.0
 var _vor_samples := 0

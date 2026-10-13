@@ -12,6 +12,12 @@ var _flags := {}
 var _samples := 0
 var _same_sum := 0.0
 var _same_max := 0.0
+# The same, counting only real fixation targets (not "nothing to look at").
+var _target_share_max := 0.0
+var _target_share_long := 0.0
+var _target_share_run := 0.0
+var _target_share_kind := ""
+var _event_share_max := 0.0
 var _player_sum := 0.0
 var _player_max := 0
 var _windows := 0
@@ -112,7 +118,21 @@ func _sample(delta: float) -> void:
 	for g in gazes: spread += g.distance_to(mean_gaze)
 	_gaze_spread_sum += spread / COUNT
 	var same := 0
-	for k in keys: same = maxi(same, int(keys[k]))
+	var same_target := 0
+	var same_key := 0
+	for k in keys:
+		same = maxi(same, int(keys[k]))
+		if int(k) > 1 and int(keys[k]) > same_target:
+			same_target = int(keys[k])
+			same_key = int(k)
+	# Shared events (anything but the strolling player).
+	if same_key != player.get_instance_id(): _event_share_max = maxf(_event_share_max, float(same_target) / COUNT)
+	_target_share_max = maxf(_target_share_max, float(same_target) / COUNT)
+	# How long half the crowd or more keeps staring at one target.
+	_target_share_run = _target_share_run + delta if same_target * 2 >= COUNT else 0.0
+	if _target_share_run > _target_share_long:
+		_target_share_long = _target_share_run
+		_target_share_kind = "the player" if same_key == player.get_instance_id() else "an event/actor"
 	_same_sum += float(same) / COUNT
 	_same_max = maxf(_same_max, float(same) / COUNT)
 	_player_sum += watching_player
@@ -148,6 +168,7 @@ func _exit_tree() -> void:
 		blinks += w.eyes.events.blink
 	print("CROWD samples=%d mean_share_same_target=%.2f max_share=%.2f mean_player_watchers=%.2f/%d max_player_watchers=%d sync_saccade_windows=%d/%d sync_blink_ticks=%d max_gaze_step=%.4f" % [
 		_samples, _same_sum / _samples, _same_max, _player_sum / _samples, COUNT, _player_max, _sync_saccade_windows, _windows, _sync_blink_samples, _gaze_step_max])
+	print("CROWD real targets: max share %.2f (events/actors other than the player %.2f), longest >=50%% shared stare %.2f s (%s)" % [_target_share_max, _event_share_max, _target_share_long, _target_share_kind])
 	print("CROWD smiles: greeting smiles max %d/%d within any 1 s window (%.0f%%); any eye-smile (play contacts, voices, wins included) max %d/%d (%.0f%%); face_alarm>.1 without a live threat for %.2f Wako-seconds; mean gaze spread %.4f UV (range +-%.3f)" % [
 		_greet_window_max, COUNT, 100.0 * _greet_window_max / COUNT, _smile_window_max, COUNT, 100.0 * _smile_window_max / COUNT, _alarm_without_threat, _gaze_spread_sum / _samples, .03])
 	print("CROWD per-Wako avg usec/tick eyes=%.1f personality=%.1f attention_scan=%.1f usec/scan; saccades=%d blinks=%d uploads=%d over %.1fs" % [

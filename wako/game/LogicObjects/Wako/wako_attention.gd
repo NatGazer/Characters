@@ -19,6 +19,9 @@ static var _ring: Array[Dictionary] = []
 static var _head := 0
 static var _serial := 0
 static var _tree_id := 0
+# Longest ttl posted to this ring: a scan walks newest -> oldest and stops
+# at the first entry older than this (expired entries are never scored).
+static var _max_ttl := 0.0
 # Target key -> number of Wako currently attending it (crowd desync).
 static var _watchers: Dictionary = {}
 
@@ -38,6 +41,10 @@ var _rng := RandomNumberGenerator.new()
 var _social := 1.0
 var _curious := 1.0
 var _span := 1.0
+# Personal interest span for shared events: novelty fades and the event is
+# dropped at a personal fraction of its ttl, so a crowd that turned to one
+# event lets go of it one by one instead of all at once.
+var _event_span := 1.0
 var _player_last := Vector3.INF
 var _player_speed := 0.0
 var _scan_point := Vector3.INF
@@ -60,6 +67,7 @@ static func post(owner: Node3D, event_kind: StringName, position: Vector3, salie
 		_ring.clear()
 		_head = 0
 		_watchers.clear()
+		_max_ttl = 0.0
 		_tree_id = tree_id
 	_serial += 1
 	var entry := {"serial":_serial,"kind":event_kind,"pos":position,"sal":salience,"time":now(),"ttl":ttl,
@@ -68,6 +76,7 @@ static func post(owner: Node3D, event_kind: StringName, position: Vector3, salie
 	if _ring.size()<RING: _ring.append(entry)
 	else: _ring[_head] = entry
 	_head = (_head+1)%RING
+	_max_ttl = maxf(_max_ttl,ttl)
 
 static func recent(event_kind: StringName, position: Vector3, radius: float, max_age: float) -> int:
 	# Bounded read used by personality to avoid duplicate posts.
@@ -83,6 +92,7 @@ func setup(owner: RigidBody3D) -> void:
 	_social = _rng.randf_range(.7,1.3)
 	_curious = _rng.randf_range(.75,1.3)
 	_span = _rng.randf_range(.75,1.35)
+	_event_span = _rng.randf_range(.55,1.15)
 
 func release() -> void:
 	if _key==0 and not point.is_finite(): return
@@ -160,11 +170,16 @@ func scan(player: Node3D, can_see: Callable) -> void:
 			best_score = score; best_key = PLAYER_KEY; best_point = at; best_node = player; best_kind = &"player"; best_novel = false; best_see = null
 	else:
 		_player_last = Vector3.INF
-	# Recent real events on the shared board (bounded ring).
+	# Recent real events on the shared board (bounded ring), newest first;
+	# the walk stops at the first entry older than any ttl.
 	var me := worker.get_instance_id()
-	for entry: Dictionary in _ring:
+	var count := _ring.size()
+	for step in count:
+		var entry: Dictionary = _ring[(_head-1-step+count)%count]
 		var age: float = t-float(entry.time)
-		if age>float(entry.ttl) or age<0.0 or int(entry.owner)==me: continue
+		if age>_max_ttl: break
+		var span: float = float(entry.ttl)*_event_span
+		if age>span or age<0.0 or int(entry.owner)==me: continue
 		var at: Vector3 = entry.pos
 		var follow: Node3D = entry.node.get_ref() if entry.node else null
 		# An event posted with an actor/part that has since been freed is no
@@ -175,12 +190,12 @@ func scan(player: Node3D, can_see: Callable) -> void:
 			at = face if face is Vector3 and face.is_finite() else follow.global_position
 		var distance := head.distance_to(at)
 		if distance>RADIUS: continue
-		var novelty := 1.0-age/float(entry.ttl)
+		var novelty := 1.0-age/span
 		var key: int = 1000+int(entry.serial)
 		if is_instance_valid(follow): key = follow.get_instance_id()
 		var interest: float = float(entry.sal)*(.45+.55*novelty)*_curious
 		var others := int(_watchers.get(key,0))-(1 if _key==key else 0)
-		interest /= 1.0+.25*maxf(others,0)
+		interest /= 1.0+.45*maxf(others,0)
 		# An event this Wako could not see a moment ago is not re-tried at once.
 		if t<float(_blocked.get(key,-1.0)): continue
 		var score := _score(interest,key,at,head,forward,distance,t)

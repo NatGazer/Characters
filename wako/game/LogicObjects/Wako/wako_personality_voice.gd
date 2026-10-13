@@ -31,6 +31,9 @@ const VARIANTS := {
 	# bent lower still (a recognisable falling two-note contour).
 	"oops": ["warning",0,.62,0.0,0.0,[.17,.8]],
 	"yay": ["play",0,1.16,0.0,0.0],
+	# A soft two-note "hel-lo" for a greeting: the rising-then-falling play
+	# call, a little lower, its second note bent down.
+	"hello": ["play",1,.92,0.0,0.0,[.17,.88]],
 	"hmm": ["inspect",2,.88,0.0,0.0],
 	"huh": ["inspect",1,1.10,.17,.16],
 	"giggle": ["assemble",1,1.34,0.0,0.0],

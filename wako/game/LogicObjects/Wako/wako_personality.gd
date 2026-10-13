@@ -6,6 +6,12 @@ const Voice := preload("res://LogicObjects/Wako/wako_personality_voice.gd")
 const Attention := preload("res://LogicObjects/Wako/wako_attention.gd")
 const NOTICE_RADIUS := 15.0
 const DANGER_RADIUS := 11.0
+# Watching a live enemy: the eyes alone cover THREAT_EYES_ONLY (rad); beyond
+# it the cube turns to leave THREAT_EYES_REST to the eyes (~half their range).
+const THREAT_EYES_ONLY := .44
+const THREAT_EYES_REST := .3
+# ...but never turns its face further than this from the camera (3/4 max).
+const THREAT_CAMERA_MAX := .95
 static var _warning_until: Dictionary = {}
 # Only recent audible calls are retained, not a registry scanned per tick.
 static var _work_call_history: Array[Dictionary] = []
@@ -71,6 +77,13 @@ var voice_clock := -1.0
 var voice_kind := ""
 var _heard_threat: WeakRef
 var _heard_until := 0.0
+# The live core is only remembered from a peer's call (not seen this scan):
+# attention and alert, but no fear/retreat until it is actually seen.
+var _threat_heard_only := false
+# See -> take -> shout: a warning is called once the notice widen peaked.
+var _shout_core: WeakRef
+var _shout_at := 0.0
+var _hello_age_seen := 1.0
 var _voice_rate := 1.0
 var _voice_cut := 0.0
 var _event_voice := ""
@@ -156,7 +169,8 @@ func advance(delta: float) -> void:
 	# remembered point survives actual enemy loss, defeat or departure.
 	alert_position = core.global_position if core else Vector3.INF
 	alert_weight = move_toward(alert_weight,1.0 if core else 0.0,delta*4.0)
-	if core and worker.global_position.distance_squared_to(core.global_position)<DANGER_RADIUS*DANGER_RADIUS:
+	if _shout_core and _clock>=_shout_at: _shout()
+	if core and not _threat_heard_only and worker.global_position.distance_squared_to(core.global_position)<DANGER_RADIUS*DANGER_RADIUS:
 		# Existing job/station cancellation owns physical payload recovery. Gun
 		# duty remains protected on its actual reachable supported control point.
 		if not _protected_gun() and is_instance_valid(worker.coordinator):
@@ -170,7 +184,10 @@ func advance(delta: float) -> void:
 		_smile_remaining = 0.0
 	var player: Node3D = _seen_player.get_ref() if _seen_player else null
 	if free_expression and not core and is_instance_valid(player):
-		if _next_smile<=0.0 and _smile_remaining<=0.0 and _smile_allowed(player):
+		# A due smile that is not allowed yet (not looking at the player, or
+		# the crew already beams) re-checks 5x/s, not every tick.
+		if _next_smile<=0.0 and _smile_remaining<=0.0 and not _smile_allowed(player): _next_smile = .2
+		elif _next_smile<=0.0 and _smile_remaining<=0.0:
 			_smile_remaining = _rng.randf_range(1.3,2.8)
 			_next_smile = _rng.randf_range(6.0,15.0)
 			_smiling[worker.get_instance_id()] = Attention.now()+_smile_remaining+1.0
@@ -192,6 +209,10 @@ func advance(delta: float) -> void:
 	# plant cancels the request; the existing pose filter releases it smoothly.
 	_greeting_active = _greeting_active and wanted>0.0 and _can_greet() and not core and is_instance_valid(player)
 	greeting_weight = move_toward(greeting_weight,1.0 if _greeting_active and greeting_age<1.0 else 0.0,delta*12.0)
+	# Sometimes the hello is said aloud, on its accent (the mouth follows the
+	# real clip; a silent hello only parts the lips).
+	if _greeting_active and _hello_age_seen<.1 and greeting_age>=.1: say("hello",-23.0,.45)
+	_hello_age_seen = greeting_age
 	# Quiet eye contact uses the already observed visible player, including
 	# the gaps between smiles. Only a real smile asks the body to turn.
 	look_position = player.global_position+Vector3.UP*.6 if free_expression and not core and is_instance_valid(player) else Vector3.INF
@@ -309,13 +330,18 @@ func _observe_world() -> void:
 		nearest = core
 		distance = squared
 	_threat = weakref(nearest) if nearest else null
+	_threat_heard_only = false
 	if nearest: _warn(nearest)
 	elif _heard_threat:
 		# A peer's real warning keeps its live core in mind for a few seconds
-		# without own sight; _actual_threat() still revalidates every tick.
+		# without own sight (attention and alert only: fear, retreat and job
+		# interruption wait until it is seen); _actual_threat() still
+		# revalidates every tick.
 		var heard: Node3D = _heard_threat.get_ref()
 		if _clock<_heard_until and is_instance_valid(heard) and not heard.is_queued_for_deletion() \
-			and _live_enemy_core(heard.get_meta(&"machine_fauna",null))==heard: _threat = _heard_threat
+			and _live_enemy_core(heard.get_meta(&"machine_fauna",null))==heard:
+			_threat = _heard_threat
+			_threat_heard_only = true
 		else: _heard_threat = null
 	_seen_player = null
 	var player: Node3D = Global.Player if is_instance_valid(Global.Player) else null
@@ -362,6 +388,16 @@ func _warn(core: Node3D) -> void:
 	_warning_until[key] = now+_rng.randf_range(5.0,8.0)
 	for stale: int in _warning_until.keys():
 		if float(_warning_until[stale])<now-10.0: _warning_until.erase(stale)
+	# See -> take -> shout: the eyes land and widen first; the call (and the
+	# crew hearing it) follows 140-200 ms later, once the widen has peaked.
+	_shout_core = weakref(core)
+	_shout_at = _clock+_voice_rng.randf_range(.14,.2)
+
+func _shout() -> void:
+	var core: Node3D = _shout_core.get_ref() if _shout_core else null
+	_shout_core = null
+	# Only a still-live core this Wako still perceives is called out.
+	if not is_instance_valid(core) or _actual_threat()!=core: return
 	if _play_voice("warning",-9.0):
 		events.warning += 1
 		# A close enemy sometimes earns an urgent second call.
@@ -383,6 +419,7 @@ func hear_warning(core: Node3D, caller: Node3D = null) -> void:
 	if not is_instance_valid(core) or _live_enemy_core(core.get_meta(&"machine_fauna",null))!=core: return
 	if worker.global_position.distance_squared_to(core.global_position)>NOTICE_RADIUS*NOTICE_RADIUS: return
 	_threat = weakref(core)
+	_threat_heard_only = false
 	alert_weight = 1.0
 	_smile_remaining = 0.0
 	if caller==worker: return
@@ -775,10 +812,11 @@ func _smile_allowed(player: Node3D) -> bool:
 
 func _threat_turn(delta: float, core: Node3D) -> void:
 	# Watching a live enemy while standing (beyond the flee radius, or from
-	# cover): the eyes lead and the cube follows toward it, but only into a
-	# 3/4 stance. Within ~60 deg the eyes alone watch it; beyond that the
-	# cube turns just enough to leave ~45 deg to the eyes, so the worried
-	# face stays readable from most of the yard (never a full back turn).
+	# cover): the eyes lead (alone for the first .4 s and within ~25 deg),
+	# then the cube turns until the eyes sit near half their range (~17 deg
+	# off), so a sustained watch reads as worry, not side-eye. The residual
+	# is left on the camera side, and the face stays within ~55 deg of the
+	# camera (a 3/4 face at most, never a profile or the back of the cube).
 	_threat_turn_wait = maxf(0.0,_threat_turn_wait-delta)
 	if not core or _threat_turn_wait>0.0 or not worker.is_available() or not worker.on_ground or worker.paused: return
 	if not worker.current_job_id.is_empty() or worker.action not in ["","danger"] or is_instance_valid(worker.station) or worker.carrying: return
@@ -788,10 +826,23 @@ func _threat_turn(delta: float, core: Node3D) -> void:
 	if is_instance_valid(watch) and float(watch._notice_age)<.4: return
 	var to: Vector3 = (core.global_position-worker.global_position).slide(Vector3.UP)
 	if to.length_squared()<.04: return
-	var off := wrapf(atan2(-to.x,-to.z)-worker._heading,-PI,PI)
-	if absf(off)<1.05: return
+	var bearing := atan2(-to.x,-to.z)
+	var off := wrapf(bearing-worker._heading,-PI,PI)
+	if absf(off)<THREAT_EYES_ONLY: return
 	_threat_turn_wait = .9
-	var facing: float = worker._heading+off-signf(off)*.8
+	var side := signf(off)
+	var facing: float = bearing-side*THREAT_EYES_REST
+	var camera: Camera3D = worker.get_viewport().get_camera_3d()
+	var to_camera: Vector3 = (camera.global_position-worker.global_position).slide(Vector3.UP) if camera else Vector3.ZERO
+	if to_camera.length_squared()>.01:
+		var camera_bearing := atan2(-to_camera.x,-to_camera.z)
+		var camera_off := wrapf(camera_bearing-bearing,-PI,PI)
+		if absf(camera_off)>.05: facing = bearing+signf(camera_off)*THREAT_EYES_REST
+		# The face never turns more than ~55 deg from the camera for it: with
+		# the enemy far off to one side the eyes keep more of the watch.
+		var from_camera := wrapf(facing-camera_bearing,-PI,PI)
+		if absf(from_camera)>THREAT_CAMERA_MAX: facing = camera_bearing+signf(from_camera)*THREAT_CAMERA_MAX
+	if absf(wrapf(facing-worker._heading,-PI,PI))<.12: return
 	worker.face_point(worker.global_position+Vector3(-sin(facing),0.0,-cos(facing))*3.0)
 
 func _follow_attention(delta: float, idle: bool) -> void:

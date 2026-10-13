@@ -106,7 +106,12 @@ func _process_modification_with_delta(delta: float) -> void:
 	# open watching eyes. The ordinary expression clock remains the owner.
 	var widen := smoothstep(0.0,.03,_notice_age)*(1.0-smoothstep(.16,.40,_notice_age)) if observed_id!=0 else 0.0
 	var focus := smoothstep(.14,.26,_notice_age)*(1.0-smoothstep(.55,.95,_notice_age)) if observed_id!=0 else 0.0
+	var was_wide := notice_widen>=.5
 	notice_widen = move_toward(notice_widen,widen,step*30.0)
+	# The face composes the widen as it peaks (never a quiet-interval late).
+	if notice_widen>=.5 and not was_wide:
+		var face: RefCounted = worker.get("eyes")
+		if face: face.wake()
 	notice_focus = move_toward(notice_focus,focus,step*14.0)
 	threat = observed
 	var admitted := _can_present()

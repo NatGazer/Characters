@@ -24,9 +24,12 @@ class FakeCrewTravel extends RefCounted:
 	func water_notice_point(_w: Node) -> Vector3: return Vector3.INF
 
 class FakeYard extends Node3D:
+	# Read by the real idle-play/personality scripts (not by this stub).
+	@warning_ignore("unused_private_class_variable")
 	var _crew_travel := FakeCrewTravel.new()
 	var work_paused := false
 	var last_message := ""
+	@warning_ignore("unused_private_class_variable")
 	var _reservations := {}
 	func crew_travel_active() -> bool: return false
 	func crew_travel_worker(_w: Node) -> bool: return false
@@ -40,6 +43,7 @@ class FakeCoordinator extends Node:
 	var yard: Node3D
 	var workers: Array = []
 	var active_jobs := {}
+	@warning_ignore("unused_private_class_variable")
 	var _jobs := {}
 	func register_worker(w: Node) -> void:
 		if not workers.has(w): workers.append(w)

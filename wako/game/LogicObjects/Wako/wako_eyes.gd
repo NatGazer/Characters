@@ -22,11 +22,22 @@ const G_MAX := .03
 const G_KNEE := .62
 # Per-update gaze step bound (UV); the package head test bounds a tick to .004.
 const STEP_LIMIT := .0031
+# Work-contact look cap (85% of the range) and the proud-beat lift (UV up).
+const WORK_LOOK_MAX := .85*G_MAX
+const PROUD_LIFT := .009
+# Saccade flight: peak speed (UV/s, .0037 per 120 Hz tick), ease time (s) and
+# the per-tick flight bound (under the package's .004).
+const FLY_SPEED := .0037*120.0
+const FLY_RAMP := 2.0/120.0
+const FLY_STEP := .0039
 # Midpoint of the two painted eye centres in mesh/bind space (atlas UV
 # (.409,.715)/(.409,.914) on the front face), skinned 100% to the cube bone.
 const EYE_REST_POINT := Vector3(0.0, 1.175, -.197)
 const EYE_SIDE := .213
 const STROKE_KINDS := ["assemble","repair","inspect","tool_change","operate"]
+# Notice age (s) before which no blink may start: the widen/focus beat plus
+# a short refractory on its tail.
+const NOTICE_QUIET := 1.25
 const STRAIN_KINDS := ["unbend","maintenance","push","pull","brace"]
 # Brain rates: quiet faces think at 6/4/2 Hz (near/mid/far or off-screen);
 # a near face that is alarmed, airborne or acting at 12 Hz, and one that
@@ -38,8 +49,14 @@ const BUSY_INTERVAL := 1.0/12.0
 const FAST_INTERVAL := 1.0/20.0
 # Gaze/settle/upload stride in physics ticks (60/30/15 Hz at 120 Hz).
 const STRIDES := [2, 4, 8]
+# Critically damped spring rates (rad/s) of the slow expression channels:
+# smile, lower lid and tilt reach ~80% in 150 ms, a lowering upper lid in 110 ms.
+const SPRING_SLOW := 20.0
+const SPRING_LID := 28.0
 enum {UC, LR, TILT, WINK, DIL, POP, SMILE, MOPEN, MCURVE, MWIDTH, MSKEW, SQUEEZE, ALARM, STARTLE, CHANNELS}
 const PULSE_CHANNELS := 12
+# Squeeze values where the shader's closed seam opens into the "> <" crease.
+const SQUEEZE_BAND := Vector2(.44,.68)
 # Event pulses: [attack, hold, release, uc, lr, tilt, wink, dil, pop, smile, open, curve, width, skew, squeeze].
 const PULSES := {
 	&"surprise": [.045,.16,.45, -.32,-.05,0.0,0.0,-.45,1.0,0.0,.65,-.5,-.8,0.0,0.0],
@@ -62,6 +79,7 @@ var _rng := RandomNumberGenerator.new()
 var _time := 0.0
 var _tick := 0
 var _brain_wait := 0.0
+var _brain_time := 0.0
 var _brain_interval := 1.0/15.0
 var _busy := false
 var _fast := false
@@ -125,6 +143,10 @@ var _vergence := 0.0
 var _sacc_t := -1.0
 var _sacc_dur := .05
 var _sacc_from := Vector2.ZERO
+var _sacc_amp := 0.0
+var _sacc_cruise := false
+# The next saccade is a wide alert glance away (pairs with a blink).
+var _glance_blink := false
 var _micro := Vector2.ZERO
 var _micro_wait := .6
 var _gaze_static := 0
@@ -142,13 +164,27 @@ var _hit_v0 := Vector3.ZERO
 var _hit_directed := false
 var _feature := Vector3.ZERO
 var _feature_wait := .5
+# The current fixation is the work contact (its deflection is capped), and
+# the proud beat after an admitted contact (eyes lift; sometimes a glance up
+# at the watching player).
+var _work_look := false
+var _proud_from := 0.0
+var _proud_until := 0.0
+var _proud_look_from := 0.0
+var _proud_look_until := 0.0
 # Channels: target (brain) and current (settled toward the target).
 var _target: Array[float] = []
 var _value: Array[float] = []
+var _vel: Array[float] = []
 var _settling := true
 var _dirty := true
 var _channels_dirty := true
 var _pulses: Array[Array] = []
+# A clip is playing: the jaw targets follow its syllables at the upload rate
+# over the composed mouth (_mouth_pre; _mouth_invert damps its curve upside down).
+var _voice_live := false
+var _mouth_pre := Vector3.ZERO
+var _mouth_invert := 0.0
 # Change-only uploads.
 var _sent_open := -1.0
 var _sent_gaze := Vector2(INF, INF)
@@ -159,6 +195,7 @@ var _sent_lids := Vector4(INF, 0, 0, 0)
 var _sent_iris := Vector4(INF, 0, 0, 0)
 var _sent_mouth := Vector4(INF, 0, 0, 0)
 var _sent_reactive := -1.0
+var _squeeze_prev := 0.0
 # Event polling memory.
 var _was_grounded := true
 var _fear_seen := 0.0
@@ -201,6 +238,7 @@ func setup(owner: RigidBody3D) -> void:
 	_out_next = _rng.randi_range(1,4)
 	_target.resize(CHANNELS)
 	_value.resize(CHANNELS)
+	_vel.resize(CHANNELS)
 	_target[UC] = _lid_rest
 	_value[UC] = _lid_rest
 	_resolve_eye_point()
@@ -256,11 +294,20 @@ func watching(node: Node3D) -> bool:
 
 func _on_contact(kind: String) -> void:
 	# The helper admitted this real toe/tool contact: brief flinch, then a
-	# satisfied glint; a hammer blow sometimes earns a squeeze blink.
+	# satisfied glint; a hammer blow sometimes earns a squeeze blink. The
+	# satisfied eyes lift off the work for a proud beat (the pupils never
+	# press into the cheek), now and then up to the watching player.
 	if kind in ["assemble","repair","unbend","maintenance"]:
 		pulse(&"flinch",1.0)
 		pulse(&"satisfied",.8,.07)
 		if _rng.randf()<.4: _motivated_blink(1.0)
+		_proud_from = _time+_rng.randf_range(.1,.16)
+		_proud_until = _proud_from+_rng.randf_range(.35,.5)
+		var personality: RefCounted = worker.personality
+		var seen: Node3D = personality._seen_player.get_ref() if personality and personality._seen_player else null
+		if is_instance_valid(seen) and _rng.randf()<.15 and seen.global_position.distance_squared_to(worker.global_position)<36.0:
+			_proud_look_from = _proud_from
+			_proud_look_until = _proud_until+.1
 	elif kind in ["inspect","tool_change"]:
 		pulse(&"satisfied",.55,.04)
 
@@ -280,9 +327,16 @@ func advance(delta: float) -> void:
 		_ground_seen = grounded
 	_fear_seen = fear
 	if _brain_wait<=0.0:
-		var elapsed := _brain_interval-_brain_wait
-		_brain_wait = maxf(_brain_wait+_brain_interval,0.0)
+		# Timers advance by the real time since the last compose (an early
+		# wake never over-counts them), and the next compose waits at most
+		# the interval this compose chose: a wake from outside (a voice onset,
+		# a pulse, a notice) on a quiet face is followed by the fast cadence
+		# at once, never by the old quiet interval.
+		var elapsed := minf(_time-_brain_time,.6)
+		_brain_time = _time
+		var carry := _brain_wait
 		_brain(elapsed)
+		_brain_wait = clampf(carry+_brain_interval,0.0,_brain_interval)
 	if _blink_t>=0.0 or _time>=_blink_at: _advance_blink(delta)
 	# Gaze, settling and uploads run on strides with a personal phase (60 Hz
 	# near; the renderer never sees more); saccades and the dizzy swirl step
@@ -293,6 +347,7 @@ func advance(delta: float) -> void:
 		_gaze_time = _time
 	if _tick>=_out_next:
 		_out_next = _tick+STRIDES[_lod]
+		if _voice_live: _voice_mouth()
 		if _settling: _settle(_time-_settle_time)
 		_settle_time = _time
 		if _dirty or (_sent_reactive>0.0 and _time>=_reactive_until): _upload()
@@ -357,14 +412,19 @@ func _blink_wait_until() -> float:
 	# Never blink into a strike contact or the widen/focus beat of a notice.
 	if worker.action in STROKE_KINDS and worker.action_progress>.44 and worker.action_progress<.62: hold = maxf(hold,_time+.03)
 	var watch: SkeletonModifier3D = worker.threat_watch
-	if is_instance_valid(watch) and (float(watch.notice_widen)>.15 or float(watch.notice_focus)>.05): hold = maxf(hold,_time+.05)
+	if is_instance_valid(watch):
+		if float(watch.notice_widen)>.15 or float(watch.notice_focus)>.05: hold = maxf(hold,_time+.05)
+		elif float(watch._notice_age)<NOTICE_QUIET and is_instance_valid(watch.threat):
+			# The beat's focus releases by ~.95 s: no gaze- or turn-evoked
+			# blink lands right on its tail either (a personal beat first).
+			hold = maxf(hold,_time+NOTICE_QUIET-float(watch._notice_age))
 	return hold
 
-func _motivated_blink(chance: float, depth := 1.0) -> void:
+func _motivated_blink(chance: float, depth := 1.0, latency := .04, spread := .11) -> void:
 	if _blink_t>=0.0 or _blink_pending or _time-_blink_started<.3 or _blink_wait_until()>_time or _rng.randf()>chance: return
 	_blink_pending = true
 	_blink_pending_depth = depth
-	_blink_at = _time+_rng.randf_range(.04,.15)
+	_blink_at = _time+latency+_rng.randf()*spread
 
 ## Startle blink (a real hit): fast, then a quiet window over the surprise
 ## and the look toward the source.
@@ -461,6 +521,11 @@ func _advance_gaze(delta: float) -> void:
 	if moving or _body_moving: _gaze_static = 0
 	else: _gaze_static += 1
 	var desired := _uv_toward(_track) if _track.is_finite() else Vector2(-.002,0.0)
+	if _work_look:
+		# Looking down at the work never pins the pupils at the rim, and the
+		# satisfied beat lifts them off the cheek arch.
+		desired = desired.limit_length(WORK_LOOK_MAX)
+		if _time>=_proud_from and _time<_proud_until: desired.x += PROUD_LIFT
 	# Still reacting to a shared stimulus: hold the old fixation briefly.
 	if _time<_sacc_hold_until and _sacc_t<0.0: desired = _desired
 	if _sacc_t>=0.0:
@@ -497,9 +562,17 @@ func _fly(delta: float, desired: Vector2) -> void:
 	if _sacc_t==0.0 and _gaze_time==_time and delta>1.5/120.0: delta = 1.0/120.0
 	_sacc_t += delta
 	var s := clampf(_sacc_t/_sacc_dur,0.0,1.0)
-	# Minimum-jerk path; a target that moves during the flight (a turning
-	# body) can never push one tick beyond the continuity bound.
-	gaze = gaze.move_toward(_sacc_from.lerp(desired,s*s*s*(10.0+s*(-15.0+6.0*s))),STEP_LIMIT*1.15*maxf(delta*120.0,1.0))
+	var progress := s*s*s*(10.0+s*(-15.0+6.0*s))
+	if _sacc_cruise:
+		# A long glance darts: a 2-tick ease in, a cruise at the per-tick
+		# continuity bound, a 2-tick ease out (not a slow min-jerk slide).
+		var t := minf(_sacc_t,_sacc_dur)
+		var left := _sacc_dur-t
+		var travelled := FLY_SPEED*t*t/(2.0*FLY_RAMP) if t<FLY_RAMP else _sacc_amp-FLY_SPEED*left*left/(2.0*FLY_RAMP) if left<FLY_RAMP else FLY_SPEED*(t-.5*FLY_RAMP)
+		progress = clampf(travelled/_sacc_amp,0.0,1.0)
+	# A target that moves during the flight (a turning body) can never push
+	# one tick beyond the continuity bound.
+	gaze = gaze.move_toward(_sacc_from.lerp(desired,progress),FLY_STEP*maxf(delta*120.0,1.0))
 	if s>=1.0: _sacc_t = -1.0
 	worker._eye_gaze = gaze
 	if gaze.distance_squared_to(_sent_gaze)>.000000015: _dirty = true
@@ -508,7 +581,13 @@ func _start_saccade(to_uv: Vector2) -> void:
 	var amplitude := to_uv.distance_to(gaze)
 	if amplitude<.0006: return
 	var degrees := amplitude/(G_MAX/G_KNEE)*57.3
-	_sacc_dur = maxf(clampf(.021+.0022*degrees,.03,.11),1.875*amplitude/(STEP_LIMIT*120.0))
+	# Small saccades follow a minimum-jerk path; one whose min-jerk peak
+	# would exceed the per-tick bound flies a speed-limited trapezoid
+	# (.055 UV, a full-range glance, in ~.14 s).
+	_sacc_dur = clampf(.021+.0022*degrees,.03,.11)
+	_sacc_amp = amplitude
+	_sacc_cruise = 1.875*amplitude/_sacc_dur>FLY_SPEED and amplitude>FLY_SPEED*FLY_RAMP
+	if _sacc_cruise: _sacc_dur = amplitude/FLY_SPEED+FLY_RAMP
 	_sacc_from = gaze
 	_sacc_t = 0.0
 	# Time owed to a skipped stride must not fast-forward the new saccade.
@@ -516,11 +595,15 @@ func _start_saccade(to_uv: Vector2) -> void:
 	_micro = Vector2.ZERO
 	_gaze_static = 0
 	events.saccade += 1
-	# Big gaze shifts often carry a blink (gaze-evoked blink), less often
-	# while watching a danger (no flutter over every glance).
+	# Big gaze shifts often carry a blink (gaze-evoked blink, starting with
+	# the saccade), less often while watching a danger (no flutter over
+	# every look); a wide alert glance away always hides its transit in one.
+	var glance := _glance_blink
+	_glance_blink = false
 	if degrees>22.0:
 		var personality: RefCounted = worker.personality
-		_motivated_blink(.5-.3*(float(personality.alert_weight) if personality else 0.0))
+		var chance := 1.0 if glance and degrees>40.0 else .5-.3*(float(personality.alert_weight) if personality else 0.0)
+		_motivated_blink(chance,1.0,.0,.025)
 
 ## hops: 0 none, 1 face/body/feet refixations, 2 quick darts over a hostile.
 func _look_at(point: Vector3, key: int, follow: Node3D = null, offset := Vector3.ZERO, hops := -1) -> void:
@@ -757,6 +840,7 @@ func _work_focus() -> bool:
 	return worker.action in STROKE_KINDS and is_instance_valid(worker.work_target) and worker.on_ground and worker.fear_time<=0.0 and not _down
 
 func _choose_gaze(elapsed: float) -> void:
+	_work_look = false
 	if _down:
 		_want_key = -1
 		return
@@ -815,6 +899,12 @@ func _choose_gaze(elapsed: float) -> void:
 	# 5. Useful work: the real contact point, then the coordinator's phase
 	# hint (stock, tool, destination or the next lease), then travel.
 	if _work_focus():
+		if _time>=_proud_look_from and _time<_proud_look_until:
+			var personality_seen: Node3D = personality._seen_player.get_ref() if personality and personality._seen_player else null
+			if is_instance_valid(personality_seen):
+				_look_at(Vector3.INF,personality_seen.get_instance_id(),personality_seen,Vector3.UP*.6,0)
+				return
+		_work_look = true
 		_look_at(worker.work_point(),worker.work_target.get_instance_id()+13)
 		return
 	if action in STRAIN_KINDS and is_instance_valid(worker.work_target):
@@ -894,7 +984,7 @@ func _alert_glance(elapsed: float, core: Node3D) -> bool:
 			return true
 		return false
 	if _alert_glance_wait>0.0: return false
-	_alert_glance_wait = _rng.randf_range(.7,1.5)
+	_alert_glance_wait = _rng.randf_range(.9,1.7)
 	_alert_glance_point = Vector3.INF
 	var roll := _rng.randf()
 	var personality: RefCounted = worker.personality
@@ -910,7 +1000,9 @@ func _alert_glance(elapsed: float, core: Node3D) -> bool:
 		_alert_glance_point = cover+Vector3.UP*.2 if cover.is_finite() else worker.global_position+away.normalized()*3.0 if away.length_squared()>.01 else Vector3.INF
 	if not _alert_glance_point.is_finite(): return false
 	_alert_glance_left = _rng.randf_range(.22,.42)
+	_glance_blink = true
 	_look_at(_alert_glance_point,_point_key(_alert_glance_point,41))
+	if _time>=_sacc_hold_until: _glance_blink = false
 	return true
 
 func _nearest_peer() -> Node3D:
@@ -965,6 +1057,7 @@ func _compose() -> void:
 	var squeeze := 0.0
 	var alarm := 0.0
 	var startle := 0.0
+	_voice_live = false
 	if _down:
 		var wobble := sin(_time*5.0)
 		uc = .5; lr = .3; tilt = -.5; mopen = .35; mwidth = -.5; mskew = .6*wobble; mcurve = -.4
@@ -1056,9 +1149,10 @@ func _compose() -> void:
 			elif _partner_ref and _partner_ref.get_ref(): social = maxf(social,.2)
 		smile += social
 		mcurve += .6*social
-		# The hello opens the mouth on its accent, then eases shut into the
-		# smile (a held open mouth with no voice reads as posed).
-		if personality: mopen += .22*social*float(personality.greeting_weight)*(1.0-smoothstep(.3,.55,float(personality.greeting_age)))
+		# The hello parts the lips on its accent, then eases shut into the
+		# smile; only a real "hello" clip opens the mouth wide (its syllables
+		# drive the jaw below; a silent open mouth reads as posed).
+		if personality: mopen += .06*social*float(personality.greeting_weight)*(1.0-smoothstep(.3,.55,float(personality.greeting_age)))
 		dil += .3*social
 		# Resting (sit API or a future idle "sit*" state): relaxed lids,
 		# sleepy after a while unless something interesting is watched.
@@ -1071,25 +1165,18 @@ func _compose() -> void:
 		var gun: Node3D = worker.portable_gun
 		if gun and is_instance_valid(worker.equipped_gun) and gun.desired_target.is_finite():
 			wink += .45*_side; uc += .2; tilt += .35; mcurve -= .2; mskew += .4*_side
-		# Voice: the jaw follows the real clip's syllables and stays a little
-		# open between the syllables of one clip.
-		if personality and float(personality.voice_clock)>=0.0:
-			var notes: Array = personality.voice_notes
-			if not notes.is_empty():
-				var clock := float(personality.voice_clock)
-				var open := Voice.mouth_open(notes,clock)
-				if Voice.within(notes,clock): open = maxf(open,.16)
-				var kind: String = personality.voice_kind
-				var shape := _voice_shape(kind)
-				var shaped := minf(open*3.0,1.0)
-				mopen = maxf(mopen,open*shape.x)
-				mcurve += shape.y*shaped
-				mwidth += shape.z*shaped
-				if kind=="play" or kind=="yay" or kind=="giggle": smile = maxf(smile,.35)
+		# Voice: the jaw follows the real clip's syllables (_voice_mouth, at
+		# the upload rate); happy calls also smile.
+		if personality and float(personality.voice_clock)>=0.0 and not personality.voice_notes.is_empty():
+			_voice_live = true
+			var kind: String = personality.voice_kind
+			if kind=="play" or kind=="yay" or kind=="giggle" or kind=="hello": smile = maxf(smile,.35)
 	# Upside down (flips, upside-down play) a smile would read as a frown:
 	# show happy arcs and a small round "o" instead.
+	_mouth_invert = 0.0
 	if _up_y<-.3:
 		var inverted := smoothstep(-.3,-.7,_up_y)
+		_mouth_invert = inverted
 		mcurve = lerpf(mcurve,0.0,inverted)
 		mopen = maxf(mopen,.3*inverted)
 		mwidth = lerpf(mwidth,-.6,inverted)
@@ -1101,6 +1188,8 @@ func _compose() -> void:
 	# startle beat, a pulse's attack); held/releasing pulses settle at 12 Hz.
 	var attacking := _apply_pulses() if not _pulses.is_empty() else false
 	var talking: bool = personality and float(personality.voice_clock)>=0.0
+	_mouth_pre = Vector3(t[MOPEN],t[MCURVE],t[MWIDTH])
+	if _voice_live: _voice_mouth()
 	_fast = attacking or talking or startle>0.0 or squeeze>0.0 or (worker.action in STROKE_KINDS and _work_focus())
 	_busy = _fast or not _pulses.is_empty() or _down or alarm>0.0 or not worker.action.is_empty() or _air_time>0.0
 	t[UC] = clampf(t[UC],-.4,1.0)
@@ -1121,12 +1210,42 @@ func _compose() -> void:
 				_settling = true
 				break
 
+## The jaw on the playing clip's syllables, over the composed mouth: run by
+## every compose and, while a clip plays, at every upload stride (60 Hz near),
+## so a syllable is never sampled late by the brain's own cadence.
+func _voice_mouth() -> void:
+	var t := _target
+	var open_now := _mouth_pre.x
+	var curve := _mouth_pre.y
+	var width := _mouth_pre.z
+	var personality: RefCounted = worker.personality
+	if personality and float(personality.voice_clock)>=0.0 and not personality.voice_notes.is_empty():
+		var notes: Array = personality.voice_notes
+		var clock := float(personality.voice_clock)
+		var open := Voice.mouth_open(notes,clock)
+		# The jaw stays a little open between the syllables of one clip.
+		if Voice.within(notes,clock): open = maxf(open,.16)
+		var shape := _voice_shape(personality.voice_kind)
+		var shaped := minf(open*3.0,1.0)
+		open_now = maxf(open_now,open*shape.x)
+		curve += shape.y*shaped*(1.0-_mouth_invert)
+		width += shape.z*shaped
+	else: _voice_live = false
+	open_now = clampf(open_now,0.0,1.0)
+	curve = clampf(curve,-1.0,1.0)
+	width = clampf(width,-1.0,1.0)
+	if absf(t[MOPEN]-open_now)>.001 or absf(t[MCURVE]-curve)>.001 or absf(t[MWIDTH]-width)>.001: _settling = true
+	t[MOPEN] = open_now
+	t[MCURVE] = curve
+	t[MWIDTH] = width
+
 func _voice_shape(kind: String) -> Vector3:
 	# (open gain, curve, width) per call: warning shouts, play beams,
 	# effort grits, hums stay small and lopsided.
 	match kind:
 		"warning": return Vector3(1.0,-.6,-.4)
 		"play","yay","giggle","wee": return Vector3(.85,.6,.2)
+		"hello": return Vector3(.7,.45,.1)
 		"effort","grunt","nngh": return Vector3(.5,-.4,.5)
 		"inspect","hmm","huh": return Vector3(.38,-.1,-.3)
 		"jump","hup","hop": return Vector3(.8,0.0,-.5)
@@ -1158,19 +1277,45 @@ func _apply_pulses() -> bool:
 	return attacking
 
 func _settle(delta: float) -> void:
-	# Exponential approach per channel: fast enough for a 2-frame surprise,
-	# never a pop. Alarm rises fast and releases slowly; the jaw opens fast
-	# and eases shut.
+	# The slow expression channels (smile, lower lid, tilt, upper lid) are
+	# critically damped springs (exact step for any stride), so an onset eases
+	# in over ~150 ms instead of snapping, and never overshoots; a widening
+	# upper lid (surprise, notice) still opens like a reflex. The fast
+	# channels (pop, pupil, squeeze, startle, jaw...) are exponential
+	# approaches: a 2-frame surprise, never a pop. Alarm rises fast and
+	# releases slowly; the jaw opens fast and eases shut.
 	var settled := true
 	var fast := 1.0-exp(-30.0*delta)
+	var decay_slow := exp(-SPRING_SLOW*delta)
+	var decay_lid := exp(-SPRING_LID*delta)
 	for channel in CHANNELS:
 		var target := _target[channel]
 		var value := _value[channel]
+		if channel<=TILT or channel==SMILE:
+			var vel := _vel[channel]
+			if value==target and vel==0.0: continue
+			if channel==UC and target<value-.04:
+				vel = 0.0
+				value = lerpf(value,target,1.0-exp(-40.0*delta))
+			else:
+				var omega := SPRING_LID if channel==UC else SPRING_SLOW
+				var offset := value-target
+				var c := vel+omega*offset
+				var decay := decay_lid if channel==UC else decay_slow
+				value = target+(offset+c*delta)*decay
+				vel = (vel-omega*c*delta)*decay
+			if absf(value-target)<.0015 and absf(vel)<.03:
+				value = target
+				vel = 0.0
+			else: settled = false
+			_vel[channel] = vel
+			_value[channel] = value
+			continue
 		if value==target: continue
 		var rate := fast
 		if channel==ALARM: rate = 1.0-exp(-(18.0 if target>value else 5.0)*delta)
 		elif channel==SQUEEZE: rate = 1.0-exp(-60.0*delta)
-		elif channel==MOPEN: rate = 1.0-exp(-(32.0 if target>value else 15.0)*delta)
+		elif channel==MOPEN: rate = 1.0-exp(-(32.0 if target>value else 15.0)*(1.5 if _voice_live else 1.0)*delta)
 		value = lerpf(value,target,rate)
 		if absf(value-target)<.0015: value = target
 		else: settled = false
@@ -1227,7 +1372,17 @@ func _upload_channels(mesh: MeshInstance3D) -> bool:
 		_sent_lids = lids
 		mesh.set_instance_shader_parameter(&"eye_lids",lids)
 		changed = true
-	var iris := Vector4(v[DIL],_vergence,v[POP],v[SQUEEZE])
+	# The shader's seam->crease scissor band (.44-.68) is never displayed:
+	# a squeeze crossing it shows the side it is moving toward, so a strike
+	# reads seam -> "> <" (and back) from one upload to the next.
+	var squeeze := v[SQUEEZE]
+	if squeeze>SQUEEZE_BAND.x and squeeze<SQUEEZE_BAND.y:
+		if squeeze>_squeeze_prev+.001: squeeze = SQUEEZE_BAND.y
+		elif squeeze<_squeeze_prev-.001: squeeze = SQUEEZE_BAND.x
+		elif _sent_iris.w<=SQUEEZE_BAND.x or _sent_iris.w>=SQUEEZE_BAND.y: squeeze = _sent_iris.w
+		else: squeeze = SQUEEZE_BAND.y if squeeze>.56 else SQUEEZE_BAND.x
+	_squeeze_prev = v[SQUEEZE]
+	var iris := Vector4(v[DIL],_vergence,v[POP],squeeze)
 	if _vec4_moved(iris,_sent_iris) or absf(iris.y-_sent_iris.y)>.0003:
 		_sent_iris = iris
 		mesh.set_instance_shader_parameter(&"eye_iris",iris)

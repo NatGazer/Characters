@@ -18,7 +18,6 @@ var wall: StaticBody3D
 var _failures := 0
 var _flags := {}
 var _oops := {}
-var _hit_posts_interrupt := 0
 var _alarm_max := 0.0
 var _hit_look_ok := 0
 var _hit_look_samples := 0
@@ -64,8 +63,8 @@ func scenario(_delta: float) -> void:
 		var e: RefCounted = wakos[0].eyes
 		var painted: Vector3 = Props.painted_eye_midpoint(wakos[0])
 		var origin: Vector3 = e.eye_origin()
-		var frame: Transform3D = e._eye_frame()
-		var level: Vector2 = e._uv_toward(origin - frame.basis.z * 3.0)
+		var eye_frame: Transform3D = e._eye_frame()
+		var level: Vector2 = e._uv_toward(origin - eye_frame.basis.z * 3.0)
 		_check(painted.is_finite() and origin.distance_to(painted) < .03, "gaze origin sits on the painted eyes (%.1f mm from the mesh eye midpoint %s)" % [origin.distance_to(painted) * 1000.0, painted])
 		_check(level.length() < .001, "a level target 3 m ahead needs no deflection (|gaze| %.5f)" % level.length())
 	# 2. Interruptions (the coordinator's _cancel path) are not hits.
