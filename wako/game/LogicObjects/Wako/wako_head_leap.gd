@@ -74,7 +74,7 @@ const TUCK_SPIN_SECONDS := .16
 # trailing roof edge cannot reach the stock before the roof is level.
 const IMPACT_SPIN := 2.6
 const WIDE_IMPACT_SPIN := 2.0
-const OPEN_LEAD := .22
+const OPEN_LEAD := .16
 const MAXIMUM_SPIN := 6.0
 const MINIMUM_SPIN := 2.2
 # --- Head impact, squash and contact hold ------------------------------------
