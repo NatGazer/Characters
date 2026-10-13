@@ -51,7 +51,7 @@ const HEEL_PEEL := deg_to_rad(30.0)
 # Impact speeds stay under Jolt's 1 m/s restitution threshold: a faster touch
 # is stopped (and bounced) where the speculative contact first appears, ~2 cm
 # early; at or below it the native contact lands the roof exactly.
-const SOLO_OUTBOUND := [[.43,1.5],[.41,1.5],[.45,1.5],[.39,1.5],[.48,1.45],[.35,1.5],[.31,1.5]]
+const SOLO_OUTBOUND := [[.47,1.5],[.44,1.5],[.50,1.5],[.41,1.5],[.53,1.45],[.38,1.5],[.34,1.5],[.31,1.5]]
 const CREW_OUTBOUND := [[.60,1.45],[.55,1.45],[.65,1.4],[.50,1.45],[.70,1.4],[.45,1.45]]
 const LONG_OUTBOUND := [[.6,1.4],[.75,1.4],[.95,1.35],[1.2,1.35],[1.45,1.3]]
 const LEGACY_OUTBOUND := [[1.6,.70],[2.0,.70],[2.0,1.0],[2.4,1.0],[2.4,1.35],[2.8,1.35],[3.0,1.35],[3.4,1.35]]
