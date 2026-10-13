@@ -148,6 +148,7 @@ var body_twist := 0.0
 var body_drop := 0.0
 var _drop_v := 0.0
 var settle_dip := 0.0
+var _settle_v := 0.0
 var squash := 0.0
 var _squash_t := 1.0
 var _squash_amp := 0.0
@@ -370,7 +371,7 @@ func validate_landing(side: int, hip: Vector3) -> void:
 	# foot lands exactly where it plants (no slide at contact).
 	# Corrections must stay absorbable by the fading re-target offset: none
 	# in the last part of the swing, and only small ones once it is late.
-	if state[side] == PLANTED or t[side] < .45 or t[side] > .97: return
+	if state[side] == PLANTED or t[side] < .45 or t[side] > .9: return
 	var rate: float = maxf(min_rate[side], phase_rate / maxf(1.0 - p0[side], .05) if state[side] == SWING and moving else min_rate[side])
 	var t_rem := (1.0 - t[side]) / maxf(rate, .001)
 	var hip_contact := hip + velocity.slide(Vector3.UP) * t_rem - Vector3.UP * clampf(.2 - body_drop, 0.0, .02)
@@ -582,6 +583,7 @@ func release(delta: float, hard := false) -> void:
 		body_drop = 0.0
 		_drop_v = 0.0
 		settle_dip = 0.0
+		_settle_v = 0.0
 		squash = 0.0
 		_squash_amp = 0.0
 		_brake_time = 0.0
@@ -607,7 +609,9 @@ func release(delta: float, hard := false) -> void:
 	_yaw_s = yw.x
 	_yaw_v = yw.y
 	# Phase-locked layers freeze and are scaled out by the fading weight.
-	settle_dip = move_toward(settle_dip, 0.0, .4 * delta)
+	var sd := spring(settle_dip, _settle_v, 0.0, 20.0, delta)
+	settle_dip = sd.x
+	_settle_v = sd.y
 	_update_squash(delta)
 	var d := spring(body_drop, _drop_v, 0.0, 9.0, delta)
 	_drop_v = clampf(d.y, -DROP_SPEED, DROP_SPEED)
@@ -746,7 +750,7 @@ func _events(delta: float) -> void:
 				var may_fly: bool = duty < .49 and not worker.tool_foot_occupied()
 				if not other_planted and not may_fly and not _overreached(side): continue
 				if not other_planted and tool_foot: continue
-				if (armed[side] and p >= d and _launch_hold <= 0.0) or (p > .8 * d and other_planted == false and _pushed_off(side, delta)):
+				if (armed[side] and p >= d and _launch_hold <= 0.0) or (p > .75 * d and _launch_hold <= 0.0 and _pushed_off(side, delta)):
 					var first := moving_age < .12
 					_lift_off(side, SWING, 1.0 / (T_FIRST_SWING if first else T_SWING_MAX), _base_lift(side))
 				elif _overreached(side):
@@ -808,9 +812,9 @@ func _peel_max() -> float:
 	return lerpf(.22, .32, run_weight) * (.6 if carry else 1.0)
 
 func _pushed_off(side: int, delta: float) -> bool:
-	# Running push-off: the stance leg leaves as it reaches its extension
-	# (knee ~25 deg), one or two ticks before the clock's toe-off, instead of
-	# snapping straight on its last stance tick.
+	# Push-off: a late-stance leg leaves as it reaches its extension (knee
+	# ~25 deg), a tick or two before the clock's toe-off, instead of snapping
+	# straight (and dragging its toe) on its last stance ticks.
 	if not pose.evaluated_valid or _is_tool_foot(side): return false
 	var rebase: Transform3D = worker.global_transform * pose.evaluated_worker.affine_inverse()
 	var hip: Vector3 = rebase * pose.evaluated_hips[side] + velocity * delta * 1.5
@@ -1329,10 +1333,11 @@ func _start_squash(amount: float, length: float) -> void:
 	_squash_t = 0.0
 
 func _update_squash(delta: float) -> void:
-	# Impact profile: compresses fast (~30% of the length), recovers slower.
+	# Impact profile: compresses in the first 30% (eased in over a few ticks,
+	# not a one-tick drop), recovers over the rest.
 	_squash_t += delta
 	var s := clampf(_squash_t / maxf(_squash_len, .01), 0.0, 1.0)
-	squash = -_squash_amp * sin(PI * pow(s, .6)) if s < 1.0 else 0.0
+	squash = -_squash_amp * (smoothstep(0.0, .3, s) * (1.0 - smoothstep(.3, 1.0, s))) if s < 1.0 else 0.0
 
 func _reversing() -> float:
 	# 0..1: requested travel points back against the current motion.
@@ -1347,14 +1352,19 @@ func _publish_totals() -> void:
 
 func _update_body(delta: float) -> void:
 	var swinging := state[0] == SWING or state[1] == SWING
-	var target_weight := 1.0 if (moving or swinging or speed > .3) else 0.0
+	# The stop's follow-through (lean overshoot) is still locomotion acting:
+	# hold the weight until it has settled, or it would be faded away unseen.
+	var settling := absf(body_lean) > .012 or absf(_lean_v) > .08
+	var target_weight := 1.0 if (moving or swinging or speed > .3 or settling) else 0.0
 	var w := spring(locomotion_weight, _lw_v, target_weight, 9.0, delta)
 	locomotion_weight = clampf(w.x, 0.0, 1.0)
 	_lw_v = w.y
 	# Acting clock: the gait phase, with re-phase jumps (launch, early
-	# release, recovery contact) absorbed over ~70 ms instead of popping.
+	# release, recovery contact) absorbed gradually instead of popping, and
+	# never faster than ~1.4 extra cycles/s (a fast sweep would read as a
+	# bob hiccup).
 	_act_phase = fposmod(_act_phase + phase_rate * delta, 1.0)
-	_act_phase = fposmod(_act_phase + wrapf(phase - _act_phase, -.5, .5) * minf(1.0, 14.0 * delta), 1.0)
+	_act_phase = fposmod(_act_phase + clampf(wrapf(phase - _act_phase, -.5, .5) * 14.0 * delta, -.012, .012), 1.0)
 	var v := speed
 	var load := clampf(float(worker.cargo_mass) / maxf(float(worker.carry_capacity), 1.0), 0.0, 1.0)
 	var steady := lerpf(1.0, .4, load) * (.65 if is_instance_valid(worker.carry_partner) else 1.0)
@@ -1380,16 +1390,23 @@ func _update_body(delta: float) -> void:
 	# Phase-locked stance bob and nod, added AFTER the springs (a spring at
 	# step frequency lags ~90 degrees): walk lowest at double support, run
 	# lowest at mid-stance and highest at mid-flight; nose down when low.
-	var low := duty - .5 * (1.0 - run_weight)
-	var x := fposmod(2.0 * _act_phase - low, 1.0)
+	# Walk and run waves keep their own phase and are cross-faded by
+	# amplitude (shifting one wave's phase with speed would sweep the bob).
+	var walk_wave := cos(TAU * fposmod(2.0 * _act_phase - (duty - .5), 1.0))
+	var x := fposmod(2.0 * _act_phase - duty, 1.0)
 	# A run rises a touch faster than it falls (peak ~4 ms before
 	# mid-flight): the stance knee re-extends into the push-off while the
 	# landing leg still arrives bent. A steeper rise would snap the knee
 	# straight in the last stance ticks.
-	var peak := lerpf(.5, .475, run_weight)
-	var wave := cos(PI * x / peak) if x < peak else -cos(PI * (x - peak) / (1.0 - peak))
-	body_bob = -lerpf(.023 * gait_on, .034, run_weight) * calm * wave
-	body_nod = lerpf(.026 * gait_on, .035, run_weight) * calm * wave
+	const PEAK := .475
+	var run_wave := cos(PI * x / PEAK) if x < PEAK else -cos(PI * (x - PEAK) / (1.0 - PEAK))
+	# A jog (walk_speed 2.1, the usual travel speed) already bounces like a
+	# run; the out-of-phase cross-fade band sits at ~1.5 m/s, passed quickly.
+	var bounce := 0.0 if carry else smoothstep(1.1, 1.9, v)
+	var walk_amp := (1.0 - bounce) * gait_on * calm
+	var run_amp := bounce * calm
+	body_bob = -(.023 * walk_amp * walk_wave + lerpf(.027, .034, run_weight) * run_amp * run_wave)
+	body_nod = .026 * walk_amp * walk_wave + lerpf(.028, .035, run_weight) * run_amp * run_wave
 	_update_squash(delta)
 	# Forward lean from speed and paid acceleration: one owner, continuous,
 	# underdamped. Braking leans back; when the skid ends the cube pitches
@@ -1399,10 +1416,12 @@ func _update_body(delta: float) -> void:
 	var lean_target := clampf(.045 * velocity.dot(forward) + .016 * a_fwd, -.16, .26) * (.5 if carry else (.15 if tool else 1.0)) * steady
 	if flee: lean_target *= 1.25
 	lean_target += .07 * launch * calm
-	if a_fwd < -4.0 and v > .8: _brake_time = .6
+	if a_fwd < -4.0 and v > .8: _brake_time = .8
 	else: _brake_time = maxf(_brake_time - delta, 0.0)
-	if _brake_time > 0.0 and v < .35 and a_fwd > -2.5:
-		_lean_v += .95 * (.5 if carry else (.2 if tool else 1.0)) * steady
+	if _brake_time > 0.0 and v < .4 and body_lean > -.025 and _lean_v > 0.0:
+		# The skid is over and the cube swings back upright: it carries on
+		# past upright, nose-down, and settles (follow-through).
+		_lean_v += 1.45 * (.5 if carry else (.2 if tool else 1.0)) * steady
 		_brake_time = 0.0
 	var zeta := .45
 	var omega := 11.5
@@ -1436,8 +1455,10 @@ func _update_body(delta: float) -> void:
 	for side in 2:
 		if state[side] == SETTLE:
 			var tt := t[side]
-			hop = minf(hop, -.022 * sin(PI * clampf(tt / .35, 0.0, 1.0)) + .012 * sin(PI * clampf((tt - .3) / .7, 0.0, 1.0)))
-	settle_dip = move_toward(settle_dip, hop, .9 * delta)
+			hop = minf(hop, -.022 * pow(sin(PI * clampf(tt / .4, 0.0, 1.0)), 2.0) + .012 * pow(sin(PI * clampf((tt - .3) / .7, 0.0, 1.0)), 2.0))
+	var sd := spring(settle_dip, _settle_v, hop, 30.0, delta)
+	settle_dip = sd.x
+	_settle_v = sd.y
 
 func acting_root(sk: Skeleton3D, authored: Transform3D) -> Transform3D:
 	# Procedural locomotion root, blended in by locomotion_weight. Authored
@@ -1480,6 +1501,8 @@ func update_drop(sk: Skeleton3D, root: Transform3D, delta: float) -> void:
 		var horizontal := (hip - ankle).slide(Vector3.UP).length()
 		if horizontal >= reach: continue
 		var vertical := hip.y - ankle.y
+		if debug_log and vertical - sqrt(reach * reach - horizontal * horizontal) > .1:
+			print("GAIT drop need z=%.2f side=%d state=%d t=%.2f need=%.3f target=%s hip=%s horiz=%.3f drop=%.3f" % [worker.global_position.z, side, state[side], t[side], vertical - sqrt(reach * reach - horizontal * horizontal), str(target), str(hip), horizontal, body_drop])
 		need = maxf(need, vertical - sqrt(reach * reach - horizontal * horizontal))
 	need = clampf(need, 0.0, .2)
 	var d := spring(body_drop, _drop_v, need, 24.0 if need > body_drop else 9.0, delta)
