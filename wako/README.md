@@ -26,12 +26,16 @@ Every video was rendered by the real engine (Godot 4.7.1 movie maker, 720p30) wi
     `wk_interrupted_L`.
   * Social and personality: `wk_greet`, `wk_cheer`, `wk_dance_a`, `wk_dance_b`, `wk_dance_c`.
   * Sitting and water: `wk_sit_down`, `wk_sit_idle`, `wk_sit_up`, `wk_swim`.
+  [`renders/videos/clips_index.jpg`](renders/videos/clips_index.jpg) is a contact sheet of all 28.
 * **[`renders/videos/runtime/`](renders/videos/runtime/)** shows the procedural systems driving the real Wako
-  scripts in harness scenes:
-  * Gait: walk → jog → run → stop → turns, uneven terrain, and running with head cargo.
-  * Head-first pickup: solo, crew, and the toss and catch.
-  * Backpack tool toss: stow and catch, then stowing on departure while running.
-  * Face: idle life and work, greeting and bump, and a threat's notice → alarm → relief.
+  scripts in harness scenes ([index](renders/videos/runtime_index.jpg)):
+  * `gait_walk_jog_run_stop_turn`, `gait_terrain`: gait on flat ground and over slopes, steps and blocks.
+  * `headflip_pickup_solo`, `headflip_toss_catch`: the head-first pickup, and a toss caught on the head.
+  * `backpack_tool_toss_stow`, `backpack_depart_run`: the tool toss and catch, then walking off with the tool
+    on the back.
+  * `face_idle_work`, `face_greet_bump`, `face_threat_alarm_relief`: work squints, a bump, notice → worried
+    watch → relief → joy.
+  * There's no crew pickup video because of the crew gap below.
 * [`renders/clips/`](renders/clips/) holds per-frame contact sheets and review videos of each clip family.
   [`renders/deformation/`](renders/deformation/) holds before/after deformation sheets from Blender and from Godot.
 
