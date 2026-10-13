@@ -239,10 +239,13 @@ var _legacy_pending := false
 var _step_plan: Dictionary = {}
 var _return_search: Dictionary = {}
 var _launch_refused: Array[String] = []
+var _launch_refused_at := Vector3.ZERO
 var _legacy_search: Dictionary = {}
 var _retrieval_cand := 0
 var _plan_unit_cost: Dictionary = {}
 var _interrupt_after_catch := false
+var _deferred_recoil := ""
+var _recoil_seen := 0
 var _deferred_kind := "interrupted"
 var _home_extension_done := false
 var _deferred_reaction := 0.0
@@ -268,6 +271,14 @@ var _flight_prev_valid := false
 var _flight_prev_body := Transform3D.IDENTITY
 var _cradle_clack := -1.0 # Age of the cradle lips' catch "clack" (< 0: idle).
 var _pad_base: Array[Transform3D] = [Transform3D.IDENTITY,Transform3D.IDENTITY]
+# Worn-pack display state (see _update_holder_display).
+const HOLDER_LAYOUT_SECONDS := .30
+const REST_PAD := Vector3(.14,-.065,.317) # Level, mirrored empty trays on the plate at a diagonal seat's mean tray height.
+var _display_seat := false
+var _display_key: Array = []
+var _display_from: Array[Transform3D] = []
+var _display_to: Array[Transform3D] = []
+var _display_t := 1.0
 var _seat_rebound := false
 const SEAT_SETTLE_SECONDS := .12
 # Visible rubber give at the catch: 8 mm down, a 2 mm rebound, a last 0.8 mm
@@ -420,6 +431,18 @@ func before_action(kind: String) -> bool:
 	# passive cradle, a tool on its way home finishes it, a stunt not yet
 	# released retraces home on the foot - then the reaction plays.
 	var grounded: bool = worker.on_ground and worker.is_available()
+	var recoil: RefCounted = worker.get("recoil")
+	if kind == "interrupted" and phase == "flight" and recoil and int(recoil.events) != _recoil_seen:
+		# A hit strong enough for the native recoil shoves the cradle away from
+		# the airborne tool: the stunt ends now and its one recoil plays at
+		# once; the same tool lands on its own, solid against the body (never
+		# through it), and is recovered like any loose original.
+		_recoil_seen = int(recoil.events)
+		_work_pole_active=false
+		pending_action = ""
+		_pending_job = ""
+		drop("Hit in flight; the airborne tool lands on its own")
+		return true
 	if kind in ["interrupted", "danger"] and grounded and (phase == "flight" or (phase == "return" and _return_search.is_empty() and not _waypoints.is_empty())):
 		_work_pole_active=false
 		_defer_reaction(kind,"Interrupted; catching the airborne tool first" if phase == "flight" else "Interrupted; finishing the tool's way home first")
@@ -523,7 +546,11 @@ func advance(delta: float) -> void:
 	_empty_return_tail=maxf(_empty_return_tail-delta,0.0)
 	_ordinary_motion_age+=delta
 	if not is_instance_valid(worker) or not worker.is_inside_tree(): return
+	# Recoil events already answered (a new one during a held reaction is
+	# recognised by _defer_reaction).
+	if not _interrupt_after_catch and worker.recoil: _recoil_seen = int(worker.recoil.events)
 	_update_release_guard(delta)
+	_update_holder_display(delta)
 	var tool: RigidBody3D = worker.equipped_tool
 	if _work_pole_active:
 		_sync_root()
@@ -1044,7 +1071,7 @@ func _fitting_segment_clear(from: Transform3D,to: Transform3D,binding: Transform
 			if from.origin.is_equal_approx(to.origin) and from.basis.is_equal_approx(to.basis):
 				var lease: Dictionary=worker.coordinator.active_jobs.get(worker.current_job_id,{}) if worker.coordinator else {}
 				var source: Variant=lease.get("job",{}).get("part")
-				print("CONTRAPTION_BACK_TOOL current_return_refused ",JSON.stringify({"tool":worker.equipped_tool.part_id,"tool_rid":str(worker.equipped_tool.get_rid()),"source":source.part_id if is_instance_valid(source) else "none","source_rid":str(source.get_rid()) if is_instance_valid(source) else "none","job":worker.current_job_id,"action":worker.action,"progress":worker.action_progress,"serial":worker._pose.evaluation_serial,"toe":Part.encode_transform(sample),"hip":Part.encode_vector(hip),"root":Part.encode_transform(root),"reachable":reachable,"clear":frame_clear,"native_obstacle":last_native_obstacle.duplicate(true) if reachable else {}}))
+				print("CONTRAPTION_BACK_TOOL current_return_refused ",JSON.stringify({"tool":worker.equipped_tool.part_id,"tool_rid":str(worker.equipped_tool.get_rid()),"source":source.part_id if is_instance_valid(source) else "none","source_rid":str(source.get_rid()) if is_instance_valid(source) else "none","job":worker.current_job_id,"action":worker.action,"progress":worker.action_progress,"serial":worker._pose.evaluation_serial,"toe":Part.encode_transform(sample),"hip":Part.encode_vector(hip),"root":Part.encode_transform(root),"reachable":reachable,"clear":frame_clear,"native_obstacle":last_native_obstacle.duplicate(true) if reachable else {},"posture":_posture_debug_at(_tool_frame(sample),root),"support_gap":_native_support_gap(_tool_frame(sample),worker._ground_point,worker.ground_normal)}))
 			clear=false
 			break
 	_toe_in_ankle=old_binding
@@ -1105,7 +1132,8 @@ func retain_original_foot(pose: SkeletonModifier3D,sk: Skeleton3D,side: int) -> 
 	toe.basis=sk.global_basis.inverse()*actual.basis
 	sk.set_bone_global_pose(pose._toes[side],toe)
 	var evaluated: Transform3D=sk.global_transform*sk.get_bone_global_pose(pose._toes[side])
-	if evaluated.origin.distance_to(actual.origin)>.002 or not _frame_clear(evaluated,root,true):
+	var evaluated_clear: bool = evaluated.origin.distance_to(actual.origin)<=.002 and _frame_clear(evaluated,root,true)
+	if not evaluated_clear:
 		for index in incoming_bones.size(): sk.set_bone_global_pose(incoming_bones[index],incoming_poses[index])
 		drop("The actual whole-tool return lost finite clearance")
 		return null
@@ -1387,7 +1415,11 @@ func _request_toss() -> void:
 	_back_keepout = true
 	_preflight_frame = worker._tool_clearance_frame()
 	_preflight_frame.inverse = _root.affine_inverse()
-	var stunt := {} if _legacy_pending else _plan_stunt()
+	# Two stunts in a row refused at their own release re-check (a slope or
+	# support the plan's margin did not cover): no third wind-up; the plain
+	# bounded stow route takes over for this request.
+	if not _launch_refused.is_empty() and worker.global_position.distance_to(_launch_refused_at) > .5: _launch_refused.clear()
+	var stunt := {} if (_legacy_pending or _launch_refused.size() >= 2) else _plan_stunt()
 	if stunt.has("pending") or stunt.has("exhausted"):
 		# Continue the bounded search on the next tick (still on the toe); an
 		# exhausted search hands the legacy route its own fresh tick.
@@ -2144,7 +2176,7 @@ func _stunt_arc_clear(origin: Transform3D,velocity: Vector3,omega: Vector3,secon
 				if plan_debug:
 					var body_now := Transform3D(_body_frame.basis,root_now.origin)
 					var local := body_now.affine_inverse()*sample
-					print("CONTRAPTION_BACK_TOOL arc_posture_refused t=",snappedf(time,.001),"/",snappedf(seconds,.001)," tool_body=",local.origin," x=",local.basis.x," y=",local.basis.y," posture=",JSON.stringify(_posture_debug_at(sample,root_now)))
+					print("CONTRAPTION_BACK_TOOL arc_posture_refused t=",snappedf(time,.001),"/",snappedf(seconds,.001)," root_now=",root_now.origin," settled=",settled.origin," root=",_root.origin," d=",d," tool_body=",local.origin," x=",local.basis.x," y=",local.basis.y," posture=",JSON.stringify(_posture_debug_at(sample,root_now)))
 				return false
 		else:
 			for shape_index in _native_colliders.size():
@@ -2902,10 +2934,8 @@ func _commit_seat(tool: RigidBody3D) -> void:
 	_pad_tops = layout.tops
 	_seat_z = _seat_local.origin.z
 	var key := [_side_sign,_seat_flip,tool.get_instance_id() if is_instance_valid(tool) else 0]
-	if key != _holder_layout_key:
-		_holder_layout_key = key
-		_layout_holder()
-		if _holder_geometry_ready: _holder_geometry_ready = _holder_geometry.rebuild()
+	# The hardware follows through _update_holder_display (never per candidate).
+	if key != _holder_layout_key: _holder_layout_key = key
 
 func _pad_gap(tool_body: Transform3D,index: int) -> float:
 	# Signed height of tray `index`'s contact feature above its rubber top
@@ -3163,10 +3193,21 @@ func _acting_target(pose: SkeletonModifier3D,sk: Skeleton3D,unbalanced_com: Vect
 	var roll := clampf(-atan2(local.x,height),-roll_size,roll_size)*envelope
 	return {"shift":shift,"roll":roll,"pitch":pitch,"yaw":yaw,"tau":tau,"side":weight_side if envelope > .5 else -1,"point":soles[weight_side]}
 
+## Face hooks for the expression code (_update_expression is not edited here).
+## Wiring, inside _update_expression before the gaze is applied:
+##   var stunt_look: Variant = back_tool.gaze_target() if back_tool else null
+##   if stunt_look is Vector3: looking = stunt_look; gaze_response = maxf(gaze_response,18.0)
+##   (and add "stunt_look is Vector3" to the condition that aims the eyes)
+##   effort = minf(effort, 1.0-.30*back_tool.face_effort())  # brace squint
+##   if back_tool.blink_hold(): _next_blink = maxf(_next_blink,.25)
+##   if back_tool.face_cue() == &"pride": smile_request = maxf(smile_request,.6)
+## The eyes sit on the front face, so they never aim at the seat behind the
+## head: the last beat braces forward-up with a squint, the proud beat glances
+## toward the seated side.
 func gaze_target() -> Variant:
-	# Face/gaze hook (owned by the expression code). Leads the action: the
-	# tool while gathering, the planned apex as the kick winds up, the tool
-	# in flight, the seat just before contact, the handle while reaching.
+	# Leads the action: the tool while gathering, the planned apex as the kick
+	# winds up, the tool in flight, a forward-up brace for the last beat and
+	# the dip, a glance toward the seated side, the handle while reaching.
 	var tool: RigidBody3D = worker.equipped_tool
 	if not is_instance_valid(tool) or not tool.is_inside_tree() or not worker.is_inside_tree(): return null
 	_cache_tool(tool)
@@ -3177,21 +3218,33 @@ func gaze_target() -> Variant:
 			if not _stunt.is_empty() and _stunt.has("apex_local"): return _body_frame*Vector3(_stunt.apex_local)
 			return com
 		"flight":
-			var velocity: Vector3 = _velocity(tool)
-			if velocity.y < 0.0 and _age > _flight_seconds-.15: return _body_frame*seat_point()
-			return com+velocity*.06
-		"settle","proud": return com
+			if _bracing(): return _body_frame*Vector3(0,.55,-1.6)
+			return com+_velocity(tool)*.06
+		"settle": return _body_frame*Vector3(0,.35,-1.6)
+		"proud": return _body_frame*Vector3(_side_sign*1.3,.30,-.35)
 		"reach": return tool.global_transform*Vector3(0,-.035-float(tool.definition.size.y)*.45,0)
 		"draw": return com
 	return null
 
+func _bracing() -> bool:
+	# The last beat before the predicted contact (the tool is falling past the
+	# eye line toward the seat behind the head).
+	if stage != "flight" or not is_instance_valid(worker.equipped_tool): return false
+	return _velocity(worker.equipped_tool).y < 0.0 and _age > _flight_seconds-.16
+
+func face_effort() -> float:
+	# Brace squint: the last beat and the catch dip, eased out by the proud beat.
+	if _bracing(): return 1.0
+	if stage == "settle": return clampf(1.0-_stage_age/.20,0.0,1.0)
+	return 0.0
+
 func blink_hold() -> bool:
-	# Face hook: never blink through the snap or while the tool is airborne.
+	# Never blink through the snap or while the tool is airborne.
 	return stage in ["kick","release","flight"]
 
 func face_cue() -> StringName:
-	# Face hook: a short accent at the real contact catch (happy squint).
-	return &"pride" if stage == "settle" else &""
+	# A short proud accent after the real contact catch (happy lids).
+	return &"pride" if stage in ["settle","proud"] else &""
 
 func stunt_metrics() -> Dictionary:
 	return _stunt_metrics
@@ -3270,6 +3323,7 @@ func _launch() -> void:
 	if not arc_clear or launch_impulse.length() > tool.mass*MAX_KICK_SPEED:
 		reason = "No clear bounded toss arc behind the Wako"
 		# The next plan skips this candidate/apex/spin rather than repeating it.
+		_launch_refused_at = worker.global_position
 		if not _stunt.is_empty(): _launch_refused.append(_plan_key(float(_stunt.get("flip",1.0)),int(_stunt.get("candidate",-1)),float(_stunt.get("apex",0.0)),int(_stunt.get("spin_option",-1))))
 		# Nothing is thrown: the toe retraces its passage home on the foot
 		# (the old snap back to the ordinary carry could not keep the pose).
@@ -3616,8 +3670,29 @@ func _begin_deferred_interrupt() -> void:
 	# With the tool back on the foot the startle stays a body/face reaction:
 	# the interrupted clip folds the work foot under the cube and would make
 	# the ordinary held-tool guard shed the same tool it just kept.
-	if worker.is_available() and not foot_occupied(): worker.begin_action.call_deferred(_deferred_kind)
+	if worker.is_available() and not foot_occupied():
+		if _deferred_recoil.is_empty(): worker.begin_action.call_deferred(_deferred_kind)
+		else: _play_deferred_recoil.call_deferred(_deferred_recoil)
 	_deferred_kind = "interrupted"
+	_deferred_recoil = ""
+
+func _play_deferred_recoil(direction: String) -> void:
+	# A native hit's recoil arrived during the stunt: its interrupt was held
+	# for the catch (only an 8 ms sliver of its clip ran before the stunt's
+	# idle took the cube back). Play that same directional recoil once now,
+	# exactly as the recoil owner starts it, instead of a second generic
+	# 'interrupted' reaction.
+	if not worker.is_available() or foot_occupied(): return
+	worker.begin_action("interrupted")
+	if worker.action != "interrupted": return
+	var clip: String = "recoil/"+direction+"_"+("L" if worker.work_foot_side == 0 else "R")
+	if not worker._animation.has_animation(clip): return
+	worker._action_time = 0.0
+	worker.action_progress = 0.0
+	worker._action_length = worker._animation.get_animation(clip).length
+	worker._animation.play(clip,.18)
+	worker._animation.seek(0.0,false)
+	_stunt_metrics.deferred_recoil = clip
 
 func _defer_reaction(kind: String,why: String) -> void:
 	# The startle (its clip, visual pitch and weaker drive) waits for custody.
@@ -3625,6 +3700,12 @@ func _defer_reaction(kind: String,why: String) -> void:
 	_pending_job = ""
 	_interrupt_after_catch = true
 	_deferred_kind = kind if kind in ["interrupted","danger"] else "interrupted"
+	# A native recoil (wako_recoil.react) counts its event before interrupting:
+	# remember its direction so the held reaction is that one recoil.
+	var recoil: RefCounted = worker.get("recoil")
+	if recoil and int(recoil.events) != _recoil_seen:
+		_deferred_recoil = str(recoil.last_direction)
+		_recoil_seen = int(recoil.events)
 	_deferred_reaction = maxf(_deferred_reaction,float(worker._reaction))
 	worker._reaction = 0.0
 	reason = why
@@ -3731,6 +3812,7 @@ func _release_may_touch(tool: RigidBody3D,body: PhysicsBody3D,com: Vector3,reach
 			var time := .05*(step+1)
 			if zone.has_point(com+velocity*time+gravity*(.5*time*time)): near = true; break
 	if not near: return false
+	var solid: bool = bool(_release_guard.get("solid",false))
 	_query.exclude = []
 	_query.collision_mask = 0x7fffffff
 	_query.motion = Vector3.ZERO
@@ -3744,6 +3826,10 @@ func _release_may_touch(tool: RigidBody3D,body: PhysicsBody3D,com: Vector3,reach
 	_query.collision_mask = 0x7fffffff & ~SENSOR_LAYER
 	# A resting body that no longer overlaps is an ordinary loose obstacle
 	# again (the Wako may bump it like any other part); a moving one keeps it.
+	# A tool shed from the air (a missed or abandoned catch) is solid against
+	# the body as soon as it is not already inside it: it lands on the Wako,
+	# never through it.
+	if solid: return touching
 	return touching or moving
 
 func _clear_release_contacts(_force: bool) -> void:
@@ -3766,6 +3852,7 @@ func drop(explanation: String) -> void:
 	# may already have left; no world pose/point velocity exists to query here.
 	if not worker.is_inside_tree() or not tool.is_inside_tree(): return
 	var carried := is_instance_valid(tool.carrier)
+	var from_air: bool = phase == "flight"
 	var ordinary_foot: bool=phase=="foot" and tool.carrier==worker.tool_anchor
 	var ordinary_binding: bool=ordinary_foot and not _ordinary_motion.is_empty() \
 		and int(_ordinary_motion.instance)==tool.get_instance_id() and _ordinary_motion.rid==tool.get_rid() \
@@ -3799,6 +3886,7 @@ func drop(explanation: String) -> void:
 	tool.set_carried(null)
 	# Released at the seat (or inside a knocked-down ragdoll): never shove us.
 	_guard_release(tool)
+	if from_air and not _release_guard.is_empty(): _release_guard.solid = true
 	if carried:
 		tool.linear_velocity = velocity
 		tool.angular_velocity = spin
@@ -4502,6 +4590,8 @@ func bind_restored_item(tool: RigidBody3D) -> bool:
 		return false
 	worker.set_equipped_tool(tool)
 	_restore_binding(tool)
+	# A restored seated or airborne tool finds its trays already in place.
+	_show_layout(is_instance_valid(worker.equipped_tool) and phase in ["flight","back","retrieve"])
 	return true
 
 func _restore_binding(tool: RigidBody3D) -> void:
@@ -4873,7 +4963,19 @@ func _build_holder() -> void:
 	var plate_origin: Vector3 = HolderVisual.SEAT_ORIGIN if body_fitted else Vector3(0,-.13,_plate_back-HolderVisual.SEAT_SIZE.z*.5)
 	_box("RootSeat",HolderVisual.SEAT_SIZE,plate_origin,_stone)
 	for side: float in [-1.0,1.0]:
-		var strap := _box("CradleArm",HolderVisual.STRAP_SIZE,Vector3(side*HolderVisual.STRAP_X,HolderVisual.STRAP_Y,HolderVisual.measured_back(worker._skin_mesh,worker._skeleton)+HolderVisual.BODY_GAP+HolderVisual.STRAP_SIZE.z*.5),_bronze)
+		# Each strap follows the skin's own section (1 mm off it) up the back
+		# and over the roof bevel, ending on the roof under its rivet; a rig
+		# that cannot be sectioned keeps the flat strap on the measured back.
+		var fitted: ArrayMesh = HolderVisual.strap_mesh(worker._skin_mesh,worker._skeleton,side) if body_fitted else null
+		var strap: MeshInstance3D
+		if fitted:
+			strap = MeshInstance3D.new()
+			strap.name = "CradleArm"
+			strap.mesh = fitted
+			strap.material_override = _bronze
+			holder.add_child(strap)
+		else:
+			strap = _box("CradleArm",HolderVisual.STRAP_SIZE,Vector3(side*HolderVisual.STRAP_X,HolderVisual.STRAP_Y,HolderVisual.measured_back(worker._skin_mesh,worker._skeleton)+HolderVisual.BODY_GAP+HolderVisual.STRAP_SIZE.z*.5),_bronze)
 		_straps.append(strap)
 		var rivet := MeshInstance3D.new()
 		rivet.name = "screw"
@@ -4884,8 +4986,10 @@ func _build_holder() -> void:
 		cylinder.radial_segments = 6
 		rivet.mesh = cylinder
 		rivet.material_override = _bronze
-		rivet.rotation.x = PI*.5
-		rivet.position = Vector3(side*HolderVisual.STRAP_X,-.06,_plate_back+.0035)
+		if fitted: rivet.transform = HolderVisual.strap_end(side)
+		else:
+			rivet.rotation.x = PI*.5
+			rivet.position = Vector3(side*HolderVisual.STRAP_X,-.06,_plate_back+.0035)
 		holder.add_child(rivet)
 	for index in 2:
 		_gussets.append(_box("BronzeSocket",HolderVisual.SOCKET_SIZE,Vector3.ZERO,_bronze))
@@ -4900,34 +5004,89 @@ func _build_holder() -> void:
 		_seat_colliders.append(tray)
 	_feature_shape.size = Vector3(.004,.03,.03)
 	_commit_seat(null)
+	_show_layout(false)
 
 func _layout_holder() -> void:
-	# Each tray follows the committed seat: rubber top on the tool's measured
-	# visual underside, sensor top PAD_PRELOAD above it (the resting tool
-	# genuinely overlaps both sensors), a bronze shelf under the rubber that
-	# reaches the plate (or the strap above it) and a gusset beneath.
+	# Instant: show the current display target (tests, restores, the build).
+	_show_layout(_display_seat)
+
+## Worn-pack display. The trays rest level and mirrored (x-symmetric hardware,
+## so the empty pack adds no sideways load to the balance) whenever no tool is
+## seated or on its way to the seat; a transfer that commits to a seat swings
+## them into that seat's diagonal layout over HOLDER_LAYOUT_SECONDS (well
+## before any catch), and they swing back once the tool has left the back.
+## The planner's candidate seats never move the hardware.
+func _show_layout(seat: bool) -> void:
 	if _seat_models.size() != 2: return
-	var n := _seat_normal
-	var along: Vector3 = _seat_local.basis.y.normalized()
+	_display_seat = seat
+	_display_key = [seat]+(_holder_layout_key if seat else [])
+	_display_to = _layout_targets(seat)
+	_display_t = 1.0
+	_apply_layout(_display_to)
+
+func _update_holder_display(delta: float) -> void:
+	if _seat_models.size() != 2: return
+	var tool: RigidBody3D = worker.equipped_tool
+	var want: bool = is_instance_valid(tool) and (phase in ["flight","back","retrieve"] or (phase == "prepare" and stage != "retrace"))
+	var key: Array = [want]+(_holder_layout_key if want else [])
+	if key != _display_key:
+		_display_key = key
+		_display_seat = want
+		_display_from = _current_layout()
+		_display_to = _layout_targets(want)
+		_display_t = 0.0
+	if _display_t >= 1.0: return
+	_display_t = minf(_display_t+delta/HOLDER_LAYOUT_SECONDS,1.0)
+	var weight := smoothstep(0.0,1.0,_display_t)
+	var blended: Array[Transform3D] = []
+	for index in _display_to.size(): blended.append(_display_from[index].interpolate_with(_display_to[index],weight))
+	_apply_layout(blended)
+
+func _layout_parts() -> Array[Node3D]:
+	return [_seat_models[0],_seat_colliders[0],_drop_arms[0],_gussets[0],_seat_models[1],_seat_colliders[1],_drop_arms[1],_gussets[1]]
+
+func _current_layout() -> Array[Transform3D]:
+	var out: Array[Transform3D] = []
+	var parts := _layout_parts()
+	for index in parts.size():
+		# The rubber's own clack squash is not part of the layout.
+		out.append(_pad_base[0 if index < 4 else 1] if index%4 == 0 and _pad_base.size() == 2 else parts[index].transform)
+	return out
+
+func _apply_layout(transforms: Array[Transform3D]) -> void:
+	var parts := _layout_parts()
+	for index in parts.size(): parts[index].transform = transforms[index]
+	if _pad_base.size() == 2:
+		_pad_base[0] = transforms[0]
+		_pad_base[1] = transforms[4]
+	if _holder_geometry_ready: _holder_geometry_ready = _holder_geometry.rebuild()
+
+func _layout_targets(seat: bool) -> Array[Transform3D]:
+	# Each tray: rubber top on the tool's measured visual underside (seat) or
+	# level and mirrored (rest), sensor top PAD_PRELOAD above it (a resting
+	# tool genuinely overlaps both sensors), a bronze shelf under the rubber
+	# reaching the plate (or the strap/skin above it) and a gusset beneath.
+	var n: Vector3 = _seat_normal if seat else Vector3.UP
+	var along: Vector3 = _seat_local.basis.y.normalized() if seat else Vector3.RIGHT
+	var tops: Array = _pad_tops if seat else [Vector3(-REST_PAD.x,REST_PAD.y,REST_PAD.z),REST_PAD]
 	var depth_axis := along.cross(n).normalized()
 	var pad_basis := Basis(along,n,depth_axis)
+	var out: Array[Transform3D] = []
 	for index in 2:
-		var top: Vector3 = _pad_tops[index]
-		_seat_models[index].transform = Transform3D(pad_basis,top-n*HolderVisual.PAD_SIZE.y*.5)
-		if _pad_base.size() == 2: _pad_base[index] = _seat_models[index].transform
-		_seat_colliders[index].transform = Transform3D(pad_basis,top+n*(PAD_PRELOAD-HolderVisual.TRAY_SENSOR_SIZE.y*.5))
-		# Mount: the plate face inside its footprint, else the strap/skin face.
+		var top: Vector3 = tops[index]
 		var on_plate: bool = absf(top.x) <= HolderVisual.SEAT_SIZE.x*.5+.005 and top.y <= HolderVisual.SEAT_ORIGIN.y+HolderVisual.SEAT_SIZE.y*.5+.005
 		var mount_z: float = _plate_back if on_plate else HolderVisual.MEASURED_BACK+HolderVisual.BODY_GAP+HolderVisual.STRAP_SIZE.z
 		var back_z: float = top.z+HolderVisual.PAD_SIZE.z*.5
 		var shelf_centre: Vector3 = top-n*(HolderVisual.PAD_SIZE.y+HolderVisual.SHELF_SIZE.y*.5)
 		shelf_centre.z = (mount_z+back_z)*.5
-		var shelf := _drop_arms[index]
-		shelf.transform = Transform3D(pad_basis*Basis.from_scale(Vector3(1,1,maxf(back_z-mount_z,.02)/HolderVisual.SHELF_SIZE.z)),shelf_centre)
 		var gusset_basis := Basis(n.cross(Vector3.BACK).normalized(),n,Vector3.BACK)
 		var gusset_centre: Vector3 = shelf_centre-n*(HolderVisual.SHELF_SIZE.y*.5+HolderVisual.SOCKET_SIZE.y*.5)
 		gusset_centre.z = mount_z+HolderVisual.SOCKET_SIZE.z*.5
-		_gussets[index].transform = Transform3D(gusset_basis,gusset_centre)
+		out.append(Transform3D(pad_basis,top-n*HolderVisual.PAD_SIZE.y*.5))
+		out.append(Transform3D(pad_basis,top+n*(PAD_PRELOAD-HolderVisual.TRAY_SENSOR_SIZE.y*.5)))
+		out.append(Transform3D(pad_basis*Basis.from_scale(Vector3(1,1,maxf(back_z-mount_z,.02)/HolderVisual.SHELF_SIZE.z)),shelf_centre))
+		out.append(Transform3D(gusset_basis,gusset_centre))
+	return out
 
 func _box(title: String,size: Vector3,position: Vector3,material: StandardMaterial3D) -> MeshInstance3D:
 	var key := str(size)

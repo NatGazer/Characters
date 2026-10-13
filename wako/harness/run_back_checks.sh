@@ -24,6 +24,8 @@ SCENARIOS=(
   "interrupt_home --tool=salvage_tool --side=0 --interrupt=home"
   "fear_early --tool=assembly_tool --side=0 --fear=age --fear_age=.15"
   "hit_rising --tool=salvage_tool --side=1 --fear=rising --hit"
+  "recoil_apex --tool=salvage_tool --side=1 --fear=apex --hit --hit_speed=3.0"
+  "recoil_falling --tool=assembly_tool --side=0 --fear=falling --hit --hit_speed=3.0"
   "save_flight --tool=assembly_tool --side=0 --save=flight"
   "save_flight_late --tool=salvage_tool --side=1 --save=flight_late"
   "save_back_v2 --tool=assembly_tool --side=0 --save=back_v2"

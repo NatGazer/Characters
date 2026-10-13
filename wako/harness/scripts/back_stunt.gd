@@ -190,7 +190,7 @@ func scenario(delta: float) -> void:
 				else:
 					_go("retrieve")
 			if t_state > 12.0: _finish("stow_timeout")
-			if not wako.equipped_tool and _t.has("dropped") and clock - float(_t.dropped) > 2.0: _finish("dropped")
+			if not wako.equipped_tool and _t.has("dropped") and clock - float(_t.dropped) > 2.0 and (not bt.busy() or clock - float(_t.dropped) > 6.0): _finish("dropped")
 		"walk_after":
 			caption("walking with the tool on its back")
 			if not wako.has_target or t_state > 8.0:
@@ -221,7 +221,7 @@ func scenario(delta: float) -> void:
 			if _t.has("action_begin") and wako.action.is_empty():
 				_finish("complete")
 			if t_state > 14.0: _finish("retrieve_timeout")
-			if not wako.equipped_tool and _t.has("dropped") and clock - float(_t.dropped) > 2.0: _finish("dropped")
+			if not wako.equipped_tool and _t.has("dropped") and clock - float(_t.dropped) > 2.0 and (not bt.busy() or clock - float(_t.dropped) > 6.0): _finish("dropped")
 	_interrupts(bt)
 	_saves(bt)
 	bt = _bt()
@@ -305,7 +305,7 @@ func _late_hooks(bt: RefCounted) -> void:
 			_event("fear", chk.fear)
 			_interrupt_t = clock
 			_interrupt_tool_pos = tool.global_position
-			if args.has("hit"): wako.apply_hit(-wako._model.global_basis.x * wako.mass * 1.0)
+			if args.has("hit"): wako.apply_hit(-wako._model.global_basis.x * wako.mass * float(_arg("hit_speed", "1.0")))
 			else: wako.fear_time = 3.0
 			_loose_watch = 0
 	_track_loose(bt)
@@ -477,6 +477,14 @@ func _observe(delta: float, bt: RefCounted) -> void:
 	var stage := _stage_name()
 	var wpos := wako.global_position
 	var wvel := wako.linear_velocity
+	if _interrupt_t >= 0.0 and wako._animation:
+		# Reaction clips after the startle/hit: [clip, start, seconds held].
+		var clips: Array = m.get("reaction_clips", [])
+		var now := str(wako._animation.current_animation)
+		if clips.is_empty() or str(clips[-1][0]) != now:
+			if clips.size() < 16: clips.append([now, snappedf(clock, .001), 0.0])
+		else: clips[-1][2] = snappedf(clock - float(clips[-1][1]), .001)
+		m.reaction_clips = clips
 	if wako.on_ground: _ground_y = wako._ground_point.y
 	if phase != _prev_phase:
 		_event("phase", {"from": _prev_phase, "to": phase, "stage": stage})
@@ -555,6 +563,17 @@ func _observe(delta: float, bt: RefCounted) -> void:
 	if bt.has_method("stunt_metrics"):
 		var sm: Dictionary = bt.stunt_metrics()
 		if not sm.is_empty(): m.stunt = sm
+	if not stage.is_empty():
+		# What the eyes actually do per beat (moves only when the expression
+		# code is wired to the BackTool face hooks, e.g. the gaze preview build).
+		var eyes: Dictionary = m.get("eyes", {})
+		var beat: Dictionary = eyes.get(stage, {"gaze_max": [0.0, 0.0], "openness_min": 1.0})
+		var eg: Vector2 = wako._eye_gaze
+		if eg.length() > Vector2(beat.gaze_max[0], beat.gaze_max[1]).length(): beat.gaze_max = [snappedf(eg.x, .0001), snappedf(eg.y, .0001)]
+		beat.openness_min = minf(float(beat.openness_min), float(wako._eye_shader_openness))
+		beat.smile_max = maxf(float(beat.get("smile_max", 0.0)), float(wako._eye_smile))
+		eyes[stage] = beat
+		m.eyes = eyes
 	if bt.has_method("gaze_target") and stage in ["gather", "hold", "kick", "flight", "settle", "reach", "draw"]:
 		var g: Variant = bt.gaze_target()
 		var key := "gaze_" + stage
@@ -993,11 +1012,16 @@ func _assertions() -> void:
 	var plain := not args.has("interrupt") and not args.has("save") and not args.has("ceiling") and not knock and not args.has("fear")
 	checks.append(["same native tool and mass throughout", bool(m.get("identity_same", false)) and bool(m.get("mass_conserved", false))])
 	checks.append(["never left busy (no soft-lock)", not bool(m.get("final_busy", true))])
+	var holder: Dictionary = m.get("holder", {})
+	if holder.has("strap_gap_max"):
+		checks.append(["both straps sit on the skin (gap <= 1.5 cm, no penetration)", int(holder.get("strap_count", 0)) == 2 and float(holder.strap_gap_max) <= .015 and float(holder.strap_gap_min) >= -.0005])
 	var drop: Dictionary = chk.get("drop", {})
 	if not drop.is_empty():
 		var after: Dictionary = drop.get("overlap_after_1s", {})
 		checks.append(["loose release: no capsule/ragdoll overlap or exception 1 s later", not bool(after.get("capsule_overlap", false)) and not bool(after.get("ragdoll_overlap", false)) and not bool(drop.get("exception_after_1s", false))])
-		if not knock: checks.append(["loose release: worker horizontal dv < .1 m/s", float(drop.get("worker_dv_max", 0.0)) < .1])
+		# A hit/knock already shoves the Wako; a tool shed from the air after it
+		# may land on it (solid, never through it).
+		if not knock and not args.has("hit"): checks.append(["loose release: worker horizontal dv < .1 m/s", float(drop.get("worker_dv_max", 0.0)) < .1])
 	if plain or (args.has("interrupt") and str(_arg("interrupt", "")) in ["rising", "apex", "falling", "late", "settle", "reach", "contact"]):
 		var catch: Dictionary = chk.get("catch", {})
 		checks.append(["caught on BOTH trays and settled in contact", catch.get("catch_trays", []) == [true, true] and int(catch.get("contact_missing_ticks", 1)) == 0])
@@ -1020,6 +1044,13 @@ func _assertions() -> void:
 			# A shove can carry the cradle out from under the tool: then the same
 			# body lands loose beside it, never through it or lodged in the capsule.
 			checks.append(["hit in flight: caught on both trays, or lands loose clear of the body", (catch_rec.get("catch_trays", []) == [true, true] and not _t.has("dropped")) or (_t.has("dropped") and float(chk.get("loose_cube_pen_max", 1.0)) <= .005)])
+			if float(_arg("hit_speed", "1.0")) > 2.5:
+				# A recoil-strength hit: exactly one held reaction clip (no sliver
+				# now and a second generic reaction after the catch).
+				var reactions := 0
+				for clip: Array in m.get("reaction_clips", []):
+					if (str(clip[0]).begins_with("recoil/") or str(clip[0]).ends_with("interrupted_L") or str(clip[0]).ends_with("interrupted_R")) and float(clip[2]) > .1: reactions += 1
+				checks.append(["recoil hit in flight: one reaction, not two", reactions == 1])
 		else:
 			checks.append(["fright in flight: still caught on both trays, never through the body", catch_rec.get("catch_trays", []) == [true, true] and not _t.has("dropped") and float(chk.get("loose_cube_pen_max", 0.0)) <= .005])
 	if m.get("save") is Dictionary:
@@ -1089,6 +1120,8 @@ func _holder_metrics(bt: RefCounted) -> Dictionary:
 	out.hardware_lowest_y = lowest
 	out.hardware_above_cube_bottom = lowest - (-.2625)
 	out.hardware_max_abs_x = widest
+	var straps := _strap_gaps(bt)
+	for key: String in straps: out[key] = straps[key]
 	var skin_z := _skin_back_grid()
 	if seat and not skin_z.is_empty():
 		var inner := _plate_inner_grid(seat)
@@ -1132,6 +1165,84 @@ func _holder_metrics(bt: RefCounted) -> Dictionary:
 			var grip: Vector3 = inv * Vector3(0, -.035 - float(tool.definition.size.y) * .45, 0)
 			out.grip_local = grip
 	return out
+
+## Straps vs the real skin (independent of how they were built): every unique
+## strap vertex's signed distance to the nearest root-rigid back/roof skin
+## triangle. min < 0 = penetration; max - thickness bounds the inner face's
+## gap anywhere along the strap (a floating strap shows up here).
+func _strap_gaps(bt: RefCounted) -> Dictionary:
+	var mi: MeshInstance3D = wako._skin_mesh
+	var sk: Skeleton3D = wako._skeleton
+	if not mi or not mi.skin: return {}
+	var skin: Skin = mi.skin
+	var root_bind := -1
+	for bind in skin.get_bind_count():
+		if skin.get_bind_bone(bind) == 0 or skin.get_bind_name(bind) == sk.get_bone_name(0): root_bind = bind; break
+	if root_bind < 0: return {}
+	var xf := Transform3D(sk.get_bone_global_rest(0).basis, Vector3.ZERO) * skin.get_bind_pose(root_bind)
+	var tris: Array = []
+	for surface in mi.mesh.get_surface_count():
+		var a := mi.mesh.surface_get_arrays(surface)
+		if a[Mesh.ARRAY_BONES] == null: continue
+		var pts: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+		var idx: PackedInt32Array = a[Mesh.ARRAY_INDEX]
+		for o in range(0, idx.size(), 3):
+			var p0: Vector3 = xf * pts[idx[o]]
+			var p1: Vector3 = xf * pts[idx[o + 1]]
+			var p2: Vector3 = xf * pts[idx[o + 2]]
+			if maxf(p0.z, maxf(p1.z, p2.z)) < .05: continue
+			var box := AABB(p0, Vector3.ZERO).expand(p1).expand(p2).grow(.05)
+			tris.append([p0, p1, p2, -(p1 - p0).cross(p2 - p0).normalized(), box])
+	var out := {"strap_count": 0}
+	var lowest := INF
+	var highest := -INF
+	var top := -INF
+	for strap: MeshInstance3D in bt._straps:
+		out.strap_count = int(out.strap_count) + 1
+		var seen := {}
+		var arrays := strap.mesh.surface_get_arrays(0)
+		for v: Vector3 in arrays[Mesh.ARRAY_VERTEX]:
+			var p: Vector3 = strap.transform * v
+			var key := p.snapped(Vector3.ONE * .0001)
+			if seen.has(key): continue
+			seen[key] = true
+			top = maxf(top, p.y)
+			var best := INF
+			var signed := 0.0
+			for t: Array in tris:
+				if not (t[4] as AABB).has_point(p): continue
+				var q := _closest_on_triangle(p, t[0], t[1], t[2])
+				var d := p.distance_to(q)
+				if d < best:
+					best = d
+					signed = d if (p - q).dot(t[3]) >= -1e-5 else -d
+			lowest = minf(lowest, signed)
+			highest = maxf(highest, best)
+	if int(out.strap_count) > 0:
+		out.strap_gap_min = lowest
+		out.strap_gap_max = highest - HolderVisual.STRAP_SIZE.z
+		out.strap_top_y = top
+	return out
+
+static func _closest_on_triangle(p: Vector3, a: Vector3, b: Vector3, c: Vector3) -> Vector3:
+	# Ericson, Real-Time Collision Detection 5.1.5.
+	var ab := b - a; var ac := c - a; var ap := p - a
+	var d1 := ab.dot(ap); var d2 := ac.dot(ap)
+	if d1 <= 0.0 and d2 <= 0.0: return a
+	var bp := p - b
+	var d3 := ab.dot(bp); var d4 := ac.dot(bp)
+	if d3 >= 0.0 and d4 <= d3: return b
+	var vc := d1 * d4 - d3 * d2
+	if vc <= 0.0 and d1 >= 0.0 and d3 <= 0.0: return a + ab * (d1 / (d1 - d3))
+	var cp := p - c
+	var d5 := ab.dot(cp); var d6 := ac.dot(cp)
+	if d6 >= 0.0 and d5 <= d6: return c
+	var vb := d5 * d2 - d1 * d6
+	if vb <= 0.0 and d2 >= 0.0 and d6 <= 0.0: return a + ac * (d2 / (d2 - d6))
+	var va := d3 * d6 - d5 * d4
+	if va <= 0.0 and (d4 - d3) >= 0.0 and (d5 - d6) >= 0.0: return b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6)))
+	var denom := 1.0 / (va + vb + vc)
+	return a + ab * (vb * denom) + ac * (vc * denom)
 
 func _skin_back_grid() -> Dictionary:
 	var mi: MeshInstance3D = wako._skin_mesh

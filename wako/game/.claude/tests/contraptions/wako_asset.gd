@@ -128,6 +128,14 @@ func _run() -> void:
 		"the back plate is fitted 1 mm off the real skin and the seat sits just behind it")
 	_check(plate_meshes == 11 and plate_sensors == 2 and is_equal_approx(back.holder_mass(), 2.0) and back.holder.visible,
 		"the always-visible holder keeps eleven meshes, two tray sensors and 2 kg")
+	# Both bronze straps follow the skin's own section (1 mm off it, a few mm
+	# at most across their width) up the back and over the roof bevel.
+	var straps_fitted: bool = back._straps.size() == 2
+	for strap: MeshInstance3D in back._straps:
+		straps_fitted = straps_fitted and strap.mesh == HolderVisual.strap_mesh(worker._skin_mesh, worker._skeleton, signf(strap.get_aabb().get_center().x))
+	print("CONTRAPTION_WAKO_ASSET straps fitted=%s gap=%s" % [straps_fitted, HolderVisual.strap_fit_gap])
+	_check(straps_fitted and HolderVisual.strap_fit_gap.x >= HolderVisual.BODY_GAP - .0001 and HolderVisual.strap_fit_gap.y <= .015,
+		"both straps are fitted to the real skin section (no floating strap)")
 	# Tray hardware hangs no lower than 4 cm above the cube's bottom edge
 	# (skin y -.2625) and stays inside the hips' swing lane (|x| <= .32), for
 	# every seat the holder can take (both sides, every offered face, both tools).
@@ -149,6 +157,7 @@ func _run() -> void:
 				if not back._seat_face_ok(part, side, face): continue
 				seated_faces += 1
 				back._commit_seat(part)
+				back._show_layout(true) # The trays as they hold this seat.
 				for child: Node in back.holder.get_children():
 					if child is MeshInstance3D and child.name != "RootSeat":
 						var mesh_node := child as MeshInstance3D
