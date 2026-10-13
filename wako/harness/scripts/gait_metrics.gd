@@ -394,6 +394,8 @@ func _sample(delta: float) -> void:
 		var gap_sole := sole.y - ground
 		var gap_ball := ball.y - _ground_y(ball) - float(_ball_rest_h[side])
 		var touching: bool = (gap_sole < CONTACT_H and gap_sole > -.03) or (gap_ball < CONTACT_H and gap_ball > -.03)
+		if debug and OS.get_environment("TRACE_T0") != "" and clock > float(OS.get_environment("TRACE_T0")) and clock < float(OS.get_environment("TRACE_T1")):
+			print("TRF c=%.3f side=%d gap=%.4f/%.4f state=%s t=%.2f sole=%s ball=%s out=%s planar=%s land=%s" % [clock, side, gap_sole, gap_ball, str(gait.state[side]) if gait else "-", float(gait.t[side]) if gait else -1.0, str(sole), str(ball), str(gait.out_sole[side]), str(gait._planar[side]), str(gait.landing[side])])
 		if gap_ball < .1:
 			if debug and -gap_ball > .008 and -gap_ball > float(s.ball_pen) + .002: print("BALLPEN c=%.3f %s side=%d pen=%.4f sole_gap=%.4f g=%s state=%s t=%.2f ball=%s sole=%s" % [clock, label, side, -gap_ball, gap_sole, g, str(gait.state[side]) if gait else "-", float(gait.t[side]) if gait else -1.0, str(ball), str(sole)])
 			s.ball_pen = maxf(s.ball_pen, -gap_ball)
@@ -407,7 +409,7 @@ func _sample(delta: float) -> void:
 				var an: Array = _contact_anchor[side]
 				print("BALL c=%.3f gap=%.4f/%.4f sole_drift=%.4f ball_drift=%.4f D=%.3f leg=%.3f peel_state=%s" % [clock, gap_sole, gap_ball, (sole - (an[1] as Vector3)).slide(Vector3.UP).length(), (ball - (an[2] as Vector3)).slide(Vector3.UP).length(), hip.distance_to(ankle), float(wako._leg_lengths[side]), str(gait.state[side]) if gait else "-"])
 			if debug and drift > .004 and drift > _contact_max[side] + .001:
-				print("SKATE c=%.3f %s side=%d drift=%.3f gap=%.4f/%.4f grounded=%s state=%s t=%.2f v=%.2f" % [clock, label, side, drift, gap_sole, gap_ball, g, str(gait.state[side]) if gait else "-", float(gait.t[side]) if gait else -1.0, rel.length()])
+				print("SKATE c=%.3f %s side=%d drift=%.3f gap=%.4f/%.4f grounded=%s state=%s t=%.2f v=%.2f sole=%s ball=%s" % [clock, label, side, drift, gap_sole, gap_ball, g, str(gait.state[side]) if gait else "-", float(gait.t[side]) if gait else -1.0, rel.length(), str(sole), str(ball)])
 			_contact_max[side] = maxf(_contact_max[side], drift)
 		elif _contact[side]:
 			s.skates.append(_contact_max[side])
@@ -425,7 +427,7 @@ func _sample(delta: float) -> void:
 		var kd: Vector3 = pose.evaluated_basis.inverse() * (knee - hip).normalized()
 		if _knee_angle[side] != INF:
 			var step := absf(a - float(_knee_angle[side]))
-			if debug and step > 9.0:
+			if debug and step > 8.0:
 				print("KNEE c=%.3f %s side=%d step=%.1f angle=%.1f g=%s state=%s t=%.2f hip_ankle=%.3f drop=%.3f" % [clock, label, side, step, a, g, str(gait.state[side]) if gait else "-", float(gait.t[side]) if gait else -1.0, hip.distance_to(ankle), float(gait.body_drop) if gait else 0.0])
 			s.knee_step = maxf(s.knee_step, step)
 			if g: s.knee_step_stance = maxf(s.knee_step_stance, step)

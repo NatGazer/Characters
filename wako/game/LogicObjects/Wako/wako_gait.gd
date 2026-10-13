@@ -29,6 +29,7 @@ const MAX_STANCE := .52         # stance distance must fit the run-crouch reach
 const STOP_HORIZON := .45
 const COMMIT_T := .8            # swing progress after which the footfall is fixed
 const CORRIDOR: Array[float] = [.15, .45, .75]   # look-ahead ground samples along the swing
+const DESCENT_K: Array[float] = [.6, .85, .93]   # extra samples near the far end of a step down
 const TOOL_STANCE_LEAD := .08   # a foot-held mallet's stance stays in front of the hip
 const HIP_ABOVE_BODY := .035    # rest hip above the capsule origin: -.85 + 1.0739 - .029 - .16
 const REACH_DROP := .06         # extra crouch the visual root may still add to reach lower ground
@@ -101,6 +102,7 @@ var foot_yaw: Array[float] = [0.0, 0.0]
 var _t_prev: Array[float] = [-1.0, -1.0]
 var _frozen: Array[bool] = [false, false]
 var _planar: Array[bool] = [true, true]
+var _descend_t: Array[float] = [.22, .22]   # step down: swing time the descent starts
 var _contact_delay: Array[int] = [0, 0]
 var _defer_excess: Array[float] = [0.0, 0.0]
 var _caught_up: Array[bool] = [false, false]   # one catch-up re-step per swing
@@ -1279,6 +1281,7 @@ func _sample_corridor(side: int, from: Vector3, to: Vector3) -> void:
 		planar = planar and absf(h - lerpf(from.y, to.y, k)) < .025
 	_planar[side] = planar
 	var rise := to.y - from.y
+	_descend_t[side] = _descent_start(side, from, to, heights) if not planar and rise < -.03 else .22
 	var need := 0.0
 	for i in CORRIDOR.size():
 		var t_k := _glide_inverse(CORRIDOR[i])
@@ -1289,10 +1292,50 @@ func _sample_corridor(side: int, from: Vector3, to: Vector3) -> void:
 		if protrusion > .01: need = maxf(need, (protrusion + .05) / maxf(_bump(t_k), .25))
 	_clear_lift[side] = clampf(need, 0.0, .45)
 
+func _descent_start(side: int, from: Vector3, to: Vector3, heights: Array[float]) -> float:
+	# A step down may only descend once the whole foot is past the upper
+	# edge: the sole point leads the heel by FOOT_HALF_LENGTH, so ground met
+	# at fraction k still sits under the foot up to k + that length. With the
+	# footfall just past a stair nose a fixed 22% start drags the sole along
+	# the tread and cuts the nose, so the start is the earliest that clears
+	# every sampled height (3 extra rays, once per landing).
+	var length := Vector2(to.x - from.x, to.z - from.z).length()
+	if length < .05: return .22
+	var rear := FOOT_HALF_LENGTH / length
+	var rise := to.y - from.y
+	# Landing on a down ramp the foot arrives pitched to it, its heel that
+	# much higher than the sole point: only a true edge holds the descent.
+	var n: Vector3 = landing_normal[side]
+	var grade := -(n.x * (to.x - from.x) + n.z * (to.z - from.z)) / (length * maxf(n.y, .5))
+	var pitch_relief := FOOT_HALF_LENGTH * maxf(-grade, 0.0)
+	var start := .22
+	for i in CORRIDOR.size() + DESCENT_K.size():
+		var k: float = CORRIDOR[i] if i < CORRIDOR.size() else DESCENT_K[i - CORRIDOR.size()]
+		var h: float = heights[i] if i < CORRIDOR.size() else to.y
+		if i >= CORRIDOR.size():
+			var hit: Dictionary = _ground(from.lerp(to, k) + Vector3.UP * .3)
+			if not hit.is_empty(): h = hit.position.y
+		var reach_k := k + rear
+		if reach_k >= .97 or h < to.y + .02: continue
+		# Path height there may fall at most to h + 1 cm (the lift arc is
+		# left out as margin): invert the min-jerk descent for the allowed
+		# fraction u, then the latest start it implies.
+		var t_k := _glide_inverse(reach_k)
+		var q := clampf((h + .01 - pitch_relief - from.y) / rise, 0.0, 1.0)
+		var lo := 0.0
+		var hi := 1.0
+		for j in 10:
+			var mid := (lo + hi) * .5
+			if min_jerk(mid) < q: lo = mid
+			else: hi = mid
+		var u := lo
+		start = maxf(start, (t_k - u) / maxf(1.0 - u, .01))
+	return minf(start, .8)
+
 func _vertical(side: int, rise: float, tt: float) -> float:
 	if _planar[side]: return glide(tt)
 	if rise > .03: return min_jerk(tt / .65)            # step up: rise early
-	if rise < -.03: return min_jerk((tt - .22) / .78)   # step down: descend after the edge
+	if rise < -.03: return min_jerk((tt - _descend_t[side]) / (1.0 - _descend_t[side]))   # step down: descend after the edge
 	return glide(tt)
 
 func _curve(side: int, from: Vector3, land: Vector3, tt: float) -> Vector3:
