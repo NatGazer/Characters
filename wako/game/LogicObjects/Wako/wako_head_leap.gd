@@ -28,7 +28,7 @@ const ANGULAR_BUDGET := .85
 # release, set from the launch elevation so the leg pushes along the flight.
 const PREP := {"crouch":.36,"drive":.14,"bottom_speed":.4,"bottom_accel":8.0,"bottom_pitch":deg_to_rad(14.0),"bottom_spin":1.2,
 	"release_pitch":deg_to_rad(25.0),"release_spin":2.2,"drive_length":.18,"beta_lead":deg_to_rad(8.0),"beta_min":deg_to_rad(10.0),"beta_max":deg_to_rad(28.0)}
-const CREW_PREP := {"crouch":.50,"drive":.15,"bottom_speed":.35,"bottom_accel":8.0,"bottom_pitch":deg_to_rad(12.0),"bottom_spin":1.0,
+const CREW_PREP := {"crouch":.55,"drive":.15,"bottom_speed":.35,"bottom_accel":8.0,"bottom_pitch":deg_to_rad(12.0),"bottom_spin":1.0,
 	"release_pitch":deg_to_rad(22.0),"release_spin":2.2,"drive_length":.18,"beta_lead":deg_to_rad(8.0),"beta_min":deg_to_rad(10.0),"beta_max":deg_to_rad(26.0),"nod":.08}
 # A short lunge for cramped launch places (screens close ahead).
 const SHORT_PREP := {"crouch":.32,"drive":.13,"bottom_speed":.3,"bottom_accel":8.0,"bottom_pitch":deg_to_rad(10.0),"bottom_spin":1.0,
@@ -51,9 +51,9 @@ const HEEL_PEEL := deg_to_rad(30.0)
 # Impact speeds stay under Jolt's 1 m/s restitution threshold: a faster touch
 # is stopped (and bounced) where the speculative contact first appears, ~2 cm
 # early; at or below it the native contact lands the roof exactly.
-const SOLO_OUTBOUND := [[.43,1.3],[.41,1.3],[.45,1.3],[.39,1.3],[.48,1.25],[.35,1.3],[.31,1.3]]
-const CREW_OUTBOUND := [[.60,1.2],[.55,1.2],[.65,1.15],[.50,1.2],[.70,1.15],[.45,1.2]]
-const LONG_OUTBOUND := [[.6,1.2],[.75,1.2],[.95,1.15],[1.2,1.15],[1.45,1.1]]
+const SOLO_OUTBOUND := [[.43,1.5],[.41,1.5],[.45,1.5],[.39,1.5],[.48,1.45],[.35,1.5],[.31,1.5]]
+const CREW_OUTBOUND := [[.60,1.45],[.55,1.45],[.65,1.4],[.50,1.45],[.70,1.4],[.45,1.45]]
+const LONG_OUTBOUND := [[.6,1.4],[.75,1.4],[.95,1.35],[1.2,1.35],[1.45,1.3]]
 const LEGACY_OUTBOUND := [[1.6,.70],[2.0,.70],[2.0,1.0],[2.4,1.0],[2.4,1.35],[2.8,1.35],[3.0,1.35],[3.4,1.35]]
 const FLARE_PLATEAU := 16.4
 const FLARE_RAMP := .04
@@ -84,7 +84,7 @@ const IMPACT_WINDOW := 3.0/120.0
 const SQUASH_ZETA := .55
 const SQUASH_RATE := 26.0
 const STRAIN_SQUASH := .035
-const STRAIN_SECONDS := .12
+const STRAIN_SECONDS := .15
 # Contact hold gains (same 2 g / 24 rad/s² caps): a stopped head settles its
 # sub-millimetre error within a few ticks of the impact.
 const HOLD_GAINS := [6400.0,160.0,6400.0,160.0]
@@ -149,7 +149,7 @@ const TOE_CURL := deg_to_rad(22.0)
 const FOOT_FLATTEN_SECONDS := .12
 # Crew members are two creatures: their cosmetic leg curves differ by a few
 # ticks and degrees (the shared load, timing and plan stay exact).
-const TWIN_DELAY := 2.5/120.0
+const TWIN_DELAY := 1.5/120.0
 const TWIN_ANGLE := deg_to_rad(5.0)
 # Touchdown absorb (P0-6): one monotonic deceleration of the visual root from
 # the measured impact speed to the bottom, a short hold, a slower recovery.
@@ -311,6 +311,8 @@ var _return_lead := RETURN_LEAD
 # The head push lasts at least RETURN_PUSH; a faster (fallback) return pushes
 # longer so the stock's support can carry it inside its friction cone.
 var _push_seconds := RETURN_PUSH
+# Outbound: seconds from the first assisted brake/flare tick to the last.
+var _assist_span := 0.0
 var _restart_angles: Array = []
 var _elevation_guess := deg_to_rad(55.0)
 static var _args: PackedStringArray = []
@@ -1163,9 +1165,28 @@ func _plan_outbound_flight(apex: float, impact: float, tier: String, seconds := 
 	_support_to = -1.0
 	var start: Vector3 = _flight_start*_com_local
 	var end: Vector3 = _destination*_com_local
-	for plateau: float in [FLARE_PLATEAU,14.6,12.8]:
-		if _plan_outbound_flare(apex,impact,seconds,plateau,start,end): return _plan_outbound_spin(_flight_seconds,release_spin,tier)
-	return false
+	# The flare and the horizontal brake share the force budget: a hard flare
+	# forces a long, early horizontal brake, a gentler one a longer flare.
+	# Keep the plateau whose assisted span (brake and flare together) is the
+	# shortest: the most free-fall flight for this candidate.
+	var best: Dictionary = {}
+	var best_span := INF
+	var failure := ""
+	for plateau: float in [FLARE_PLATEAU,14.6,12.8,11.0]:
+		if not _plan_outbound_flare(apex,impact,seconds,plateau,start,end):
+			failure = arc_failure
+			continue
+		var span := _assist_span
+		if span<best_span-.004:
+			best_span = span
+			best = {"_flight_seconds":_flight_seconds,"_track_x":_track_x,"_track_y":_track_y,"_track_z":_track_z,"_launch_velocity":_launch_velocity,
+				"_touchdown_velocity":_touchdown_velocity,"_beat_brake":_beat_brake,"_assist_span":_assist_span}
+	if best.is_empty():
+		arc_failure = failure
+		return false
+	_restore_plan(best)
+	arc_failure = ""
+	return _plan_outbound_spin(_flight_seconds,release_spin,tier)
 
 func _plan_outbound_flare(apex: float, impact: float, seconds: float, plateau: float, start: Vector3, end: Vector3) -> bool:
 	# A gentler flare starts earlier and leaves more of the force budget for
@@ -1219,6 +1240,9 @@ func _plan_outbound_flare(apex: float, impact: float, seconds: float, plateau: f
 		return false
 	_touchdown_velocity = direction*_track_at(horizontal,total,1)+Vector3.DOWN*impact
 	_beat_brake = vertical.flare
+	var brake_begin: float = total if horizontal.size()==1 else horizontal[0][1]
+	var brake_end: float = total if horizontal.size()==1 else finish
+	_assist_span = maxf(float(vertical.flare_end),brake_end)-minf(float(vertical.flare),brake_begin)
 	return true
 
 func _impact_spin() -> float:

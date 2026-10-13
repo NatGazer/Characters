@@ -399,6 +399,16 @@ func _toss_scenario(delta: float) -> void:
 			stage_clock = 0.0
 		"toss":
 			caption("toss · %s" % pickup.state)
+			# Visual cube height: ready crouch under the flight, dip on the catch.
+			var cube_y: float = (w.global_transform*w._pose.evaluated_worker.affine_inverse()*w._pose.evaluated_root).origin.y
+			if not _toss.has("stand_root_y"): _toss.stand_root_y = cube_y
+			if pickup.state == "flight": _toss.ready_drop_m = maxf(float(_toss.get("ready_drop_m", 0.0)), float(_toss.stand_root_y) - cube_y)
+			if pickup.state == "flight": _toss._before_catch_y = cube_y
+			if pickup.state == "caught" and _toss.has("_before_catch_y") and probe.t-float(_toss.get("caught_t", probe.t)) < .5:
+				var dip: float = float(_toss._before_catch_y) - cube_y
+				if dip > float(_toss.get("catch_dip_m", 0.0)):
+					_toss.catch_dip_m = dip
+					_toss.catch_dip_bottom_s = probe.t-float(_toss.get("caught_t", probe.t))
 			if pickup.state == "flight":
 				probe.mark("toss_launch")
 				var head: Vector3 = pickup._head_point()
@@ -431,6 +441,7 @@ func _toss_scenario(delta: float) -> void:
 				_part_prev = part.global_transform
 				if probe.t-float(_toss.caught_t) > 1.0:
 					_toss.erase("_local_prev")
+					_toss.erase("_before_catch_y")
 					_finish("caught")
 			elif pickup.state == "failed" or stage_clock > 8.0:
 				_toss.reason = pickup.reason
