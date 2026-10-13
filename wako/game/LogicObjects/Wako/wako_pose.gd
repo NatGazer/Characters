@@ -2288,12 +2288,16 @@ func _weight_transfer(sk: Skeleton3D, walking: bool, speed: float, delta: float)
 	_sway_offset = _sway_shift.x
 	_sway_roll = lerpf(_sway_roll, roll, blend)
 	_sway_pitch = lerpf(_sway_pitch, pitch, blend)
+	# --- BackTool stunt hook (direct): the stunt's own timed snap/absorb curves bypass this filter ---
+	if stunt.get("direct", false): _sway_shift = stunt.shift; _sway_offset = _sway_shift.x; _sway_roll = stunt.roll; _sway_pitch = stunt.pitch
+	# --- end BackTool stunt hook ---
 	# Bounded translation and tilt precede the same finite leg solves. Their
 	# soles/tools remain on real targets; head fixtures follow this evaluated
 	# cube. Upright support still belongs to the existing native capsule, so
 	# this posed mass estimate is visual balance, not a new COM force solver.
 	root.origin += _sway_shift
 	root.basis = Basis(Vector3.RIGHT,_sway_pitch) * Basis(Vector3.BACK,_sway_roll) * root.basis
+	if stunt.has("yaw"): root.basis = Basis(Vector3.UP, float(stunt.yaw)) * root.basis # BackTool stunt hook: glance/reach yaw
 	if solo_expression or greeting_expression:
 		root = _supported_solo_root(sk,root,delta,back_stowed)
 	elif back_stowed and free_expression:

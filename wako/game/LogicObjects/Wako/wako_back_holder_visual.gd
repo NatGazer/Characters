@@ -11,8 +11,11 @@ const SEAT_SIZE := Vector3(.50,.21,.055)
 # short bronze shelf with a tapered gusset bolted to the plate (or strap).
 # Everything stays inside the body silhouette and above its bottom edge.
 const SOCKET_SIZE := Vector3(.05,.045,.10)
-const SHELF_SIZE := Vector3(.075,.02,.10)
-const PAD_SIZE := Vector3(.09,.016,.09)
+const SHELF_SIZE := Vector3(.075,.018,.10)
+const PAD_SIZE := Vector3(.09,.020,.12) # Rubber cradle: base slab (x along the shaft, y up, z across).
+# Shallow U: lips along both sides of the shaft rise above the base's top.
+const LIP_HEIGHT := .016
+const LIP_WIDTH := .014
 const TRAY_SENSOR_SIZE := Vector3(.09,.08,.11) # Deep below its top: a falling step cannot tunnel through.
 const STRAP_SIZE := Vector3(.044,.33,.006)
 const STRAP_X := .215
@@ -20,6 +23,7 @@ const STRAP_Y := .12 # Plate top edge (-.045, tucked under it) up to the roof be
 const MEASURED_BACK := .1992 # Root-rigid skin back face of the current rig.
 static var _seat: ArrayMesh
 static var _socket: ArrayMesh
+static var _cradle: ArrayMesh
 static var _maps: Array[ImageTexture] = []
 static var _body_fitted := false
 static var _body_fit_area := 0.0
@@ -184,6 +188,38 @@ static func socket_mesh() -> ArrayMesh:
 	_socket=ArrayMesh.new()
 	_socket.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
 	return _socket
+
+static func cradle_mesh() -> ArrayMesh:
+	# Closed U-profile rubber cradle (one material solid): the base slab plus
+	# two side lips, extruded along the shaft (local X). Clockwise front faces
+	# like every other holder solid, so the 2 kg volume integral stays valid.
+	if _cradle: return _cradle
+	var hz := PAD_SIZE.z*.5
+	var hy := PAD_SIZE.y*.5
+	var inner := hz-LIP_WIDTH
+	var top := hy+LIP_HEIGHT
+	# Outline in (z, y), counter-clockwise seen from +X.
+	var outline := PackedVector2Array([Vector2(-hz,-hy),Vector2(hz,-hy),Vector2(hz,top),Vector2(inner,top),
+		Vector2(inner,hy),Vector2(-inner,hy),Vector2(-inner,top),Vector2(-hz,top)])
+	var hx := PAD_SIZE.x*.5
+	var vertices := PackedVector3Array(); var normals := PackedVector3Array()
+	var caps := Geometry2D.triangulate_polygon(outline)
+	for offset: int in range(0,caps.size(),3):
+		var a: Vector2 = outline[caps[offset]]; var b: Vector2 = outline[caps[offset+1]]; var c: Vector2 = outline[caps[offset+2]]
+		# Caps and sides wound clockwise seen from outside (negative signed volume).
+		_append_mount_triangle(vertices,normals,Vector3(hx,a.y,a.x),Vector3(hx,b.y,b.x),Vector3(hx,c.y,c.x))
+		_append_mount_triangle(vertices,normals,Vector3(-hx,c.y,c.x),Vector3(-hx,b.y,b.x),Vector3(-hx,a.y,a.x))
+	for edge: int in outline.size():
+		var p: Vector2 = outline[edge]; var q: Vector2 = outline[(edge+1)%outline.size()]
+		var p0 := Vector3(-hx,p.y,p.x); var p1 := Vector3(hx,p.y,p.x)
+		var q0 := Vector3(-hx,q.y,q.x); var q1 := Vector3(hx,q.y,q.x)
+		_append_mount_triangle(vertices,normals,q1,p1,p0)
+		_append_mount_triangle(vertices,normals,q0,q1,p0)
+	var arrays: Array=[]; arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX]=vertices; arrays[Mesh.ARRAY_NORMAL]=normals
+	_cradle=ArrayMesh.new()
+	_cradle.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
+	return _cradle
 
 static func seat_mesh() -> ArrayMesh:
 	if _seat: return _seat
