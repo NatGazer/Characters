@@ -1573,11 +1573,11 @@ func _swing_output(side: int, delta: float) -> void:
 	var previous: Vector3 = actual + worker.ground_velocity * delta
 	var point := _swing_point(side, from, land, t[side], previous, delta)
 	if delta > 0.0 and out_sole[side].is_finite() and _t_prev[side] >= 0.0:
-		# Walking/jogging feet keep a calm 5.9 m/s ceiling (a foot-held tool
+		# Walking/jogging feet keep a calm 5.5 m/s ceiling (the pose still eases the knee on top of it) (a foot-held tool
 		# 5.4 m/s); running is only sanity-capped. Rather than letting the foot
 		# trail its plan, the swing clock itself slows: the sole stays exactly
 		# on its curve and simply lands a moment later.
-		var cap := (SANITY_SPEED if speed > 2.4 else 5.9) * delta
+		var cap := (SANITY_SPEED if speed > 2.4 else 5.5) * delta
 		if _is_tool_foot(side):
 			cap = minf(cap, maxf(5.4, speed * 2.4) * delta)
 		if previous.distance_to(point) > cap and _is_tool_foot(side):
@@ -1600,6 +1600,11 @@ func _swing_output(side: int, delta: float) -> void:
 	# Never let a planned sole sink into terrain met on the way (probed only
 	# near the ground or over a corridor that rises above the straight line).
 	var yaw := lerp_angle(start_yaw[side], landing_yaw[side], s)
+	if delta > 0.0 and _t_prev[side] >= 0.0:
+		# Continuous and rate-limited (~11 deg a tick): when the target heading
+		# swings across the far side of the lift-off yaw, lerp_angle's short way
+		# flips, which would spin the foot half a turn in one tick.
+		yaw = foot_yaw[side] + clampf(wrapf(yaw - foot_yaw[side], -PI, PI), -.2, .2)
 	var low: bool = point.y - maxf(from.y, land.y) < .05 or _clear_lift[side] > 0.0 or not _planar[side] or _is_tool_foot(side)
 	var under: Dictionary = _ground(point) if low else {}
 	var floor_clear := .012 * clampf(minf(t[side] / .12, (1.0 - t[side]) / .12), 0.0, 1.0)
@@ -1624,7 +1629,7 @@ func _swing_output(side: int, delta: float) -> void:
 			_sampled_for[side] = Vector3.INF
 		point.y += raise
 	if delta > 0.0 and _t_prev[side] >= 0.0 and speed <= 2.4:
-		var ceiling := 5.9 * delta
+		var ceiling := 5.5 * delta
 		if previous.distance_to(point) > ceiling: point = previous.move_toward(point, ceiling)
 	foot_yaw[side] = yaw
 	var normal := start_normal[side].slerp(landing_normal[side], s).normalized() if start_normal[side].dot(landing_normal[side]) < .9999 else landing_normal[side]
@@ -1663,6 +1668,8 @@ func _swing_output(side: int, delta: float) -> void:
 		_contact_kind[side] = state[side]
 		# The swing start (support-local) must survive a deferred contact.
 		var start_keep := _swing_start(side)
+		# Planted with the yaw it is shown at (rate-limited above): no turn pop.
+		landing_yaw[side] = foot_yaw[side]
 		_plant(side, hit, contact, landing_yaw[side])
 		start_world[side] = start_keep
 		landing_count[side] += 1

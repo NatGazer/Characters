@@ -488,7 +488,8 @@ func _sample(delta: float) -> void:
 			var wsp: float = pose._walk_swing_phase[side]
 			# Judged while the request agrees with the motion: mid-reversal the
 			# planner deliberately lands toward where the body is GOING.
-			var wanted: Vector3 = wako.locomotion_desired.slide(Vector3.UP)
+			var desired_v: Variant = wako.get("locomotion_desired")
+			var wanted: Vector3 = (desired_v as Vector3).slide(Vector3.UP) if desired_v is Vector3 else Vector3.ZERO
 			var steady := wanted.length() < .1 or wanted.normalized().dot(travel) > .7
 			if wsp >= .6 and speed > .6 and gait != null and gait.moving and gait.state[side] == 1 and steady:
 				if debug and -ahead > .1 and -ahead > float(s.late_behind) + .01: print("LATE c=%.3f %s side=%d behind=%.3f t=%.2f g=%s" % [clock, label, side, -ahead, wsp, g])

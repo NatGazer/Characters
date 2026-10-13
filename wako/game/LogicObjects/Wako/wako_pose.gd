@@ -1651,7 +1651,7 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 		var contact_offset: Vector3 = sole-ankle_offset-hip
 		# A contact the shown knee is still far from (the swing's knee rate limit
 		# held it back while the body dropped) keeps reaching instead of popping.
-		var knee_pop: bool = is_finite(gait.knee_prev[side]) and absf(gait.knee_flex(side,contact_offset.length())-gait.knee_prev[side])>deg_to_rad(14.0)
+		var knee_pop: bool = is_finite(gait.knee_prev[side]) and absf(gait.knee_flex(side,contact_offset.length())-gait.knee_prev[side])>deg_to_rad(10.0)
 		if (contact_offset.length()>worker._leg_lengths[side]-.014 or knee_pop) and gait.defer_contact(side,contact_offset,knee_pop):
 			planted = false
 			hit = {}
@@ -1669,17 +1669,17 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 		var horizontal := hip_to_ankle.slide(Vector3.UP)
 		if horizontal.length_squared()<reach*reach:
 			sole.y += maxf(-sqrt(reach*reach-horizontal.length_squared())-hip_to_ankle.y,0.0)
-		# An airborne foot straightens its knee at most ~8 deg a tick (the
-		# planned arc can ask for more as the leg nears extension: a whip); the
-		# limit opens over the last ticks so contact is still exact. Only the
-		# extension is limited: a held-back fold would push the sole into rising
-		# ground, a held-back extension only keeps it nearer the hip.
+		# An airborne foot straightens its knee at most ~9 deg a tick (the
+		# planned arc can ask for more as the leg nears extension: a whip). A
+		# contact the limited knee has not reached yet keeps reaching (deferred
+		# below), so the plant is still exact. Extension is always limited (it
+		# only keeps the sole nearer the hip); the fold only over clear ground.
 		var previous_flex: float = gait.knee_prev[side]
 		if is_finite(previous_flex):
 			var to: Vector3 = sole-ankle_offset-hip
 			var span: float = to.length()
 			var flex: float = gait.knee_flex(side,span)
-			var limit: float = deg_to_rad(8.0)+(deg_to_rad(40.0)*smoothstep(.93,1.0,gait.t[side]) if gait._contact_delay[side]==0 else deg_to_rad(4.0))
+			var limit: float = deg_to_rad(9.0)
 			if span>.001 and flex<previous_flex-limit:
 				sole = hip+to/span*gait.knee_span(side,previous_flex-limit)+ankle_offset
 			elif span>.001 and flex>previous_flex+limit and gait.t[side]<.75:
@@ -1688,6 +1688,11 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 				var eased: Vector3 = hip+to/span*gait.knee_span(side,previous_flex+limit)+ankle_offset
 				var below: Dictionary = gait._ground(eased)
 				if below.is_empty() or eased.y>below.position.y+.012: sole = eased
+		if evaluated_valid and gait.speed<=2.4:
+			# Walking feet keep the gait's calm speed ceiling here too, so the
+			# easing above never adds a catch-up jump on top of a fast swing.
+			var shown: Vector3 = evaluated_soles[side]+worker.ground_velocity*delta
+			sole = shown+(sole-shown).limit_length(maxf(5.8*delta,.001))
 	elif gait.stance_age[side] < .001:
 		# A contact made this tick is planted only where this hip can really
 		# put the sole: slide it toward the hip on its own support if the
