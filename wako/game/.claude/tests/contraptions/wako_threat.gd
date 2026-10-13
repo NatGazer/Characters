@@ -145,7 +145,7 @@ func _escape(direction_name: String, side: int) -> void:
 	_watch_motion = false
 	_check(worker.threat_watch.weight==0.0 and not is_instance_valid(worker.threat_watch.threat) and contact_events==before,
 		"%s blends out after the actual threat leaves without a work contact"%stage)
-	_check(tool.carrier==worker.tool_anchor and cargo.carrier==worker.head_anchor and is_equal_approx(worker.mass,22+tool.mass+cargo.mass),
+	_check(tool.carrier==worker.tool_anchor and cargo.carrier==worker.head_anchor and is_equal_approx(worker.mass,22+worker.back_tool.holder_mass()+tool.mass+cargo.mass),
 		"%s keeps the same idle toe tool and head load under the existing payload policy"%stage)
 	print("WAKO_THREAT case=",stage," cue=",_visible_cue," speed=",_peak_speed," travel=",_travel," observations=",worker.threat_watch.observations," remaining=",worker.threat_watch.weight)
 	yard.work_paused = true

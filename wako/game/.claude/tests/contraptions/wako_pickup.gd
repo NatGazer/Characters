@@ -38,7 +38,7 @@ func _physics_process(delta: float) -> void:
 			if is_instance_valid(worker.equipped_tool): saw_separate_foot = saw_separate_foot or worker.work_foot_side != worker.tool_foot_side()
 			var held_mass: float = source.mass if pickup.state in ["held","caught"] else 0.0
 			var tool_mass: float = worker.equipped_tool.mass if is_instance_valid(worker.equipped_tool) else 0.0
-			bad_weight = bad_weight or absf(worker.mass-22.0-held_mass-tool_mass)>.01
+			bad_weight = bad_weight or absf(worker.mass-22.0-worker.back_tool.holder_mass()-held_mass-tool_mass)>.01
 		if not worker._pose.evaluated_valid: continue
 		var sole: Vector3 = worker._pose.evaluated_soles[worker.work_foot_side]
 		var knee: Vector3 = (worker._pose.evaluated_knees[worker.work_foot_side]-worker._pose.evaluated_hips[worker.work_foot_side]).normalized()

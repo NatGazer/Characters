@@ -127,7 +127,7 @@ func _run() -> void:
 	await _advance(1.5, "head_turn")
 	worker.stop_navigation()
 	await _advance(.8, "head_idle")
-	_check(cargo.carrier == worker.head_anchor and is_equal_approx(worker.mass, 22.0 + cargo.mass), "the same finite-mass 32 kg part remains on the head fixture with one copy of payload mass")
+	_check(cargo.carrier == worker.head_anchor and is_equal_approx(worker.mass, 22.0 + worker.back_tool.holder_mass() + cargo.mass), "the same finite-mass 32 kg part remains on the head fixture with one copy of payload mass")
 	cargo.set_carried(null)
 	cargo.global_position = worker.global_position + Vector3(2, -.7, 0)
 	worker.set_cargo(0)

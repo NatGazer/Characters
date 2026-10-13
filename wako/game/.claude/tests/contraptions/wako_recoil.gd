@@ -225,7 +225,7 @@ func _collision(direction: String, side: int, repeated := false) -> void:
 	_check(_direction_cue>.05,"%s visibly leans the evaluated cube away from its real impact direction"%stage)
 	_check(worker.on_ground and not worker.ragdoll.is_down() and worker._pose.evaluated_grounded.all(func(grounded: bool)->bool:return grounded),
 		"%s returns the actual working sole to native support without altering the knockdown boundary"%stage)
-	_check(tool.carrier == worker.tool_anchor and cargo.carrier == worker.head_anchor and is_equal_approx(worker.mass,22+tool.mass+cargo.mass),
+	_check(tool.carrier == worker.tool_anchor and cargo.carrier == worker.head_anchor and is_equal_approx(worker.mass,22+worker.back_tool.holder_mass()+tool.mass+cargo.mass),
 		"%s preserves the same toe-held tool, head cargo and one copy of each finite mass"%stage)
 	print("WAKO_RECOIL hit=",stage," direction=",actual," native_impact=",impact," cue=",_direction_cue," velocity=",worker.linear_velocity," soles=",worker._pose.evaluated_soles)
 	for node: Node in [worker,tool,cargo,target,impactor]: node.queue_free()
