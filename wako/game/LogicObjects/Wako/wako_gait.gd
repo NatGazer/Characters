@@ -45,7 +45,7 @@ const MIN_STANCE := .05         # s: a plant stands at least this long (no touch
 const COAST_TIME := .45         # s: after the travel request ends the gait keeps stepping at most this long
 const FRESH_KNEE_RATE := 3.0    # deg/tick a fresh plant's knee loads (~12 deg per 30 fps frame)
 const STANCE_KNEE_RATE := 7.0   # deg/tick any stance knee may fold or straighten
-const ROOT_FIX := .06           # m: largest same-tick root correction (constrain_root)
+const ROOT_FIX := .075          # m: largest same-tick root correction (constrain_root)
 const FOLD_MAX := 1.4           # rad (80 deg): deepest stance knee the root constraint allows
 const FOLD_LIFT := 1.55         # rad (~89 deg): a trailing plant folded this far steps off
 const TWIST_FREE := .5          # rad (~29 deg): hips may turn this far past a planted foot freely
@@ -128,6 +128,7 @@ var _contact_kind: Array[int] = [SWING, SWING]
 var _frozen_support: Array = [null, null]
 var _frozen_local: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]
 var _pass: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]        # swing bulge around the stance foot
+var _catch: Array[float] = [0.0, 0.0]          # front-loaded progress for a swing leaving from far behind
 var stance_age: Array[float] = [0.0, 0.0]
 var landing_count: Array[int] = [0, 0]          # helper plays a footstep per new landing
 var landing_strength: Array[float] = [0.0, 0.0]
@@ -280,10 +281,10 @@ func setup(owner_pose: SkeletonModifier3D, sk: Skeleton3D) -> void:
 		_toe_dir.append(flat.normalized() if flat.length() > .01 else Vector3.BACK)
 		_ball_off.append(ball)
 		# A heel rolled about the toe joint moves the published sole: past
-		# ~1.8 cm from its plant it would no longer count as grounded (the
-		# toe pad is still down), so the roll stops there and the root
-		# constraint keeps the rest of the reach.
-		_peel_cap[side] = minf(PEEL_CAP, 2.0 * asin(clampf(.0175 / (2.0 * maxf(ball.length(), .02)), 0.0, 1.0)))
+		# ~2 cm from its plant it would no longer count as grounded (the toe
+		# pad is still down), so the roll stops at 1.5 cm (a few mm left for
+		# a reach shortfall) and the root constraint keeps the rest.
+		_peel_cap[side] = minf(PEEL_CAP, 2.0 * asin(clampf(.015 / (2.0 * maxf(ball.length(), .02)), 0.0, 1.0)))
 
 # ------------------------------------------------------------------ helpers
 func knee_flex(side: int, d: float) -> float:
@@ -545,7 +546,11 @@ func validate_landing(side: int, hip: Vector3) -> void:
 	# knee flex, the shin close to vertical) that then loads into the
 	# double-support flex; a jog or run lands pre-flexed (~31 deg) under the
 	# body, so less of the loading is left for the first stance frames.
-	var reach: float = float(worker._leg_lengths[side]) - lerpf(.014, .028, smoothstep(1.2, 2.4, speed))
+	# Running downhill the hip arrives lower than the plane predicts (the
+	# capsule settles onto the slope late): keep a centimetre more margin so
+	# the contact is reached rather than slid onto.
+	var downhill := smoothstep(.05, .25, (velocity / speed).dot(Vector3(up.x, 0.0, up.z))) if speed > .3 else 0.0
+	var reach: float = float(worker._leg_lengths[side]) - lerpf(.014, .028, smoothstep(1.2, 2.4, speed)) - .01 * downhill
 	var offset := ankle - hip_contact
 	if offset.length() <= reach or absf(offset.y) >= reach:
 		if not _frozen[side]: _reach_pull[side] = _reach_pull[side].move_toward(Vector3.ZERO, .006)
@@ -692,6 +697,11 @@ func _lift_off(side: int, kind: int, rate_floor: float, base_lift: float) -> voi
 	_drop[side] = false
 	_drop_planted[side] = false
 	armed[side] = false
+	_catch[side] = 0.0
+	if kind == SWING and moving:
+		var travel := velocity / speed if speed > .3 else facing(worker._heading)
+		var behind := -(from - worker.global_position).slide(Vector3.UP).dot(travel)
+		_catch[side] = .6 * smoothstep(.04, .22, behind - stance_distance(speed) * .5)
 
 func _phase_swing_rate(side: int) -> float:
 	# Swing progress per second that lands the foot when its phase wraps. A
@@ -717,6 +727,21 @@ func _ground(point: Vector3) -> Dictionary:
 	_query.to = Vector3(point.x, minf(point.y - .8, worker.global_position.y - worker.ride_height - .45), point.z)
 	var hit := _space.intersect_ray(_query)
 	return hit if not hit.is_empty() and hit.normal.y > .6 else {}
+
+func foot_clear(sole_point: Vector3, along: Vector3, margin := .012) -> bool:
+	# The sole point and both foot ends (toe and heel, `along` = half the
+	# foot) stand clear of the ground under them (3 rays; the pose's swing
+	# easings use it so a held-back sole never cuts into a riser ahead).
+	# `along` keeps the foot's own pitch, so a sole parallel to a slope
+	# is clear of it.
+	for k in 3:
+		var at := sole_point + along * float(k - 1)
+		var hit := _ground(at)
+		if not hit.is_empty() and at.y < hit.position.y + margin: return false
+	return true
+
+func foot_along(side: int, basis: Basis) -> Vector3:
+	return (basis * _rest_foot[side].inverse() * Vector3.FORWARD).normalized() * FOOT_HALF_LENGTH
 
 func _refresh_query() -> void:
 	# Exclusions only change with carried bodies/ragdoll state: rebuild on a
@@ -1047,13 +1072,16 @@ func _events(delta: float) -> void:
 				# tick to keep a waiting plant reached; only a plant beyond even
 				# that leaves anyway (a hard reversal): a short float beats a
 				# sliding sole.
-				if not other_planted and (not _may_fly() or tool_foot) and (tool_foot or _reach_left(side) > -.03):
+				if not other_planted and (not _may_fly() or tool_foot) and (tool_foot or _reach_left(side) > -.025):
 					_waiting[side] = true
 					_hurry(1 - side)
 					continue
 				# No one-tick taps: a fresh plant stands at least MIN_STANCE
 				# unless it is already beyond the leg.
 				if stance_age[side] < MIN_STANCE and _reach_left(side) > -.03: continue
+				# Never both feet off on the same beat below a sprint (a pronk):
+				# a partner that has only just lifted gets a few ticks first.
+				if not other_planted and state[1 - side] == SWING and t[1 - side] < .12 and speed < 2.6 and _reach_left(side) > -.02: continue
 				if debug_log and not other_planted: print("GAIT lift_unsupported side=%d due=%s reach_left=%.3f may_fly=%s partner_state=%d partner_t=%.2f" % [side, due, _reach_left(side), _may_fly(), state[1 - side], t[1 - side]])
 				# Running out of leg late in a stance is simply an early push-off:
 				# an ordinary swing from where the clock is (no re-phase).
@@ -1412,9 +1440,17 @@ func _vertical(side: int, rise: float, tt: float) -> float:
 
 func _curve(side: int, from: Vector3, land: Vector3, tt: float) -> Vector3:
 	var s := glide(tt)
+	# A swing leaving from far behind the hip (a long reach on a descent, a
+	# reversal, a turning deck) covers more of its way early, so it is past
+	# the hip by mid-swing; contact still arrives at zero speed.
+	if _catch[side] > 0.0: s = 1.0 - pow(1.0 - s, 1.0 + _catch[side])
 	var rise := land.y - from.y
 	var point := Vector3(lerpf(from.x, land.x, s), from.y + rise * _vertical(side, rise, tt), lerpf(from.z, land.z, s))
 	point.y += maxf(lift[side], _clear_lift[side]) * _bump(tt)
+	if _planar[side] and rise < -.03:
+		# Walking down a slope the trailing foot leaves from uphill: it comes
+		# off the surface at once instead of skimming it (shin dragged flat).
+		point.y += .03 * smoothstep(.03, .12, -rise) * sin(PI * clampf(tt / .5, 0.0, 1.0))
 	point += _pass[side] * sin(PI * s)
 	return point
 
@@ -1606,8 +1642,12 @@ func _planted_output(side: int, delta: float) -> void:
 	# Heel-to-toe roll: late in a moving stance the heel peels up about the
 	# toe joint (the toe pad stays flat and fixed on the ground), which is the
 	# push-off. A stop lets the heel back down quickly, never in one tick.
-	var u := clampf(_local_phase(side) / maxf(duty, .05), 0.0, 1.0) if moving and not hold else 0.0
-	var wanted := minf(_peel_max(), _peel_cap[side]) * smoothstep(.5, 1.0, u) * _roll_weight() if not _is_tool_foot(side) else 0.0
+	# Stance progress; a late landing (re-phased cadence) starts from its own
+	# contact, not peeled at once.
+	var u := clampf(minf(_local_phase(side), stance_age[side] * phase_rate) / maxf(duty, .05), 0.0, 1.0) if moving and not hold else 0.0
+	# Downhill the trailing heel peels earlier (the ground behind is higher).
+	var downhill := smoothstep(.03, .2, (velocity / speed).dot(Vector3(up.x, 0.0, up.z))) if speed > .3 else 0.0
+	var wanted := minf(_peel_max(), _peel_cap[side]) * smoothstep(lerpf(.5, .25, downhill), 1.0, u) * _roll_weight() if not _is_tool_foot(side) else 0.0
 	var frame := _foot_frame(yaw, hit.normal)
 	var basis := (frame * _rest_foot[side]).orthonormalized()
 	var rate := PEEL_RATE

@@ -1448,8 +1448,10 @@ func _stopped_turn_allowed() -> bool:
 
 func _settle_allowed() -> bool:
 	# Ordinary free stance: settle/turn steps may lift a sole. Every captured
-	# work/head/back/gun/idle-play owner keeps its own plants.
-	return worker.on_ground and evaluated_valid and worker.action.is_empty() \
+	# work/head/back/gun/idle-play owner keeps its own plants, and so does a
+	# frightened stop (the danger clip takes the legs as the body settles: a
+	# settle step it interrupted was left skating along with the cube).
+	return worker.on_ground and evaluated_valid and worker.action.is_empty() and worker.fear_time <= 0.0 \
 		and not is_instance_valid(worker.equipped_gun) \
 		and not _head_ground_continuation and not _head_work_continuation and not _head_gait_continuation \
 		and not _head_landing_continuation and _work_release.is_empty() and _work_entry.is_empty() \
@@ -1700,8 +1702,9 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 			var reach_span: float = reach_to.length()
 			if reach_span>.001 and gait.knee_flex(side,reach_span)>cap:
 				var stretched: Vector3 = hip+reach_to/reach_span*gait.knee_span(side,cap)+ankle_offset
-				var under_stretch: Dictionary = gait._ground(stretched)
-				if under_stretch.is_empty() or stretched.y>under_stretch.position.y+.012: sole = stretched
+				# The whole foot must be past the edge: its sole point and both
+				# ends (toe and heel) clear the ground under them.
+				if gait.foot_clear(stretched,gait.foot_along(side,world_basis),.015): sole = stretched
 		# An airborne foot straightens its knee at most ~9 deg a tick (the
 		# planned arc can ask for more as the leg nears extension: a whip). A
 		# contact the limited knee has not reached yet keeps reaching (deferred
@@ -1717,21 +1720,22 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 				sole = hip+to/span*gait.knee_span(side,previous_flex-limit)+ankle_offset
 			elif span>.001 and flex>previous_flex+limit and gait.t[side]<.75:
 				# The lift-off fold is eased the same way, but only where the eased
-				# sole still clears the ground under it (never pressed into a rise).
-				var eased: Vector3 = hip+to/span*gait.knee_span(side,previous_flex+limit)+ankle_offset
-				var below: Dictionary = gait._ground(eased)
-				if below.is_empty() or eased.y>below.position.y+.012: sole = eased
+				# foot still clears the ground under it (never pressed into a rise).
+				# A planned climb onto a riser folds deliberately faster (16 deg).
+				var fold_limit: float = limit
+				if not gait._planar[side] and gait.landing[side].y>gait._swing_start(side).y+.08: fold_limit = deg_to_rad(16.0)
+				var eased: Vector3 = hip+to/span*gait.knee_span(side,previous_flex+fold_limit)+ankle_offset
+				var along: Vector3 = gait.foot_along(side,world_basis)
+				if gait.foot_clear(eased,along): sole = eased
 				else:
 					# A riser met late (a wall climbed at a run) needs a faster fold:
 					# only as much faster as keeps the sole clear of it, not the whole
 					# re-planned arc in one tick.
-					var lo: float = previous_flex+limit
+					var lo: float = previous_flex+fold_limit
 					var hi: float = flex
 					for i in 4:
 						var mid: float = (lo+hi)*.5
-						var probe: Vector3 = hip+to/span*gait.knee_span(side,mid)+ankle_offset
-						var under: Dictionary = gait._ground(probe)
-						if under.is_empty() or probe.y>under.position.y+.012: hi = mid
+						if gait.foot_clear(hip+to/span*gait.knee_span(side,mid)+ankle_offset,along): hi = mid
 						else: lo = mid
 					sole = hip+to/span*gait.knee_span(side,hi)+ankle_offset
 		if evaluated_valid and gait.speed<=2.4:
@@ -1801,7 +1805,6 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 	# clearance lift/shift on top is not part of the swing/contact pose the
 	# rate limits and the contact deferral compare against.
 	gait.knee_prev[side] = gait.knee_flex(side,(sole-ankle_offset-hip).length())
-	if gait.debug_log and OS.get_environment("TRACE_T0") != "": print("TWL side=%d planted=%s t=%.2f st=%d knee_prev=%.1f req_knee=%.1f held=%.3f shift=%.3f sole_y=%.3f root_fix=%.4f" % [side, planted, gait.t[side], gait.state[side], rad_to_deg(gait.knee_prev[side]), rad_to_deg(gait.knee_flex(side,(requested-ankle_offset-hip).length())), held_lift, held_shift.length(), sole.y, gait.root_fix])
 	evaluated_grounded[side] = planted and _target_valid[side] and held_lift<.01
 	gait.requested[side] = requested
 	gait.shown_sole[side] = sole
