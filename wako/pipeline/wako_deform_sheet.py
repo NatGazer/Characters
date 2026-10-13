@@ -24,7 +24,7 @@ Usage::
     <blender-python> wako_deform_sheet.py -- BLEND OUT_DIR PREFIX [--label TEXT]
                          [--samples N] [--poses name,...] [--closeups name,...|none]
                          [--main-only] [--keep-panels DIR] [--views side,front,...]
-                         [--battery closeup|problem] [--nowire]
+                         [--battery closeup|problem|review] [--nowire]
                          [--export-godot JOB.json [--no-render]]
     python3 wako_deform_sheet.py compose JOB.json      # (internal) PIL composition step
     python3 wako_deform_sheet.py godot-compose GODOT_JOB.json PANEL_DIR OUT_DIR PREFIX LABEL
@@ -32,6 +32,9 @@ Usage::
 ``--battery problem`` swaps the close-up battery for the PROBLEMS list (the review's
 problem shots: level exact-side knees, the hip opening from below, toes +-45 standing
 and lifted with both legs posed alike, ankles +-35, flat-sole crouches, rest toe) and
+``--battery review`` renders the views the round-3 review asked for (inverted flip tuck
+from above, hip 90-120 from below/behind, hip -35 side / rear, knee 90 side, knee 145 outer
+3/4, ankle 45/60 crouch sides, toe +-45, rest toe cap from a game camera), and
 ``--nowire`` hides the wireframe overlay so shading artefacts are not confused with
 wire bunching at grazing angles.
 
@@ -92,6 +95,10 @@ POSES = [
      leg(90, knee=60, ankle=10, toe=-45)),
     ("dorsi35", "both ankles dorsiflexed +35", leg(ankle=35), leg(ankle=35)),
     ("plantar35", "both ankles plantarflexed -35", leg(ankle=-35), leg(ankle=-35)),
+    # round-4 review poses
+    ("hip100", "both hips 100, knees 90", leg(100, knee=90), leg(100, knee=90)),
+    ("hipm35", "both hips extended -35 (run back leg / push-off)", leg(-35), leg(-35)),
+    ("hipm20", "both hips extended -20 (walk push-off)", leg(-20), leg(-20)),
 ]
 MAIN_POSES = ["neutral", "crouch30", "crouch90", "crouch120", "tuck", "seatedV", "wide", "worklift",
               "runswing", "ankle", "toecurl", "footrest", "footclose"]
@@ -167,6 +174,31 @@ PROBLEMS = [
     ("neutral", "foot front", "ankleL", (0.0, -1.0, -0.15), 0.32, "rest toe from the front"),
     ("neutral", "foot front 3/4", "ankleL", FRONT34, 0.34, "rest toe, 3/4"),
 ]
+# Review shots (--battery review): the views the round-3 review asked to be re-rendered.
+# "Inverted, from above" is the head-first flip seen from above while the body is upside
+# down, i.e. the unpitched pose seen from below.
+GAME_FRONT34_LOW = (-0.45, -0.75, -0.5)
+REVIEW = [
+    ("tuck", "inverted, from above", "hipL", BELOW, 0.80, "flip tuck upside down: underside / hip openings"),
+    ("tuck", "hip below-rear", "hipL", BELOW_REAR, 0.65, "hip 110 from below/behind"),
+    ("worklift", "hip below-rear", "hipL", BELOW_REAR, 0.70, "hip 90 from below/behind"),
+    ("hip100", "hip below-rear", "hipL", BELOW_REAR, 0.70, "hip 100 from below/behind"),
+    ("seatedV", "hip below-front", "hipL", BELOW_FRONT, 0.75, "hip 80 + spread 30 from below/front"),
+    ("groundV", "hip below-rear", "hipL", BELOW_REAR, 0.75, "hip 120 (stress) from below/behind"),
+    ("crouch90", "hip 45 below-front", "hipL", (0.3, -0.75, 0.55), 0.60, "front junction rim at hip 45"),
+    ("hipm35", "hip side", "hipL", SIDE_FLAT, 0.75, "hip -35, exact side"),
+    ("hipm35", "hip rear 3/4", "hipL", (0.6, 0.7, -0.2), 0.75, "hip -35, rear 3/4"),
+    ("crouch90", "knee side 90", "kneeL", SIDE_FLAT, 0.50, "knee 90, exact side"),
+    ("tuck", "knee outer 3/4", "kneeL", (0.8, -0.5, -0.2), 0.45, "knee 145, outer side"),
+    ("crouch120", "knee inner below", "kneeL", (0.6, 0.35, 0.7), 0.50, "knee 120 crease from below"),
+    ("crouch90", "ankle side 45", "ankleL", SIDE_FLAT, 0.32, "flat sole ~ 45 deg dorsiflexion"),
+    ("crouch120", "ankle side 60", "ankleL", SIDE_FLAT, 0.32, "flat sole ~ 60 deg dorsiflexion"),
+    ("toe-45lift", "toe 3/4", "toeL", (0.7, -0.55, -0.4), 0.30, "toe lift -45"),
+    ("toe+45lift", "toe side", "toeL", SIDE_FLAT, 0.28, "toe curl +45, lifted"),
+    ("toe+45stand", "toe 3/4", "toeL", (0.6, -0.7, -0.35), 0.30, "toe curl +45, standing"),
+    ("neutral", "feet game front 3/4", "ankleL", GAME_FRONT34_LOW, 0.40, "rest toe cap from a game camera"),
+]
+BATTERIES = {"closeup": CLOSEUPS, "problem": PROBLEMS, "review": REVIEW}
 PANEL = (426, 360)
 
 
@@ -468,7 +500,7 @@ def render_main(argv):
     os.makedirs(out_dir, exist_ok=True)
     pose_by_name = {p[0]: p for p in POSES}
     main = [pose_by_name[n] for n in MAIN_POSES if opts["poses"] is None or n in opts["poses"]]
-    battery = PROBLEMS if opts["battery"] == "problem" else CLOSEUPS
+    battery = BATTERIES[opts["battery"]]
     closeups = [] if opts["main_only"] else [c for c in battery
                                              if opts["closeups"] is None or c[0] in opts["closeups"]]
     main_rows, close_panels = [], []
@@ -507,7 +539,7 @@ def render_main(argv):
             json.dump(godot_job, fh)
     if opts["no_render"]:
         return
-    tag = "problem" if opts["battery"] == "problem" else "closeup"
+    tag = opts["battery"]
     job = {"panel": PANEL, "sheets": sheet_layout(main_rows, close_panels, out_dir, prefix, tag)}
     job_path = os.path.join(tmp, f"{prefix}_job.json")
     with open(job_path, "w") as fh:
@@ -536,7 +568,7 @@ def godot_compose(job_path, panel_dir, out_dir, prefix, label):
                  "subtitle": p["desc"]} for v in p["views"]]})
     tmp = os.path.join(panel_dir, f"{prefix}_compose.json")
     with open(tmp, "w") as fh:
-        tag = "problem" if gjob.get("battery") == "problem" else "closeup"
+        tag = gjob.get("battery", "closeup")
         json.dump({"panel": PANEL, "sheets": sheet_layout(main_rows, close_panels, out_dir, prefix, tag)}, fh)
     compose(tmp)
 

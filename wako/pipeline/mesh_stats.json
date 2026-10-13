@@ -1,5 +1,5 @@
 {
- "description": "Wako leg remesh + toe flip, round 3: before (original upload Wako.blend), rev2 (previous round) and after (game/LogicObjects/Wako/Wako.blend rebuilt by pipeline/wako_mesh_rebuild.py revision 3)",
+ "description": "Wako leg remesh + toe-bone flip, ROUND 4 (wako_mesh_rebuild.py revision 4): ball-and-socket hip, 7-loop knee with rigid back crease, 5-loop crouch-proof ankle, forefoot toe cap.  Body/head vertices, faces and UVs untouched; 9 bones (only toe.L/toe.R rest changed), 33 actions unchanged.",
  "tools": {
   "blender": "4.5.4 LTS (bpy module)",
   "godot": "4.7.1 stable (Blender importer via bpy shim)"
@@ -32,7 +32,7 @@
   "symmetry_max_position_error_m": 0.0004528016143012792,
   "symmetry_max_weight_error": 3.7550926208496094e-06,
   "symmetry_max_position_error_legs_m": 2.682209014892578e-07,
-  "body_vertices_above_flange_with_nonroot_weight": 16,
+  "body_vertices_with_nonroot_weight": 16,
   "leg_vertices_below_0.66_with_root_weight": 0,
   "foot_or_toe_weight_above_z0.30": 0,
   "toe_weight_above_z0.12": 6,
@@ -73,94 +73,16 @@
    "max_corner_angle_deg": 126.6775104606105,
    "max_edge_ratio": 3.058755805546908,
    "p95_edge_ratio": 2.702435891696481
-  },
-  "bone_rest_toes": {
-   "toe.L": {
-    "head": [
-     -0.2370000034570694,
-     -0.05999999865889549,
-     -1.024999976158142
-    ],
-    "tail": [
-     -0.2370000034570694,
-     -0.1899999976158142,
-     -1.024999976158142
-    ],
-    "matrix": [
-     [
-      -0.9999998807907104,
-      5.684341886080802e-14,
-      -5.684347307091664e-14,
-      -0.2370000034570694
-     ],
-     [
-      -5.684341886080802e-14,
-      -0.9999998807907104,
-      1.5164348184278087e-13,
-      -0.05999999865889549
-     ],
-     [
-      -5.506710267898923e-14,
-      -8.881781550023292e-16,
-      0.9999997019767761,
-      -1.0249998569488525
-     ],
-     [
-      0.0,
-      0.0,
-      0.0,
-      1.0
-     ]
-    ]
-   },
-   "toe.R": {
-    "head": [
-     0.2370000034570694,
-     -0.05999999865889549,
-     -1.024999976158142
-    ],
-    "tail": [
-     0.2370000034570694,
-     -0.1899999976158142,
-     -1.024999976158142
-    ],
-    "matrix": [
-     [
-      -0.9999999403953552,
-      -5.684341886080802e-14,
-      -5.684347307091664e-14,
-      0.2370000034570694
-     ],
-     [
-      5.684341886080802e-14,
-      -0.9999999403953552,
-      1.5164357671047096e-13,
-      -0.059999994933605194
-     ],
-     [
-      -5.506710945525281e-14,
-      1.3322678413084247e-15,
-      0.9999997615814209,
-      -1.0249998569488525
-     ],
-     [
-      0.0,
-      0.0,
-      0.0,
-      1.0
-     ]
-    ]
-   }
   }
  },
  "after": {
-  "vertices": 1277,
-  "polygons": 1464,
-  "triangles": 2550,
+  "vertices": 1389,
+  "polygons": 1728,
+  "triangles": 2774,
   "loose_vertices": 0,
   "polygon_sides": {
-   "3": 378,
-   "4": 1086
+   "3": 682,
+   "4": 1046
   },
   "materials": [
    "Player"
@@ -168,29 +90,28 @@
   "uv_layers": [
    "UVMap"
   ],
-  "smooth_polygons": 1464,
+  "smooth_polygons": 1728,
   "vertex_groups": 9,
   "influence_histogram": {
-   "1": 501,
-   "2": 736,
-   "3": 40
+   "1": 979,
+   "2": 410
   },
-  "max_influences": 3,
+  "max_influences": 2,
   "unweighted_vertices": 0,
-  "max_weight_sum_error": 3.725290298461914e-08,
+  "max_weight_sum_error": 2.9802322387695312e-08,
   "symmetry_max_position_error_m": 0.0004528016143012792,
-  "symmetry_max_weight_error": 1.7881393432617188e-07,
-  "symmetry_max_position_error_legs_m": 2.5832559913396835e-07,
-  "body_vertices_above_flange_with_nonroot_weight": 0,
+  "symmetry_max_weight_error": 0.0,
+  "symmetry_max_position_error_legs_m": 0.0,
+  "body_vertices_with_nonroot_weight": 0,
   "leg_vertices_below_0.66_with_root_weight": 0,
   "foot_or_toe_weight_above_z0.30": 0,
-  "toe_weight_above_z0.12": 10,
+  "toe_weight_above_z0.12": 0,
   "left_foot_y_range_below_z0.10": [
-   -0.09148682653903961,
-   0.11910437792539597
+   -0.09130533039569855,
+   0.11503604799509048
   ],
-  "left_foot_length_below_z0.10_m": 0.21059120446443558,
-  "sole_bottom_z": -0.00706714391708374,
+  "left_foot_length_below_z0.10_m": 0.20634137839078903,
+  "sole_bottom_z": -0.007099807262420654,
   "world_bounds": {
    "x": [
     -0.4242763817310333,
@@ -201,7 +122,7 @@
     0.19924317300319672
    ],
    "z": [
-    -0.00706714391708374,
+    -0.007099807262420654,
     1.4115369319915771
    ]
   },
@@ -213,171 +134,77 @@
   ],
   "bones": 9,
   "deform_bones": 9,
-  "actions": 33,
-  "leg_face_quality": {
-   "leg_faces": 936,
-   "leg_tris": 0,
-   "leg_quads": 936,
-   "min_corner_angle_deg": 19.601143691413778,
-   "max_corner_angle_deg": 160.68436663994368,
-   "max_edge_ratio": 4.234705420436868,
-   "p95_edge_ratio": 3.421593224895205
-  },
-  "bone_rest_toes": {
-   "toe.L": {
-    "head": [
-     -0.2370000034570694,
-     0.05999999865889549,
-     -1.024999976158142
-    ],
-    "tail": [
-     -0.2369999885559082,
-     0.1899999976158142,
-     -1.024999976158142
-    ],
-    "matrix": [
-     [
-      0.9999998807907104,
-      1.1462418569863075e-07,
-      -1.1462417148777604e-07,
-      -0.2370000034570694
-     ],
-     [
-      -1.1462418569863075e-07,
-      0.9999998807907104,
-      2.6719354810286755e-13,
-      0.05999999865889549
-     ],
-     [
-      1.1462415017149397e-07,
-      8.881779432440924e-16,
-      0.9999997019767761,
-      -1.0249998569488525
-     ],
-     [
-      0.0,
-      0.0,
-      0.0,
-      1.0
-     ]
-    ]
-   },
-   "toe.R": {
-    "head": [
-     0.2370000034570694,
-     0.05999999865889549,
-     -1.024999976158142
-    ],
-    "tail": [
-     0.2370000183582306,
-     0.1899999976158142,
-     -1.024999976158142
-    ],
-    "matrix": [
-     [
-      0.9999999403953552,
-      1.1462438465059677e-07,
-      -1.1462440596687884e-07,
-      0.2370000034570694
-     ],
-     [
-      -1.1462438465059677e-07,
-      0.9999999403953552,
-      2.67193846258465e-13,
-      0.059999994933605194
-     ],
-     [
-      1.1462438465059677e-07,
-      -1.332267947187543e-15,
-      0.9999997615814209,
-      -1.0249998569488525
-     ],
-     [
-      0.0,
-      0.0,
-      0.0,
-      1.0
-     ]
-    ]
-   }
-  }
+  "actions": 33
  },
  "summary": {
-  "vertices": [
-   557,
-   1277
-  ],
-  "polygons": [
-   744,
-   1464
-  ],
-  "triangles": [
-   1110,
-   2550
-  ],
-  "triangles_rev2": 2486,
-  "leg_faces_all_quads": true,
-  "leg_quads": 936,
-  "max_influences": [
-   3,
-   3
-  ],
-  "influence_histogram": [
-   {
+  "vertices": {
+   "before": 557,
+   "round3": 1277,
+   "after": 1389
+  },
+  "polygons": {
+   "before": 744,
+   "round3": 1464,
+   "after": 1728
+  },
+  "triangles": {
+   "before": 1110,
+   "round3": 2550,
+   "after": 2774
+  },
+  "godot_gpu_vertices": {
+   "before": 792,
+   "round3": 1484,
+   "after": 1674
+  },
+  "influence_histogram": {
+   "before": {
     "1": 443,
     "2": 102,
     "3": 12
    },
-   {
+   "round3": {
     "1": 501,
     "2": 736,
     "3": 40
+   },
+   "after": {
+    "1": 979,
+    "2": 410
    }
-  ],
-  "unweighted_vertices": [
-   0,
-   0
-  ],
-  "loose_vertices": [
-   0,
-   0
-  ],
-  "leg_symmetry_error_m": [
-   2.682209014892578e-07,
-   2.5832559913396835e-07
-  ],
-  "symmetry_weight_error": [
-   3.7550926208496094e-06,
-   1.7881393432617188e-07
-  ],
-  "whole_mesh_symmetry_error_m_note": "the whole-mesh error comes from the untouched original body; legs are mirrored exactly",
-  "left_foot_y_range_below_z0.10": [
-   [
-    -0.09892736375331879,
-    0.11244973540306091
-   ],
-   [
-    -0.09148682653903961,
-    0.11910437792539597
-   ]
-  ],
-  "left_foot_length_m": [
-   0.2113770991563797,
-   0.21059120446443558
-  ],
-  "sole_bottom_z": [
-   -0.007147371768951416,
-   -0.00706714391708374
-  ],
-  "godot_gpu_vertices": [
-   792,
-   1484
-  ],
-  "godot_triangles": [
-   1110,
-   2550
-  ],
-  "per_leg_loops": "4 hip + 1 thigh + 9 knee fan + 1 shin + 8 ankle + 2 foot + 3 sole-rim rings (16 sides), all-quad 8->16 junction, 4x4 sole patch"
+  },
+  "max_influences": {
+   "before": 3,
+   "after": 2
+  },
+  "unweighted_vertices": {
+   "before": 0,
+   "after": 0
+  },
+  "loose_vertices": 0,
+  "leg_symmetry_error_m": 0.0,
+  "symmetry_weight_error": 0.0,
+  "whole_mesh_symmetry_error_m_note": "body itself is asymmetric by up to 0.45 mm in the original (unchanged)",
+  "left_foot_length_m": {
+   "before": 0.2113770991563797,
+   "after": 0.20634137839078903
+  },
+  "sole_bottom_z": {
+   "before": -0.007147371768951416,
+   "after": -0.007099807262420654
+  },
+  "rest_self_intersections": 0,
+  "triangle_budget": {
+   "total_triangles": 2774,
+   "body_kept": 678,
+   "per_leg": {
+    "hidden_socket_lining_and_fold_band": 184,
+    "hip_ball_including_leg_top_wall": 192,
+    "tube_thigh_to_sole_rim": 640,
+    "sole": 32
+   },
+   "note": "about 370 triangles per leg are the hip ball + socket; roughly half of that (lining and fold band, ~370 in total) is never visible (inside the body).  Target was ~2600: the build is +6.7 % over it for the ball-and-socket hip, which removes every visible hip crater / slit / shear at all hip angles."
+  }
  },
  "leg_face_quality": {
   "before": {
@@ -390,26 +217,31 @@
    "p95_edge_ratio": 2.702435891696481
   },
   "after": {
-   "leg_faces": 936,
+   "leg_faces": 672,
    "leg_tris": 0,
-   "leg_quads": 936,
-   "min_corner_angle_deg": 19.601143691413778,
-   "max_corner_angle_deg": 160.68436663994368,
-   "max_edge_ratio": 4.234705420436868,
-   "p95_edge_ratio": 3.421593224895205
-  }
+   "leg_quads": 672,
+   "min_corner_angle_deg": 25.029361402200543,
+   "max_corner_angle_deg": 149.4094182071668,
+   "max_edge_ratio": 3.8376058254539784,
+   "p95_edge_ratio": 3.543205683757345
+  },
+  "note": "tube faces below the rim only (all quads); the socket/ball bands are emitted as explicitly triangulated strips (matching diagonals) and fan transitions"
  },
- "leg_face_quality_note": "after: 936 leg quads, no triangles. Corners < 25 deg (19.6) are the side quads of the 8->16 junction transition row directly under the body flange (row moved closer to the flange to remove a visible fold at hip 120 + spread 30); every sole cell is now 39-143 deg (the inner sole rim is a squarer superellipse, so the 4x4 patch has no 160-173 deg corner cells).",
  "rebuild_checks": {
   "source_compressed": true,
   "mesh_build": {
-   "uv_grey_samples": 3744,
+   "uv_grey_samples": 4496,
    "uv_grey_bad": 0,
    "loose_vertices": 0,
    "faces_flipped_by_recalc": 0,
    "boundary_edges": 0,
    "nonmanifold_edges": 0,
    "loose_edges": 0
+  },
+  "rest_checks": {
+   "rest_self_intersections": 0,
+   "socket_vertices": 320,
+   "socket_min_clearance_to_body_skin_m": 0.00263
   },
   "non_toe_bone_rest_max_dev": 0.0,
   "actions": 33,
@@ -569,111 +401,82 @@
  },
  "design_parameters": {
   "exponent": 2.1,
-  "hip_rings": [
+  "ball_R": 0.138,
+  "ball_fold_dir": [
+   -0.14,
+   0.7,
+   0.7
+  ],
+  "ball_fold_rho": 14.0,
+  "ball_s": [
+   0.05,
+   0.25,
+   0.45,
+   0.68
+  ],
+  "socket_throat_gap": 0.004,
+  "socket_wall": 0.008,
+  "socket_lip": 0.0015,
+  "lining": [
    [
-    "H0",
-    0.781
+    0.05,
+    0.01,
+    16
    ],
    [
-    "H1",
-    0.758
+    0.28,
+    0.021,
+    8
    ],
    [
-    "H2",
-    0.732
+    0.52,
+    0.026,
+    8
    ],
    [
-    "H3",
-    0.703
+    0.76,
+    0.026,
+    8
+   ],
+   [
+    1.0,
+    0.02,
+    8
    ]
   ],
-  "junction_I_frac": 0.35,
-  "junction_I_inset": 0.006,
-  "junction_I_spread": 0.3333333333333333,
-  "hip_shape": {
-   "H0": 0.0,
-   "H1": 0.55,
-   "H2": 0.9,
-   "H3": 1.0
-  },
-  "hip_angle": {
-   "H0": 0.0,
-   "H1": 0.45,
-   "H2": 0.8,
-   "H3": 1.0
-  },
-  "hip_scale": {
-   "H0": 0.965,
-   "H1": 0.945,
-   "H2": 0.955,
-   "H3": 0.975,
-   "T1": 0.99
-  },
-  "hip_z_tilt": {},
   "thigh_rings": [
    [
-    "T1",
+    "T2",
     0.665
    ]
   ],
-  "w_J": [
-   0.09,
-   0.05,
-   0.04
-  ],
-  "w_I": [
-   0.2,
-   0.13,
-   0.09
-  ],
-  "w_hip": {
-   "H0": [
-    0.35,
-    0.22,
-    0.12
-   ],
-   "H1": [
-    0.55,
-    0.4,
-    0.24
-   ],
-   "H2": [
-    0.75,
-    0.6,
-    0.4
-   ],
-   "H3": [
-    0.89,
-    0.8,
-    0.58
-   ],
-   "T1": [
-    0.98,
-    0.94,
-    0.8
-   ]
-  },
+  "t0_inset": 0.0035,
   "knee_s": [
-   0.116,
-   0.082,
-   0.056,
-   0.03,
-   0.01,
-   -0.014,
-   -0.037,
-   -0.064,
-   -0.094
+   0.11,
+   0.07,
+   0.038,
+   0.012,
+   -0.016,
+   -0.048,
+   -0.088
   ],
   "knee_w": [
-   0.043,
-   0.155,
-   0.273,
-   0.412,
-   0.522,
-   0.658,
-   0.773,
-   0.88,
-   0.954
+   0.063,
+   0.204,
+   0.356,
+   0.511,
+   0.668,
+   0.82,
+   0.94
+  ],
+  "knee_w_back": [
+   0.0,
+   0.0,
+   0.03,
+   0.4,
+   0.97,
+   1.0,
+   1.0
   ],
   "knee_spread_side": 0.9,
   "knee_spread_back": 0.6,
@@ -695,24 +498,25 @@
    ]
   ],
   "ankle_s": [
-   0.093,
-   0.079,
-   0.063,
-   0.044,
-   0.023,
-   -0.007,
-   -0.022,
-   -0.046
+   0.1091,
+   0.074,
+   0.0403,
+   -0.006,
+   -0.0338
   ],
   "ankle_w": [
-   0.162,
-   0.271,
-   0.369,
-   0.466,
-   0.552,
-   0.764,
-   0.797,
-   0.901
+   0.0,
+   0.267,
+   0.536,
+   0.91,
+   0.953
+  ],
+  "ankle_w_back": [
+   0.114,
+   0.349,
+   0.52,
+   0.857,
+   0.893
   ],
   "ankle_spread_side": 0.95,
   "ankle_spread_back": 0.94,
@@ -720,11 +524,15 @@
   "foot_rings": [
    [
     "F1",
-    0.034
+    0.06
    ],
    [
     "F2",
-    0.019
+    0.048
+   ],
+   [
+    "F3",
+    0.031
    ]
   ],
   "bevel_rings": [
@@ -751,38 +559,39 @@
   "sole_z_center": -0.0071,
   "sole_z_rim": -0.0066,
   "sole_rows_y": [
-   0.04,
-   0.01,
-   -0.03
+   0.057,
+   0.015,
+   -0.035
   ],
   "sole_rows_keep": 0.0,
   "toe_ramp_z": [
-   0.145,
-   0.055
+   0.07,
+   0.038
   ],
   "toe_ramp_y": [
-   0.01,
-   0.085
+   0.04,
+   0.075
   ],
-  "toe_lateral": [
-   30.0,
-   70.0
-  ],
-  "toe_crease": [
-   0.0035,
-   0.068,
-   0.01
-  ],
-  "toe_plantar_lift": 0.0022,
+  "toe_lateral": null,
   "toe_groove": [
-   0.008,
-   45.0,
-   9.0
+   0.006,
+   0.004
   ],
   "toe_pad": [
-   0.008,
+   0.0,
    0.031,
    0.021
+  ],
+  "toe_spring": [
+   0.007,
+   0.06,
+   0.12,
+   0.03
+  ],
+  "instep": [
+   0.0,
+   0.1,
+   0.03
   ],
   "prune": 0.005
  },
@@ -802,30 +611,82 @@
   "nla_tracks_same": true,
   "active_action_same": true,
   "objects_same": true,
+  "object_names": [
+   "wakoMesh",
+   "wako_art"
+  ],
   "modifiers_same": true,
+  "modifiers_after": {
+   "wakoMesh": [
+    [
+     "Armature",
+     "ARMATURE",
+     "wako_art"
+    ]
+   ]
+  },
   "materials_same": true,
+  "materials_after": [
+   "Player"
+  ],
   "uv_same": true,
+  "uv_after": [
+   "UVMap"
+  ],
   "vgroups_same": true,
+  "smooth_shading_after": true,
   "scale_same": true,
-  "arm_scale_same": true,
   "parent_of_same": true,
+  "bone_names_and_parents_same": true,
   "fps_same": true,
   "images_before": [
    [
     "Player.png",
     "D:/Everything/GODOT Projects/RaulsMod/LogicObjects/Wako/textures/Player.png"
+   ],
+   [
+    "Render Result",
+    ""
    ]
   ],
   "images_after": [
    [
     "Player.png",
     "//textures/Player.png"
+   ],
+   [
+    "Render Result",
+    ""
    ]
   ],
   "bones_changed": [
    "toe.L",
    "toe.R"
   ]
+ },
+ "hip_decision": {
+  "decision": "geometric fix, no runtime hip-flexion cap needed",
+  "how": "the thigh carries a sphere about the hip pivot (R 0.138 m) seated in a root-weighted socket inside the body; rotations about the pivot map the ball onto itself, so the opening always shows rigid ball surface.  The root->thigh weight change sits on a fold band at the ball's front-top.",
+  "valid_range_deg": {
+   "flexion": [
+    -45,
+    130
+   ],
+   "spread_abduction": [
+    -15,
+    40
+   ],
+   "yaw": [
+    -30,
+    30
+   ],
+   "twist": [
+    -40,
+    40
+   ]
+  },
+  "valid_range_note": "the fold cap (radius 14 deg) lies inside the 22 deg cap that no pose in this range turns into the opening (55 deg view window); beyond it the hidden fold band could come into view",
+  "visible_result": "flexion shows the ball turning inside a round socket throat (3.5-4 mm seam, a light countersink bevel at the octagon corners) and a smooth 3 cm 'seat' bulge below the body at hip 90-120; no blended skin, crater, slit or fold at any hip angle"
  },
  "godot_import_check": {
   "before": {
@@ -870,24 +731,23 @@
    "surfaces": 1,
    "skin_present": true,
    "skin_binds": 9,
-   "gpu_vertices": 1484,
-   "triangles": 2550,
+   "gpu_vertices": 1674,
+   "triangles": 2774,
    "weights_slots_per_vertex": 4,
-   "max_nonzero_influences": 3,
+   "max_nonzero_influences": 2,
    "influence_histogram": {
-    "1": 634,
-    "2": 810,
-    "3": 40
+    "1": 1226,
+    "2": 448
    },
    "unweighted": 0,
-   "max_weight_sum_error": 3.05352732539177e-05,
+   "max_weight_sum_error": 1.52885913848877e-05,
    "has_tangents": true,
    "has_uv": true,
    "material": "Player",
    "material_has_albedo_texture": true,
    "aabb_min": [
     -0.424276381731033,
-    -0.00706714391708374,
+    -0.00709980726242065,
     -0.199243173003197
    ],
    "aabb_max": [
@@ -896,12 +756,10 @@
     0.199243202805519
    ]
   },
-  "bone_rests": [
-   {
-    "bone": "Bone",
-    "parent": -1,
-    "rest_origin_max_dev": 0.0,
-    "rest_basis_max_dev": 0.0,
+  "bone_rest_deviation_vs_original_import": {
+   "Bone": {
+    "origin_dev": 0.0,
+    "basis_dev": 0.0,
     "after_rest_origin": [
      0.0,
      0.0,
@@ -910,5609 +768,1457 @@
     "after_rest_basis": [
      [
       -1.0,
-      -0.0,
-      0.0
+      -1.49011611938477e-08,
+      4.04315528612642e-07
      ],
      [
-      -0.0,
+      -1.49011611938477e-08,
       1.0,
-      -0.0
+      -1.11022302462516e-16
      ],
      [
-      -0.0,
-      -0.0,
+      -4.04315528612642e-07,
+      -6.13579316749522e-15,
       -1.0
      ]
     ]
    },
-   {
-    "bone": "Bone.001",
-    "parent": 0,
-    "rest_origin_max_dev": 0.0,
-    "rest_basis_max_dev": 0.0,
+   "Bone.001": {
+    "origin_dev": 0.0,
+    "basis_dev": 0.0,
     "after_rest_origin": [
-     0.237,
-     -0.16,
-     0.0
+     0.237000003457069,
+     -0.160000026226044,
+     9.58227843739223e-08
     ],
     "after_rest_basis": [
      [
-      -0.724723,
-      0.0,
-      0.68904
+      -0.724723100662231,
+      1.08643410430152e-16,
+      0.689040184020996
      ],
      [
-      -0.0,
+      -4.43543012565427e-17,
       -1.0,
-      0.0
+      1.11022289227626e-16
      ],
      [
-      0.68904,
-      0.0,
-      0.724723
+      0.689040184020996,
+      4.98985256342936e-17,
+      0.724723100662231
      ]
     ]
    },
-   {
-    "bone": "Bone.003",
-    "parent": 1,
-    "rest_origin_max_dev": 0.0,
-    "rest_basis_max_dev": 0.0,
+   "Bone.003": {
+    "origin_dev": 0.0,
+    "basis_dev": 0.0,
     "after_rest_origin": [
-     -0.0,
-     0.41,
-     0.0
+     -9.45923606110455e-09,
+     0.409999907016754,
+     9.72717462133232e-09
     ],
     "after_rest_basis": [
      [
-      -0.724723,
-      -0.0,
-      0.68904
+      -0.724723339080811,
+      -1.49011594174908e-08,
+      0.689039945602417
      ],
      [
-      -0.0,
-      1.0,
-      0.0
+      -1.07992086384456e-08,
+      0.999999701976776,
+      1.02674988511353e-08
      ],
      [
-      -0.68904,
-      0.0,
-      -0.724723
+      -0.689039945602417,
+      9.32587171278542e-15,
+      -0.724723339080811
      ]
     ]
    },
-   {
-    "bone": "Bone.005",
-    "parent": 2,
-    "rest_origin_max_dev": 0.0,
-    "rest_basis_max_dev": 0.0,
+   "Bone.005": {
+    "origin_dev": 0.0,
+    "basis_dev": 0.0,
     "after_rest_origin": [
-     -0.0,
-     0.399,
-     0.0
+     -1.38777878078145e-16,
+     0.399000018835068,
+     1.44346391258007e-14
     ],
     "after_rest_basis": [
      [
       1.0,
-      -0.0,
-      -0.0
+      -1.33226752367107e-15,
+      -1.76829814790835e-07
      ],
      [
-      0.0,
+      1.33226752367107e-15,
       1.0,
-      -0.0
+      -4.4409005688301e-16
      ],
      [
-      0.0,
-      0.0,
+      1.76829814790835e-07,
+      4.44089845124773e-16,
       1.0
      ]
     ]
    },
-   {
-    "bone": "toe.L",
-    "parent": 3,
-    "rest_origin_max_dev": 0.1200000122189522,
-    "rest_basis_max_dev": 2.0,
+   "toe.L": {
+    "origin_dev": 0.1200000122189522,
+    "basis_dev": 2.0,
     "after_rest_origin": [
-     -0.0,
-     0.056,
-     -0.06
+     -2.33648638214845e-08,
+     0.056000005453825,
+     -0.0600000061094761
     ],
     "after_rest_basis": [
      [
       -1.0,
-      -0.0,
-      1e-06
+      -1.14624199909485e-07,
+      5.04038609960844e-07
      ],
      [
-      -1e-06,
+      -5.04038609960844e-07,
       0.0,
       -1.0
      ],
      [
-      0.0,
+      1.14624199909485e-07,
       -1.0,
       0.0
      ]
     ]
    },
-   {
-    "bone": "Bone.002",
-    "parent": 0,
-    "rest_origin_max_dev": 0.0,
-    "rest_basis_max_dev": 0.0,
+   "Bone.002": {
+    "origin_dev": 0.0,
+    "basis_dev": 0.0,
     "after_rest_origin": [
-     -0.237,
-     -0.16,
-     -0.0
+     -0.237000003457069,
+     -0.160000026226044,
+     -9.5822777268495e-08
     ],
     "after_rest_basis": [
      [
-      -0.699807,
-      -0.0,
-      -0.714332
+      -0.699806809425354,
+      -1.11957228312937e-16,
+      -0.714332222938538
      ],
      [
-      0.0,
+      4.66563118140532e-17,
       -1.0,
-      0.0
+      1.11022328932295e-16
      ],
      [
-      -0.714332,
-      0.0,
-      0.699807
+      -0.714332222938538,
+      4.43660703822981e-17,
+      0.699806809425354
      ]
     ]
    },
-   {
-    "bone": "Bone.004",
-    "parent": 5,
-    "rest_origin_max_dev": 0.0,
-    "rest_basis_max_dev": 0.0,
+   "Bone.004": {
+    "origin_dev": 0.0,
+    "basis_dev": 0.0,
     "after_rest_origin": [
-     0.0,
-     0.41,
-     -0.0
+     5.25482857227644e-09,
+     0.409999907016754,
+     -9.53725720620469e-09
     ],
     "after_rest_basis": [
      [
-      -0.699807,
-      -0.0,
-      -0.714332
+      -0.699806928634644,
+      -1.4901157641134e-08,
+      -0.714331924915314
      ],
      [
-      -0.0,
-      1.0,
-      -0.0
+      -1.04279358481563e-08,
+      0.999999761581421,
+      -1.06443689418256e-08
      ],
      [
-      0.714332,
-      0.0,
-      -0.699807
+      0.714331924915314,
+      4.44089125146768e-15,
+      -0.699806928634644
      ]
     ]
    },
-   {
-    "bone": "Bone.006",
-    "parent": 6,
-    "rest_origin_max_dev": 0.0,
-    "rest_basis_max_dev": 0.0,
+   "Bone.006": {
+    "origin_dev": 0.0,
+    "basis_dev": 0.0,
     "after_rest_origin": [
-     -0.0,
-     0.399,
-     0.0
+     -1.49011611938477e-08,
+     0.398999899625778,
+     6.88164167645289e-15
     ],
     "after_rest_basis": [
      [
       1.0,
-      -0.0,
-      0.0
+      -8.88178631458362e-16,
+      9.13911435418413e-08
      ],
      [
-      0.0,
+      8.88178631458362e-16,
       1.0,
-      0.0
+      4.44088998091826e-16
      ],
      [
-      -0.0,
-      -0.0,
+      -9.13911435418413e-08,
+      -4.44088892212707e-16,
       1.0
      ]
     ]
    },
-   {
-    "bone": "toe.R",
-    "parent": 7,
-    "rest_origin_max_dev": 0.1200000047683716,
-    "rest_basis_max_dev": 2.0,
+   "toe.R": {
+    "origin_dev": 0.1200000047683716,
+    "basis_dev": 2.0,
     "after_rest_origin": [
-     -0.0,
-     0.056,
-     -0.06
+     -3.82660232389753e-08,
+     0.056000005453825,
+     -0.0600000023841858
     ],
     "after_rest_basis": [
      [
       -1.0,
-      -0.0,
-      1e-06
+      -1.14624398861451e-07,
+      5.04038780491101e-07
      ],
      [
-      -1e-06,
+      -5.04038780491101e-07,
       0.0,
       -1.0
      ],
      [
-      0.0,
+      1.14624398861451e-07,
       -1.0,
       0.0
      ]
     ]
    }
-  ],
+  },
   "animation_names_identical": true,
-  "note": "7 non-toe bone rests identical (0 deviation); toe rests changed by the 180 deg flip (origin (0, 0.056, -0.06), pointing along Godot -Z = runtime forward). 34 animations, same names; 1 surface; skin with 9 binds; tangents + UV; albedo found via the relative texture path (the original's absolute Windows path does not resolve)."
+  "note": "only toe.L / toe.R rests differ (the designed 180 deg flip); all other rests are bit-identical"
  },
  "deformation": {
-  "profile_line_checks": {
-   "method": "pipeline/wako_deform_metrics.py 'lines': sagittal polyline of the left leg's front (or back) column (|x+0.237| < 0.012), per-vertex turn of the posed line in the YZ plane (turn_abs = exactly the review's knee_profile measure; turn_change = minus the rest-line turn, so designed rest curvature such as the rounded sole edge is not counted) and segment stretch posed/rest. Knee band rest z 0.22-0.66; ankle band z 0.0-0.30; toe outline = the toe-side column below z 0.20 continued along the sole centre (the original rig's toe is at the BACK, so its outline uses the back column).",
-   "targets_from_review": "knee 145: no front vertex turns more than ~15-20 deg, no segment stretches more than ~2x",
-   "knee_front": {
-    "knee60": {
-     "before": {
-      "turn_abs_max_deg": 24.9,
-      "turn_change_max_deg": 24.9,
-      "stretch_max": 2.33,
-      "stretch_min": 1.0
-     },
-     "rev2": {
-      "turn_abs_max_deg": 18.5,
-      "turn_change_max_deg": 18.9,
-      "stretch_max": 3.14,
-      "stretch_min": 1.0
-     },
-     "after": {
-      "turn_abs_max_deg": 9.1,
-      "turn_change_max_deg": 8.5,
-      "stretch_max": 1.67,
-      "stretch_min": 1.11
-     }
+  "review_harness": "mesh_work4/ev4.py: review posing convention (critic_render/intersect scripts); per pose: total volume change (divergence theorem, both legs), dominant-bone triangle-pair intersection census, knee bisector cut depth, and orthographic rasters of the views the review used: visible back faces (fold-overs, see-through in Godot), visible surface other than the original body skin more than 5 mm inside the rest body hull (areas summed over the views of each pose; for the final build this is the rigid ball inside the round socket throat and the socket bevel), the same restricted to BLENDED (deforming) skin -- the review's crater / slit / pocket -- and silhouette slots narrower than 2.4 cm.  3 mm pixels.",
+  "review_table_orig_round3_final": {
+   "neutral": {
+    "orig": {
+     "volume_change_cm3_both_legs": 0,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 11
     },
-    "crouch90": {
-     "before": {
-      "turn_abs_max_deg": 34.0,
-      "turn_change_max_deg": 34.0,
-      "stretch_max": 2.8,
-      "stretch_min": 1.0
-     },
-     "rev2": {
-      "turn_abs_max_deg": 28.8,
-      "turn_change_max_deg": 29.2,
-      "stretch_max": 3.93,
-      "stretch_min": 1.0
-     },
-     "after": {
-      "turn_abs_max_deg": 11.4,
-      "turn_change_max_deg": 11.0,
-      "stretch_max": 1.85,
-      "stretch_min": 1.16
-     }
+    "r3": {
+     "volume_change_cm3_both_legs": 0,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 7
     },
-    "crouch120": {
-     "before": {
-      "turn_abs_max_deg": 47.6,
-      "turn_change_max_deg": 47.6,
-      "stretch_max": 3.08,
-      "stretch_min": 1.0
-     },
-     "rev2": {
-      "turn_abs_max_deg": 39.1,
-      "turn_change_max_deg": 39.5,
-      "stretch_max": 4.45,
-      "stretch_min": 1.0
-     },
-     "after": {
-      "turn_abs_max_deg": 15.0,
-      "turn_change_max_deg": 13.2,
-      "stretch_max": 1.91,
-      "stretch_min": 1.18
-     }
-    },
-    "tuck": {
-     "before": {
-      "turn_abs_max_deg": 59.1,
-      "turn_change_max_deg": 59.1,
-      "stretch_max": 3.16,
-      "stretch_min": 1.0
-     },
-     "rev2": {
-      "turn_abs_max_deg": 48.0,
-      "turn_change_max_deg": 48.4,
-      "stretch_max": 4.65,
-      "stretch_min": 1.0
-     },
-     "after": {
-      "turn_abs_max_deg": 18.6,
-      "turn_change_max_deg": 15.1,
-      "stretch_max": 1.85,
-      "stretch_min": 1.17
-     }
-    },
-    "seatedV": {
-     "before": {
-      "turn_abs_max_deg": 41.7,
-      "turn_change_max_deg": 41.7,
-      "stretch_max": 2.89,
-      "stretch_min": 0.87
-     },
-     "rev2": {
-      "turn_abs_max_deg": 34.6,
-      "turn_change_max_deg": 35.0,
-      "stretch_max": 4.02,
-      "stretch_min": 0.87
-     },
-     "after": {
-      "turn_abs_max_deg": 12.8,
-      "turn_change_max_deg": 12.4,
-      "stretch_max": 1.84,
-      "stretch_min": 1.15
-     }
-    },
-    "groundV": {
-     "before": {
-      "turn_abs_max_deg": 35.3,
-      "turn_change_max_deg": 35.3,
-      "stretch_max": 2.44,
-      "stretch_min": 0.91
-     },
-     "rev2": {
-      "turn_abs_max_deg": 30.3,
-      "turn_change_max_deg": 30.7,
-      "stretch_max": 3.34,
-      "stretch_min": 0.91
-     },
-     "after": {
-      "turn_abs_max_deg": 12.7,
-      "turn_change_max_deg": 12.2,
-      "stretch_max": 1.6,
-      "stretch_min": 1.11
-     }
-    },
-    "worklift": {
-     "before": {
-      "turn_abs_max_deg": 24.9,
-      "turn_change_max_deg": 24.9,
-      "stretch_max": 2.33,
-      "stretch_min": 1.0
-     },
-     "rev2": {
-      "turn_abs_max_deg": 18.5,
-      "turn_change_max_deg": 18.9,
-      "stretch_max": 3.14,
-      "stretch_min": 1.0
-     },
-     "after": {
-      "turn_abs_max_deg": 9.1,
-      "turn_change_max_deg": 8.5,
-      "stretch_max": 1.67,
-      "stretch_min": 1.11
-     }
-    },
-    "runswing": {
-     "before": {
-      "turn_abs_max_deg": 21.7,
-      "turn_change_max_deg": 21.7,
-      "stretch_max": 2.03,
-      "stretch_min": 1.0
-     },
-     "rev2": {
-      "turn_abs_max_deg": 13.9,
-      "turn_change_max_deg": 14.0,
-      "stretch_max": 2.66,
-      "stretch_min": 1.0
-     },
-     "after": {
-      "turn_abs_max_deg": 7.6,
-      "turn_change_max_deg": 7.0,
-      "stretch_max": 1.54,
-      "stretch_min": 1.09
-     }
+    "final": {
+     "volume_change_cm3_both_legs": 0,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 6.7,
+     "  ...p90_depth_mm": 11.1,
+     "  ...max_depth_mm": 12.3,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 9
     }
    },
-   "knee_back": {
-    "crouch90": {
-     "before": {
-      "turn_abs_max_deg": 146.0,
-      "turn_change_max_deg": 146.0,
-      "stretch_max": 1.0,
-      "stretch_min": 0.7
-     },
-     "rev2": {
-      "turn_abs_max_deg": 91.4,
-      "turn_change_max_deg": 93.3,
-      "stretch_max": 1.14,
-      "stretch_min": 0.8
-     },
-     "after": {
-      "turn_abs_max_deg": 104.8,
-      "turn_change_max_deg": 106.4,
-      "stretch_max": 1.01,
-      "stretch_min": 0.15
-     }
+   "crouch30": {
+    "orig": {
+     "volume_change_cm3_both_legs": 509,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 19
     },
-    "crouch120": {
-     "before": {
-      "turn_abs_max_deg": 107.5,
-      "turn_change_max_deg": 107.5,
-      "stretch_max": 1.09,
-      "stretch_min": 1.0
-     },
-     "rev2": {
-      "turn_abs_max_deg": 79.4,
-      "turn_change_max_deg": 81.3,
-      "stretch_max": 1.65,
-      "stretch_min": 0.97
-     },
-     "after": {
-      "turn_abs_max_deg": 46.7,
-      "turn_change_max_deg": 48.3,
-      "stretch_max": 1.11,
-      "stretch_min": 0.53
-     }
+    "r3": {
+     "volume_change_cm3_both_legs": 939,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 9
     },
-    "tuck": {
-     "before": {
-      "turn_abs_max_deg": 90.1,
-      "turn_change_max_deg": 90.1,
-      "stretch_max": 1.36,
-      "stretch_min": 1.0
-     },
-     "rev2": {
-      "turn_abs_max_deg": 68.8,
-      "turn_change_max_deg": 70.6,
-      "stretch_max": 2.0,
-      "stretch_min": 1.0
-     },
-     "after": {
-      "turn_abs_max_deg": 35.3,
-      "turn_change_max_deg": 36.8,
-      "stretch_max": 1.19,
-      "stretch_min": 0.83
-     }
+    "final": {
+     "volume_change_cm3_both_legs": 886,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 5,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 10
     }
    },
-   "ankle_front": {
-    "dorsi35": {
-     "before": {
-      "turn_abs_max_deg": 91.5,
-      "turn_change_max_deg": 91.5,
-      "stretch_max": 1.0,
-      "stretch_min": 0.2
-     },
-     "rev2": {
-      "turn_abs_max_deg": 67.7,
-      "turn_change_max_deg": 57.2,
-      "stretch_max": 1.0,
-      "stretch_min": 0.14
-     },
-     "after": {
-      "turn_abs_max_deg": 40.9,
-      "turn_change_max_deg": 18.5,
-      "stretch_max": 1.0,
-      "stretch_min": 0.47
-     }
-    },
-    "plantar35": {
-     "before": {
-      "turn_abs_max_deg": 16.7,
-      "turn_change_max_deg": 16.7,
-      "stretch_max": 1.81,
-      "stretch_min": 1.0
-     },
-     "rev2": {
-      "turn_abs_max_deg": 13.7,
-      "turn_change_max_deg": 11.3,
-      "stretch_max": 1.77,
-      "stretch_min": 1.0
-     },
-     "after": {
-      "turn_abs_max_deg": 32.6,
-      "turn_change_max_deg": 9.5,
-      "stretch_max": 1.63,
-      "stretch_min": 1.0
-     }
-    },
-    "crouch90": {
-     "before": {
-      "turn_abs_max_deg": 179.9,
-      "turn_change_max_deg": 179.9,
-      "stretch_max": 1.0,
-      "stretch_min": 0.26
-     },
-     "rev2": {
-      "turn_abs_max_deg": 78.0,
-      "turn_change_max_deg": 81.2,
-      "stretch_max": 1.0,
-      "stretch_min": 0.11
-     },
-     "after": {
-      "turn_abs_max_deg": 46.1,
-      "turn_change_max_deg": 20.3,
-      "stretch_max": 1.0,
-      "stretch_min": 0.31
-     }
-    },
-    "crouch120": {
-     "before": {
-      "turn_abs_max_deg": 117.5,
-      "turn_change_max_deg": 117.5,
-      "stretch_max": 1.0,
-      "stretch_min": 0.49
-     },
-     "rev2": {
-      "turn_abs_max_deg": 51.4,
-      "turn_change_max_deg": 76.3,
-      "stretch_max": 1.0,
-      "stretch_min": 0.38
-     },
-     "after": {
-      "turn_abs_max_deg": 52.9,
-      "turn_change_max_deg": 30.2,
-      "stretch_max": 1.07,
-      "stretch_min": 0.06
-     }
-    },
-    "runswing": {
-     "before": {
-      "turn_abs_max_deg": 13.3,
-      "turn_change_max_deg": 13.3,
-      "stretch_max": 1.59,
-      "stretch_min": 1.0
-     },
-     "rev2": {
-      "turn_abs_max_deg": 17.0,
-      "turn_change_max_deg": 9.1,
-      "stretch_max": 1.56,
-      "stretch_min": 1.0
-     },
-     "after": {
-      "turn_abs_max_deg": 32.6,
-      "turn_change_max_deg": 7.2,
-      "stretch_max": 1.44,
-      "stretch_min": 1.0
-     }
-    },
-    "wide": {
-     "before": {
-      "turn_abs_max_deg": 7.1,
-      "turn_change_max_deg": 7.1,
-      "stretch_max": 0.91,
-      "stretch_min": 0.79
-     },
-     "rev2": {
-      "turn_abs_max_deg": 26.1,
-      "turn_change_max_deg": 5.9,
-      "stretch_max": 1.0,
-      "stretch_min": 0.8
-     },
-     "after": {
-      "turn_abs_max_deg": 32.6,
-      "turn_change_max_deg": 4.1,
-      "stretch_max": 1.0,
-      "stretch_min": 0.78
-     }
-    }
-   },
-   "ankle_back": {
-    "dorsi35": {
-     "before": {
-      "turn_abs_max_deg": 16.8,
-      "turn_change_max_deg": 16.8,
-      "stretch_max": 1.6,
-      "stretch_min": 1.0
-     },
-     "rev2": {
-      "turn_abs_max_deg": 8.1,
-      "turn_change_max_deg": 9.5,
-      "stretch_max": 1.49,
-      "stretch_min": 1.0
-     },
-     "after": {
-      "turn_abs_max_deg": 30.7,
-      "turn_change_max_deg": 7.2,
-      "stretch_max": 1.45,
-      "stretch_min": 1.0
-     }
-    },
-    "plantar35": {
-     "before": {
-      "turn_abs_max_deg": 37.9,
-      "turn_change_max_deg": 37.9,
-      "stretch_max": 1.0,
-      "stretch_min": 0.32
-     },
-     "rev2": {
-      "turn_abs_max_deg": 34.5,
-      "turn_change_max_deg": 29.7,
-      "stretch_max": 1.0,
-      "stretch_min": 0.41
-     },
-     "after": {
-      "turn_abs_max_deg": 30.7,
-      "turn_change_max_deg": 15.8,
-      "stretch_max": 1.0,
-      "stretch_min": 0.58
-     }
-    },
-    "crouch90": {
-     "before": {
-      "turn_abs_max_deg": 20.1,
-      "turn_change_max_deg": 20.1,
-      "stretch_max": 1.74,
-      "stretch_min": 1.0
-     },
-     "rev2": {
-      "turn_abs_max_deg": 8.8,
-      "turn_change_max_deg": 11.3,
-      "stretch_max": 1.61,
-      "stretch_min": 1.0
-     },
-     "after": {
-      "turn_abs_max_deg": 30.7,
-      "turn_change_max_deg": 8.8,
-      "stretch_max": 1.58,
-      "stretch_min": 1.0
-     }
-    },
-    "crouch120": {
-     "before": {
-      "turn_abs_max_deg": 24.5,
-      "turn_change_max_deg": 24.5,
-      "stretch_max": 1.93,
-      "stretch_min": 1.0
-     },
-     "rev2": {
-      "turn_abs_max_deg": 10.8,
-      "turn_change_max_deg": 13.5,
-      "stretch_max": 1.76,
-      "stretch_min": 1.0
-     },
-     "after": {
-      "turn_abs_max_deg": 30.7,
-      "turn_change_max_deg": 10.9,
-      "stretch_max": 1.76,
-      "stretch_min": 1.0
-     }
-    },
-    "runswing": {
-     "before": {
-      "turn_abs_max_deg": 22.3,
-      "turn_change_max_deg": 22.3,
-      "stretch_max": 1.0,
-      "stretch_min": 0.52
-     },
-     "rev2": {
-      "turn_abs_max_deg": 21.1,
-      "turn_change_max_deg": 16.3,
-      "stretch_max": 1.0,
-      "stretch_min": 0.59
-     },
-     "after": {
-      "turn_abs_max_deg": 30.7,
-      "turn_change_max_deg": 10.9,
-      "stretch_max": 1.0,
-      "stretch_min": 0.71
-     }
-    }
-   },
-   "toe_outline": {
-    "toe+45stand": {
-     "before": {
-      "turn_abs_max_deg": 89.8,
-      "turn_change_max_deg": 47.4,
-      "stretch_max": 1.44,
-      "stretch_min": 0.56
-     },
-     "rev2": {
-      "turn_abs_max_deg": 43.1,
-      "turn_change_max_deg": 30.0,
-      "stretch_max": 1.78,
-      "stretch_min": 0.33
-     },
-     "after": {
-      "turn_abs_max_deg": 49.4,
-      "turn_change_max_deg": 55.2,
-      "stretch_max": 1.6,
-      "stretch_min": 0.16
-     }
-    },
-    "toe-45stand": {
-     "before": {
-      "turn_abs_max_deg": 88.2,
-      "turn_change_max_deg": 51.8,
-      "stretch_max": 1.4,
-      "stretch_min": 0.72
-     },
-     "rev2": {
-      "turn_abs_max_deg": 83.3,
-      "turn_change_max_deg": 58.3,
-      "stretch_max": 1.53,
-      "stretch_min": 0.07
-     },
-     "after": {
-      "turn_abs_max_deg": 52.1,
-      "turn_change_max_deg": 45.7,
-      "stretch_max": 1.69,
-      "stretch_min": 0.47
-     }
-    },
-    "toe+45lift": {
-     "before": {
-      "turn_abs_max_deg": 89.8,
-      "turn_change_max_deg": 47.4,
-      "stretch_max": 1.63,
-      "stretch_min": 0.56
-     },
-     "rev2": {
-      "turn_abs_max_deg": 43.1,
-      "turn_change_max_deg": 30.3,
-      "stretch_max": 1.74,
-      "stretch_min": 0.33
-     },
-     "after": {
-      "turn_abs_max_deg": 49.4,
-      "turn_change_max_deg": 55.2,
-      "stretch_max": 1.47,
-      "stretch_min": 0.16
-     }
-    },
-    "toe-45lift": {
-     "before": {
-      "turn_abs_max_deg": 88.2,
-      "turn_change_max_deg": 37.8,
-      "stretch_max": 1.4,
-      "stretch_min": 0.82
-     },
-     "rev2": {
-      "turn_abs_max_deg": 126.4,
-      "turn_change_max_deg": 101.4,
-      "stretch_max": 1.53,
-      "stretch_min": 0.05
-     },
-     "after": {
-      "turn_abs_max_deg": 57.5,
-      "turn_change_max_deg": 54.7,
-      "stretch_max": 1.69,
-      "stretch_min": 0.39
-     }
-    },
-    "tuck": {
-     "before": {
-      "turn_abs_max_deg": 88.2,
-      "turn_change_max_deg": 26.4,
-      "stretch_max": 1.0,
-      "stretch_min": 0.74
-     },
-     "rev2": {
-      "turn_abs_max_deg": 52.7,
-      "turn_change_max_deg": 23.0,
-      "stretch_max": 1.74,
-      "stretch_min": 0.64
-     },
-     "after": {
-      "turn_abs_max_deg": 32.6,
-      "turn_change_max_deg": 23.9,
-      "stretch_max": 1.6,
-      "stretch_min": 0.54
-     }
-    },
-    "worklift": {
-     "before": {
-      "turn_abs_max_deg": 87.9,
-      "turn_change_max_deg": 19.4,
-      "stretch_max": 1.37,
-      "stretch_min": 0.79
-     },
-     "rev2": {
-      "turn_abs_max_deg": 53.8,
-      "turn_change_max_deg": 17.4,
-      "stretch_max": 1.34,
-      "stretch_min": 0.71
-     },
-     "after": {
-      "turn_abs_max_deg": 32.6,
-      "turn_change_max_deg": 17.9,
-      "stretch_max": 1.19,
-      "stretch_min": 0.64
-     }
-    }
-   }
-  },
-  "leg_area_cutting_body_surface_cm2": {
    "crouch90": {
-    "before": 994.2915156558192,
-    "rev2": 81.28240843708154,
-    "after": 110.18223968838643
+    "orig": {
+     "volume_change_cm3_both_legs": -894,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 8,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 44
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": -544,
+     "body_x_body_tri_pairs": 20,
+     "shin_x_thigh_tri_pairs_left": 16,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 90
+    },
+    "final": {
+     "volume_change_cm3_both_legs": -146,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 28,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 8.6,
+     "  ...p90_depth_mm": 19.8,
+     "  ...max_depth_mm": 23.9,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 42
+    }
    },
    "crouch120": {
-    "before": 1474.934995044809,
-    "rev2": 248.53213126426948,
-    "after": 249.25086389170642
+    "orig": {
+     "volume_change_cm3_both_legs": -2672,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 21,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.1,
+     "  ...p90_depth_mm": 5.0,
+     "  ...max_depth_mm": 5.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 76
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": -2716,
+     "body_x_body_tri_pairs": 15,
+     "shin_x_thigh_tri_pairs_left": 36,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 138
+    },
+    "final": {
+     "volume_change_cm3_both_legs": -1959,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 34,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 4.8,
+     "  ...p90_depth_mm": 7.7,
+     "  ...max_depth_mm": 7.8,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 82
+    }
    },
    "tuck": {
-    "before": 3106.7706738313004,
-    "rev2": 1064.8649528730343,
-    "after": 1413.8430063863
+    "orig": {
+     "volume_change_cm3_both_legs": -3977,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 24,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 411.2,
+     "  ...p90_depth_mm": 57.0,
+     "  ...max_depth_mm": 67.8,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 411.2,
+     "  ...blended_max_depth_mm": 67.8,
+     "silhouette_slot_px": 61
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": -3005,
+     "body_x_body_tri_pairs": 33,
+     "shin_x_thigh_tri_pairs_left": 52,
+     "visible_backface_px": 5,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 81.6,
+     "  ...p90_depth_mm": 21.1,
+     "  ...max_depth_mm": 34.4,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 81.6,
+     "  ...blended_max_depth_mm": 34.4,
+     "silhouette_slot_px": 58
+    },
+    "final": {
+     "volume_change_cm3_both_legs": -1639,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 45,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 208.4,
+     "  ...p90_depth_mm": 18.3,
+     "  ...max_depth_mm": 44.4,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 144
+    }
    },
    "seatedV": {
-    "before": 2223.542913239616,
-    "rev2": 448.6096738128653,
-    "after": 397.4769120567362
+    "orig": {
+     "volume_change_cm3_both_legs": -1535,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 8,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 211.8,
+     "  ...p90_depth_mm": 16.1,
+     "  ...max_depth_mm": 46.5,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 211.8,
+     "  ...blended_max_depth_mm": 46.5,
+     "silhouette_slot_px": 0
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": -413,
+     "body_x_body_tri_pairs": 19,
+     "shin_x_thigh_tri_pairs_left": 26,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 26.4,
+     "  ...p90_depth_mm": 23.7,
+     "  ...max_depth_mm": 32.1,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 26.4,
+     "  ...blended_max_depth_mm": 32.1,
+     "silhouette_slot_px": 0
+    },
+    "final": {
+     "volume_change_cm3_both_legs": 454,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 32,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 285.6,
+     "  ...p90_depth_mm": 20.2,
+     "  ...max_depth_mm": 67.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 0
+    }
    },
    "groundV": {
-    "before": 2496.0271529473657,
-    "rev2": 808.9800471792807,
-    "after": 1200.659384009809
+    "orig": {
+     "volume_change_cm3_both_legs": -2152,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 9,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 504.2,
+     "  ...p90_depth_mm": 72.0,
+     "  ...max_depth_mm": 91.3,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 504.2,
+     "  ...blended_max_depth_mm": 91.3,
+     "silhouette_slot_px": 0
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": -851,
+     "body_x_body_tri_pairs": 23,
+     "shin_x_thigh_tri_pairs_left": 9,
+     "visible_backface_px": 1,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 264.9,
+     "  ...p90_depth_mm": 44.5,
+     "  ...max_depth_mm": 72.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 264.9,
+     "  ...blended_max_depth_mm": 72.0,
+     "silhouette_slot_px": 0
+    },
+    "final": {
+     "volume_change_cm3_both_legs": 1216,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 27,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 243.1,
+     "  ...p90_depth_mm": 19.9,
+     "  ...max_depth_mm": 43.9,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 0
+    }
    },
    "worklift": {
-    "before": 1130.434562148902,
-    "rev2": 279.294089034996,
-    "after": 310.78676954024195
+    "orig": {
+     "volume_change_cm3_both_legs": -362,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 458.1,
+     "  ...p90_depth_mm": 22.1,
+     "  ...max_depth_mm": 27.4,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 458.1,
+     "  ...blended_max_depth_mm": 27.4,
+     "silhouette_slot_px": 33
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": 773,
+     "body_x_body_tri_pairs": 8,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 4.4,
+     "  ...p90_depth_mm": 9.4,
+     "  ...max_depth_mm": 10.6,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 4.4,
+     "  ...blended_max_depth_mm": 10.6,
+     "silhouette_slot_px": 26
+    },
+    "final": {
+     "volume_change_cm3_both_legs": 978,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 26,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 238.6,
+     "  ...p90_depth_mm": 18.2,
+     "  ...max_depth_mm": 29.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 11
+    }
+   },
+   "hip80": {
+    "orig": {
+     "volume_change_cm3_both_legs": -2034,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 21,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 90.7,
+     "  ...p90_depth_mm": 8.3,
+     "  ...max_depth_mm": 9.5,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 90.7,
+     "  ...blended_max_depth_mm": 9.5,
+     "silhouette_slot_px": 0
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": -858,
+     "body_x_body_tri_pairs": 21,
+     "shin_x_thigh_tri_pairs_left": 36,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.8,
+     "  ...p90_depth_mm": 6.9,
+     "  ...max_depth_mm": 7.2,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.8,
+     "  ...blended_max_depth_mm": 7.2,
+     "silhouette_slot_px": 0
+    },
+    "final": {
+     "volume_change_cm3_both_legs": -307,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 34,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 191.6,
+     "  ...p90_depth_mm": 17.0,
+     "  ...max_depth_mm": 27.4,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 0
+    }
+   },
+   "hip100": {
+    "orig": {
+     "volume_change_cm3_both_legs": -1712,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 9,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 504.8,
+     "  ...p90_depth_mm": 39.2,
+     "  ...max_depth_mm": 48.5,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 504.8,
+     "  ...blended_max_depth_mm": 48.5,
+     "silhouette_slot_px": 0
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": -123,
+     "body_x_body_tri_pairs": 26,
+     "shin_x_thigh_tri_pairs_left": 17,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 34.9,
+     "  ...p90_depth_mm": 12.4,
+     "  ...max_depth_mm": 17.6,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 34.9,
+     "  ...blended_max_depth_mm": 17.6,
+     "silhouette_slot_px": 0
+    },
+    "final": {
+     "volume_change_cm3_both_legs": 996,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 28,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 260.8,
+     "  ...p90_depth_mm": 19.3,
+     "  ...max_depth_mm": 33.8,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 0
+    }
+   },
+   "hip120s": {
+    "orig": {
+     "volume_change_cm3_both_legs": -2332,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 9,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 504.2,
+     "  ...p90_depth_mm": 72.0,
+     "  ...max_depth_mm": 91.3,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 504.2,
+     "  ...blended_max_depth_mm": 91.3,
+     "silhouette_slot_px": 0
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": -1134,
+     "body_x_body_tri_pairs": 23,
+     "shin_x_thigh_tri_pairs_left": 16,
+     "visible_backface_px": 1,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 264.9,
+     "  ...p90_depth_mm": 44.5,
+     "  ...max_depth_mm": 72.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 264.9,
+     "  ...blended_max_depth_mm": 72.0,
+     "silhouette_slot_px": 0
+    },
+    "final": {
+     "volume_change_cm3_both_legs": 995,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 29,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 243.1,
+     "  ...p90_depth_mm": 19.9,
+     "  ...max_depth_mm": 43.9,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 0
+    }
+   },
+   "hip45": {
+    "orig": {
+     "volume_change_cm3_both_legs": -647,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 0
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": 844,
+     "body_x_body_tri_pairs": 20,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 0
+    },
+    "final": {
+     "volume_change_cm3_both_legs": -2,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 150.8,
+     "  ...p90_depth_mm": 22.1,
+     "  ...max_depth_mm": 57.4,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 0
+    }
    },
    "runswing": {
-    "before": 815.9004114396453,
-    "rev2": 74.4501809728339,
-    "after": 84.12414468181719
+    "orig": {
+     "volume_change_cm3_both_legs": 512,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 19
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": 681,
+     "body_x_body_tri_pairs": 1,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 9
+    },
+    "final": {
+     "volume_change_cm3_both_legs": 1531,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 12,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 14
+    }
+   },
+   "hipm35": {
+    "orig": {
+     "volume_change_cm3_both_legs": -278,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 12
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": -1460,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 5
+    },
+    "final": {
+     "volume_change_cm3_both_legs": 0,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.4,
+     "  ...p90_depth_mm": 6.4,
+     "  ...max_depth_mm": 6.6,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 7
+    }
+   },
+   "hipm20": {
+    "orig": {
+     "volume_change_cm3_both_legs": -75,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 25
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": -783,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 5
+    },
+    "final": {
+     "volume_change_cm3_both_legs": 0,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.3,
+     "  ...p90_depth_mm": 7.0,
+     "  ...max_depth_mm": 7.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 9
+    }
+   },
+   "wide": {
+    "orig": {
+     "volume_change_cm3_both_legs": 123,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 0
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": 251,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 0
+    },
+    "final": {
+     "volume_change_cm3_both_legs": 372,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 70.4,
+     "  ...p90_depth_mm": 17.5,
+     "  ...max_depth_mm": 23.2,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 0
+    }
+   },
+   "knee30": {
+    "orig": {
+     "volume_change_cm3_both_legs": 849,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 0,
+     "knee_bisector_depth_m": 0.1982
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": 900,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 0,
+     "knee_bisector_depth_m": 0.1984
+    },
+    "final": {
+     "volume_change_cm3_both_legs": 1177,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 5,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 0,
+     "knee_bisector_depth_m": 0.2011
+    }
+   },
+   "knee60": {
+    "orig": {
+     "volume_change_cm3_both_legs": 1090,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 0,
+     "knee_bisector_depth_m": 0.1859
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": 975,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 0,
+     "knee_bisector_depth_m": 0.1803
+    },
+    "final": {
+     "volume_change_cm3_both_legs": 1544,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 26,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 0,
+     "knee_bisector_depth_m": 0.1994
+    }
+   },
+   "knee90": {
+    "orig": {
+     "volume_change_cm3_both_legs": 659,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 9,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 14,
+     "knee_bisector_depth_m": 0.198
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": 205,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 17,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 31,
+     "knee_bisector_depth_m": 0.1686
+    },
+    "final": {
+     "volume_change_cm3_both_legs": 1003,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 29,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 18,
+     "knee_bisector_depth_m": 0.1997
+    }
+   },
+   "knee120": {
+    "orig": {
+     "volume_change_cm3_both_legs": -330,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 21,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 26,
+     "knee_bisector_depth_m": 0.2285
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": -1203,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 37,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 33,
+     "knee_bisector_depth_m": 0.2107
+    },
+    "final": {
+     "volume_change_cm3_both_legs": -301,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 35,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 22,
+     "knee_bisector_depth_m": 0.2275
+    }
+   },
+   "knee145": {
+    "orig": {
+     "volume_change_cm3_both_legs": -1391,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 24,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 50,
+     "knee_bisector_depth_m": 0.15
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": -2595,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 45,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 34,
+     "knee_bisector_depth_m": 0.2157
+    },
+    "final": {
+     "volume_change_cm3_both_legs": -1723,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 45,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 45,
+     "knee_bisector_depth_m": 0.2159
+    }
+   },
+   "dorsi35": {
+    "orig": {
+     "volume_change_cm3_both_legs": -666,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 12
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": -1138,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 9
+    },
+    "final": {
+     "volume_change_cm3_both_legs": -830,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 13
+    }
+   },
+   "plantar35": {
+    "orig": {
+     "volume_change_cm3_both_legs": 233,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 8
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": 282,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 8
+    },
+    "final": {
+     "volume_change_cm3_both_legs": 192,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 8
+    }
+   },
+   "dorsi60": {
+    "orig": {
+     "volume_change_cm3_both_legs": -1278,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 14
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": -2255,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 13
+    },
+    "final": {
+     "volume_change_cm3_both_legs": -1654,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 25
+    }
+   },
+   "toep45": {
+    "orig": {
+     "volume_change_cm3_both_legs": -193,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 10
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": 7,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 8
+    },
+    "final": {
+     "volume_change_cm3_both_legs": -215,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 10
+    }
+   },
+   "toem45": {
+    "orig": {
+     "volume_change_cm3_both_legs": -124,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 9
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": -250,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 12
+    },
+    "final": {
+     "volume_change_cm3_both_legs": 47,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 9
+    }
+   },
+   "toep45lift": {
+    "orig": {
+     "volume_change_cm3_both_legs": -1289,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 34
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": 775,
+     "body_x_body_tri_pairs": 17,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 27
+    },
+    "final": {
+     "volume_change_cm3_both_legs": 1141,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 26,
+     "visible_backface_px": 3,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 16
+    }
+   },
+   "toem45lift": {
+    "orig": {
+     "volume_change_cm3_both_legs": -1254,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 28
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": 559,
+     "body_x_body_tri_pairs": 17,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 37
+    },
+    "final": {
+     "volume_change_cm3_both_legs": 1404,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 26,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 11
+    }
+   },
+   "twist40": {
+    "orig": {
+     "volume_change_cm3_both_legs": -297,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 0
+    },
+    "r3": {
+     "volume_change_cm3_both_legs": -695,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 0
+    },
+    "final": {
+     "volume_change_cm3_both_legs": -2,
+     "body_x_body_tri_pairs": 0,
+     "shin_x_thigh_tri_pairs_left": 0,
+     "visible_backface_px": 0,
+     "visible_non_body_surface_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...p90_depth_mm": 0.0,
+     "  ...max_depth_mm": 0.0,
+     "visible_BLENDED_skin_inside_body_hull_gt5mm_cm2": 0.0,
+     "  ...blended_max_depth_mm": 0.0,
+     "silhouette_slot_px": 0
+    }
    }
   },
-  "hip_socket_depth_cm_mean_p90_numpy": {
-   "method": "rays from below / below-rear / below-front through the body junction opening; depth of the first leg surface beyond the junction plane (left leg; numpy LBS of the exact skin matrices)",
-   "table": {
-    "tuck": {
-     "before": {
-      "below": [
-       1.72,
-       3.66
-      ],
-      "rear": [
-       3.28,
-       6.15
-      ],
-      "front": [
-       0.79,
-       2.58
-      ]
-     },
-     "rev2": {
-      "below": [
-       0.19,
-       0.62
-      ],
-      "rear": [
-       0.92,
-       2.92
-      ],
-      "front": [
-       0.19,
-       0.54
-      ]
-     },
-     "after": {
-      "below": [
-       0.12,
-       0.43
-      ],
-      "rear": [
-       0.43,
-       1.75
-      ],
-      "front": [
-       0.11,
-       0.47
-      ]
-     }
-    },
-    "seatedV": {
-     "before": {
-      "below": [
-       0.51,
-       2.05
-      ],
-      "rear": [
-       0.63,
-       2.5
-      ],
-      "front": [
-       0.01,
-       0.0
-      ]
-     },
-     "rev2": {
-      "below": [
-       0.06,
-       0.08
-      ],
-      "rear": [
-       0.09,
-       0.13
-      ],
-      "front": [
-       0.0,
-       0.0
-      ]
-     },
-     "after": {
-      "below": [
-       0.06,
-       0.12
-      ],
-      "rear": [
-       0.08,
-       0.15
-      ],
-      "front": [
-       0.0,
-       0.0
-      ]
-     }
-    },
-    "groundV": {
-     "before": {
-      "below": [
-       3.78,
-       6.96
-      ],
-      "rear": [
-       4.76,
-       8.95
-      ],
-      "front": [
-       3.8,
-       7.08
-      ]
-     },
-     "rev2": {
-      "below": [
-       1.69,
-       4.13
-      ],
-      "rear": [
-       2.25,
-       5.38
-      ],
-      "front": [
-       1.79,
-       4.31
-      ]
-     },
-     "after": {
-      "below": [
-       1.14,
-       3.33
-      ],
-      "rear": [
-       1.56,
-       4.44
-      ],
-      "front": [
-       1.2,
-       3.4
-      ]
-     }
-    },
-    "worklift": {
-     "before": {
-      "below": [
-       0.71,
-       1.49
-      ],
-      "rear": [
-       0.98,
-       2.04
-      ],
-      "front": [
-       0.87,
-       1.76
-      ]
-     },
-     "rev2": {
-      "below": [
-       0.03,
-       0.04
-      ],
-      "rear": [
-       0.05,
-       0.04
-      ],
-      "front": [
-       0.04,
-       0.07
-      ]
-     },
-     "after": {
-      "below": [
-       0.02,
-       0.0
-      ],
-      "rear": [
-       0.03,
-       0.0
-      ],
-      "front": [
-       0.03,
-       0.0
-      ]
-     }
-    },
-    "hip80_knee90": {
-     "before": {
-      "below": [
-       0.11,
-       0.48
-      ],
-      "rear": [
-       0.16,
-       0.65
-      ],
-      "front": [
-       0.13,
-       0.56
-      ]
-     },
-     "rev2": {
-      "below": [
-       0.01,
-       0.0
-      ],
-      "rear": [
-       0.01,
-       0.0
-      ],
-      "front": [
-       0.01,
-       0.0
-      ]
-     },
-     "after": {
-      "below": [
-       0.01,
-       0.0
-      ],
-      "rear": [
-       0.01,
-       0.0
-      ],
-      "front": [
-       0.02,
-       0.0
-      ]
-     }
-    },
-    "hip95_knee90": {
-     "before": {
-      "below": [
-       1.16,
-       2.12
-      ],
-      "rear": [
-       1.59,
-       2.88
-      ],
-      "front": [
-       1.39,
-       2.47
-      ]
-     },
-     "rev2": {
-      "below": [
-       0.07,
-       0.27
-      ],
-      "rear": [
-       0.11,
-       0.36
-      ],
-      "front": [
-       0.09,
-       0.37
-      ]
-     },
-     "after": {
-      "below": [
-       0.03,
-       0.12
-      ],
-      "rear": [
-       0.05,
-       0.12
-      ],
-      "front": [
-       0.05,
-       0.13
-      ]
-     }
-    },
-    "hip100_knee90": {
-     "before": {
-      "below": [
-       1.61,
-       2.92
-      ],
-      "rear": [
-       2.2,
-       3.88
-      ],
-      "front": [
-       1.87,
-       3.29
-      ]
-     },
-     "rev2": {
-      "below": [
-       0.21,
-       0.78
-      ],
-      "rear": [
-       0.32,
-       1.29
-      ],
-      "front": [
-       0.24,
-       0.87
-      ]
-     },
-     "after": {
-      "below": [
-       0.07,
-       0.28
-      ],
-      "rear": [
-       0.11,
-       0.36
-      ],
-      "front": [
-       0.09,
-       0.33
-      ]
-     }
-    },
-    "hip110_knee90": {
-     "before": {
-      "below": [
-       2.53,
-       4.68
-      ],
-      "rear": [
-       3.39,
-       6.15
-      ],
-      "front": [
-       2.75,
-       4.98
-      ]
-     },
-     "rev2": {
-      "below": [
-       0.79,
-       2.36
-      ],
-      "rear": [
-       1.08,
-       3.13
-      ],
-      "front": [
-       0.86,
-       2.46
-      ]
-     },
-     "after": {
-      "below": [
-       0.37,
-       1.41
-      ],
-      "rear": [
-       0.53,
-       1.95
-      ],
-      "front": [
-       0.41,
-       1.42
-      ]
-     }
-    },
-    "hip120_knee90": {
-     "before": {
-      "below": [
-       3.4,
-       6.31
-      ],
-      "rear": [
-       4.5,
-       8.22
-      ],
-      "front": [
-       3.56,
-       6.46
-      ]
-     },
-     "rev2": {
-      "below": [
-       1.58,
-       3.91
-      ],
-      "rear": [
-       2.13,
-       5.25
-      ],
-      "front": [
-       1.7,
-       4.1
-      ]
-     },
-     "after": {
-      "below": [
-       0.97,
-       2.91
-      ],
-      "rear": [
-       1.34,
-       3.84
-      ],
-      "front": [
-       1.03,
-       3.2
-      ]
-     }
-    }
+  "design_line_metrics_final": {
+   "knee30": {
+    "bisector_depth_m": 0.2011,
+    "front_extent_m": 0.1367,
+    "back_extent_m": 0.0644,
+    "front_line_turn_change_deg": 6.3,
+    "front_line_turn_abs_deg": 7.5,
+    "front_line_stretch_max": 1.4
    },
-   "crater_free_limit": "after: <= 0.11 / 0.36 cm up to hip 100 deg (knee 90); 0.43 / 1.75 cm at the flip tuck (hip 110); 1.56 / 4.44 cm at the hip-120 ground-seated stress pose"
+   "knee60": {
+    "bisector_depth_m": 0.1994,
+    "front_extent_m": 0.1223,
+    "back_extent_m": 0.0771,
+    "front_line_turn_change_deg": 10.4,
+    "front_line_turn_abs_deg": 11.2,
+    "front_line_stretch_max": 1.71
+   },
+   "knee90": {
+    "bisector_depth_m": 0.1997,
+    "front_extent_m": 0.0998,
+    "back_extent_m": 0.0999,
+    "front_line_turn_change_deg": 13.4,
+    "front_line_turn_abs_deg": 14.1,
+    "front_line_stretch_max": 1.91
+   },
+   "knee120": {
+    "bisector_depth_m": 0.2275,
+    "front_extent_m": 0.0706,
+    "back_extent_m": 0.1569,
+    "front_line_turn_change_deg": 16.0,
+    "front_line_turn_abs_deg": 18.7,
+    "front_line_stretch_max": 1.97
+   },
+   "knee145": {
+    "bisector_depth_m": 0.216,
+    "front_extent_m": 0.0427,
+    "back_extent_m": 0.1733,
+    "front_line_turn_change_deg": 18.5,
+    "front_line_turn_abs_deg": 22.7,
+    "front_line_stretch_max": 1.92
+   },
+   "crouch90": {
+    "front_notch_depth_mm_foot_frame": 4.1,
+    "heel_notch_depth_mm_foot_frame": 0.0,
+    "front_line_turn_change_deg": 57.0,
+    "front_line_stretch_max": 1.0
+   },
+   "crouch120": {
+    "front_notch_depth_mm_foot_frame": 4.1,
+    "heel_notch_depth_mm_foot_frame": 0.0,
+    "front_line_turn_change_deg": 170.3,
+    "front_line_stretch_max": 1.17
+   },
+   "dorsi35": {
+    "front_notch_depth_mm_foot_frame": 4.1,
+    "heel_notch_depth_mm_foot_frame": 0.0,
+    "front_line_turn_change_deg": 41.2,
+    "front_line_stretch_max": 1.0
+   },
+   "dorsi60": {
+    "front_notch_depth_mm_foot_frame": 4.1,
+    "heel_notch_depth_mm_foot_frame": 0.0,
+    "front_line_turn_change_deg": 170.3,
+    "front_line_stretch_max": 1.17
+   },
+   "plantar35": {
+    "front_notch_depth_mm_foot_frame": 4.1,
+    "heel_notch_depth_mm_foot_frame": 6.7,
+    "front_line_turn_change_deg": 15.3,
+    "front_line_stretch_max": 1.64
+   },
+   "neutral": {
+    "front_notch_depth_mm (= toe-cap groove)": 4.1
+   }
   },
-  "junction_numpy": {
-   "before": {
-    "crouch90_L": {
-     "junction_max_dihedral_deg_visible": 81.7,
-     "junction_min_face_area_ratio": 0.586,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.0,
-       0.0
-      ],
-      "rear": [
-       0.01,
-       0.0
-      ],
-      "front": [
-       0.0,
-       0.0
-      ]
-     }
-    },
-    "crouch120_L": {
-     "junction_max_dihedral_deg_visible": 71.8,
-     "junction_min_face_area_ratio": 0.629,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.03,
-       0.0
-      ],
-      "rear": [
-       0.08,
-       0.2
-      ],
-      "front": [
-       0.03,
-       0.0
-      ]
-     }
-    },
-    "tuck_L": {
-     "junction_max_dihedral_deg_visible": 53.1,
-     "junction_min_face_area_ratio": 1.0,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       1.72,
-       3.66
-      ],
-      "rear": [
-       3.28,
-       6.15
-      ],
-      "front": [
-       0.79,
-       2.58
-      ]
-     }
-    },
-    "seatedV_L": {
-     "junction_max_dihedral_deg_visible": 61.2,
-     "junction_min_face_area_ratio": 0.45,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.51,
-       2.05
-      ],
-      "rear": [
-       0.63,
-       2.5
-      ],
-      "front": [
-       0.01,
-       0.0
-      ]
-     }
-    },
-    "groundV_L": {
-     "junction_max_dihedral_deg_visible": 53.0,
-     "junction_min_face_area_ratio": 0.277,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       3.78,
-       6.96
-      ],
-      "rear": [
-       4.76,
-       8.95
-      ],
-      "front": [
-       3.8,
-       7.08
-      ]
-     }
-    },
-    "worklift_L": {
-     "junction_max_dihedral_deg_visible": 53.2,
-     "junction_min_face_area_ratio": 0.891,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.71,
-       1.49
-      ],
-      "rear": [
-       0.98,
-       2.04
-      ],
-      "front": [
-       0.87,
-       1.76
-      ]
-     }
-    },
-    "runswing_L": {
-     "junction_max_dihedral_deg_visible": 79.0,
-     "junction_min_face_area_ratio": 0.615,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.0,
-       0.0
-      ],
-      "rear": [
-       0.0,
-       0.0
-      ],
-      "front": [
-       0.0,
-       0.0
-      ]
-     }
-    },
-    "runswing_R": {
-     "junction_max_dihedral_deg_visible": 71.9,
-     "junction_min_face_area_ratio": 0.604,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.04,
-       0.09
-      ],
-      "rear": [
-       0.05,
-       0.05
-      ],
-      "front": [
-       0.02,
-       0.0
-      ]
-     }
-    },
-    "twist40_L": {
-     "junction_max_dihedral_deg_visible": 71.7,
-     "junction_min_face_area_ratio": 0.922,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       16.92,
-       30.0
-      ],
-      "rear": [
-       0.0,
-       0.0
-      ],
-      "front": [
-       0.0,
-       0.0
-      ]
-     }
-    },
-    "ftwist30_L": {
-     "junction_max_dihedral_deg_visible": 98.4,
-     "junction_min_face_area_ratio": 0.653,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.0,
-       0.0
-      ],
-      "rear": [
-       0.0,
-       0.0
-      ],
-      "front": [
-       0.0,
-       0.0
-      ]
-     }
-    }
-   },
-   "rev2": {
-    "crouch90_L": {
-     "junction_max_dihedral_deg_visible": 93.2,
-     "junction_min_face_area_ratio": 0.347,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.0,
-       0.0
-      ],
-      "rear": [
-       0.0,
-       0.0
-      ],
-      "front": [
-       0.0,
-       0.0
-      ]
-     }
-    },
-    "crouch120_L": {
-     "junction_max_dihedral_deg_visible": 122.7,
-     "junction_min_face_area_ratio": 0.179,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.0,
-       0.0
-      ],
-      "rear": [
-       0.0,
-       0.0
-      ],
-      "front": [
-       0.0,
-       0.0
-      ]
-     }
-    },
-    "tuck_L": {
-     "junction_max_dihedral_deg_visible": 43.3,
-     "junction_min_face_area_ratio": 0.238,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.19,
-       0.62
-      ],
-      "rear": [
-       0.92,
-       2.92
-      ],
-      "front": [
-       0.19,
-       0.54
-      ]
-     }
-    },
-    "seatedV_L": {
-     "junction_max_dihedral_deg_visible": 86.0,
-     "junction_min_face_area_ratio": 0.047,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.06,
-       0.08
-      ],
-      "rear": [
-       0.09,
-       0.13
-      ],
-      "front": [
-       0.0,
-       0.0
-      ]
-     }
-    },
-    "groundV_L": {
-     "junction_max_dihedral_deg_visible": 24.8,
-     "junction_min_face_area_ratio": 0.106,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       1.69,
-       4.13
-      ],
-      "rear": [
-       2.25,
-       5.38
-      ],
-      "front": [
-       1.79,
-       4.31
-      ]
-     }
-    },
-    "worklift_L": {
-     "junction_max_dihedral_deg_visible": 53.6,
-     "junction_min_face_area_ratio": 0.269,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.03,
-       0.04
-      ],
-      "rear": [
-       0.05,
-       0.04
-      ],
-      "front": [
-       0.04,
-       0.07
-      ]
-     }
-    },
-    "runswing_L": {
-     "junction_max_dihedral_deg_visible": 95.1,
-     "junction_min_face_area_ratio": 0.464,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.0,
-       0.0
-      ],
-      "rear": [
-       0.0,
-       0.0
-      ],
-      "front": [
-       0.0,
-       0.0
-      ]
-     }
-    },
-    "runswing_R": {
-     "junction_max_dihedral_deg_visible": 111.7,
-     "junction_min_face_area_ratio": 0.201,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.0,
-       0.0
-      ],
-      "rear": [
-       0.0,
-       0.0
-      ],
-      "front": [
-       0.0,
-       0.0
-      ]
-     }
-    },
-    "twist40_L": {
-     "junction_max_dihedral_deg_visible": 69.5,
-     "junction_min_face_area_ratio": 0.891,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       17.71,
-       30.0
-      ],
-      "rear": [
-       0.0,
-       0.0
-      ],
-      "front": [
-       0.0,
-       0.0
-      ]
-     }
-    },
-    "ftwist30_L": {
-     "junction_max_dihedral_deg_visible": 73.5,
-     "junction_min_face_area_ratio": 0.549,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.0,
-       0.0
-      ],
-      "rear": [
-       0.0,
-       0.0
-      ],
-      "front": [
-       0.0,
-       0.0
-      ]
-     }
-    }
-   },
-   "after": {
-    "crouch90_L": {
-     "junction_max_dihedral_deg_visible": 90.1,
-     "junction_min_face_area_ratio": 0.323,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.0,
-       0.0
-      ],
-      "rear": [
-       0.0,
-       0.0
-      ],
-      "front": [
-       0.0,
-       0.0
-      ]
-     }
-    },
-    "crouch120_L": {
-     "junction_max_dihedral_deg_visible": 105.4,
-     "junction_min_face_area_ratio": 0.173,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.0,
-       0.0
-      ],
-      "rear": [
-       0.0,
-       0.0
-      ],
-      "front": [
-       0.0,
-       0.0
-      ]
-     }
-    },
-    "tuck_L": {
-     "junction_max_dihedral_deg_visible": 64.4,
-     "junction_min_face_area_ratio": 0.232,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.12,
-       0.43
-      ],
-      "rear": [
-       0.43,
-       1.75
-      ],
-      "front": [
-       0.11,
-       0.47
-      ]
-     }
-    },
-    "seatedV_L": {
-     "junction_max_dihedral_deg_visible": 78.1,
-     "junction_min_face_area_ratio": 0.208,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.06,
-       0.12
-      ],
-      "rear": [
-       0.08,
-       0.15
-      ],
-      "front": [
-       0.0,
-       0.0
-      ]
-     }
-    },
-    "groundV_L": {
-     "junction_max_dihedral_deg_visible": 86.4,
-     "junction_min_face_area_ratio": 0.143,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       1.14,
-       3.33
-      ],
-      "rear": [
-       1.56,
-       4.44
-      ],
-      "front": [
-       1.2,
-       3.4
-      ]
-     }
-    },
-    "worklift_L": {
-     "junction_max_dihedral_deg_visible": 71.4,
-     "junction_min_face_area_ratio": 0.274,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.02,
-       0.0
-      ],
-      "rear": [
-       0.03,
-       0.0
-      ],
-      "front": [
-       0.03,
-       0.0
-      ]
-     }
-    },
-    "runswing_L": {
-     "junction_max_dihedral_deg_visible": 72.8,
-     "junction_min_face_area_ratio": 0.541,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.0,
-       0.0
-      ],
-      "rear": [
-       0.0,
-       0.0
-      ],
-      "front": [
-       0.0,
-       0.0
-      ]
-     }
-    },
-    "runswing_R": {
-     "junction_max_dihedral_deg_visible": 93.3,
-     "junction_min_face_area_ratio": 0.184,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.0,
-       0.0
-      ],
-      "rear": [
-       0.0,
-       0.0
-      ],
-      "front": [
-       0.0,
-       0.0
-      ]
-     }
-    },
-    "twist40_L": {
-     "junction_max_dihedral_deg_visible": 67.8,
-     "junction_min_face_area_ratio": 0.781,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       17.84,
-       30.0
-      ],
-      "rear": [
-       0.0,
-       0.0
-      ],
-      "front": [
-       0.0,
-       0.0
-      ]
-     }
-    },
-    "ftwist30_L": {
-     "junction_max_dihedral_deg_visible": 71.3,
-     "junction_min_face_area_ratio": 0.546,
-     "socket_depth_cm_mean_p90": {
-      "below": [
-       0.0,
-       0.0
-      ],
-      "rear": [
-       0.0,
-       0.0
-      ],
-      "front": [
-       0.0,
-       0.0
-      ]
-     }
-    }
-   },
-   "note": "max dihedral counts only edges outside the body hull; the original junction looks 'clean' in the tuck only because its thigh cut ~3100 cm2 into the body"
-  },
-  "blender_regional_metrics": {
-   "before": {
-    "neutral": {
-     "junc": {
-      "dih_max": 65.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 53.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 53.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "toe": {
-      "dih_max": 87.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0071,
-     "lines": {}
-    },
-    "crouch30": {
-     "junc": {
-      "dih_max": 121.3,
-      "dih_n120": 2,
-      "dih_n90": 4,
-      "area_min": 0.594,
-      "area_p2": 0.594,
-      "area_max": 1.55
-     },
-     "knee": {
-      "dih_max": 53.7,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.735,
-      "area_p2": 0.735,
-      "area_max": 1.64
-     },
-     "ankle": {
-      "dih_max": 53.2,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.667,
-      "area_p2": 0.667,
-      "area_max": 1.23
-     },
-     "toe": {
-      "dih_max": 87.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.801,
-      "area_p2": 0.801,
-      "area_max": 1.15
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.23,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": 0.0204,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 5,
-        "turn_abs_max": 17.4,
-        "turn_change_max": 17.4,
-        "stretch_max": 1.71,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 5,
-        "turn_abs_max": 44.3,
-        "turn_change_max": 44.3,
-        "stretch_max": 1.0,
-        "stretch_min": 0.67
-       }
-      },
-      "ankle": {
-       "front": {
-        "vertices": 5,
-        "turn_abs_max": 16.2,
-        "turn_change_max": 16.2,
-        "stretch_max": 1.0,
-        "stretch_min": 0.63
-       },
-       "back": {
-        "vertices": 5,
-        "turn_abs_max": 8.4,
-        "turn_change_max": 8.4,
-        "stretch_max": 1.27,
-        "stretch_min": 1.0
-       }
-      }
-     }
-    },
-    "crouch90": {
-     "junc": {
-      "dih_max": 140.0,
-      "dih_n120": 4,
-      "dih_n90": 6,
-      "area_min": 0.467,
-      "area_p2": 0.467,
-      "area_max": 2.71
-     },
-     "knee": {
-      "dih_max": 165.7,
-      "dih_n120": 4,
-      "dih_n90": 4,
-      "area_min": 0.648,
-      "area_p2": 0.648,
-      "area_max": 2.56
-     },
-     "ankle": {
-      "dih_max": 92.3,
-      "dih_n120": 0,
-      "dih_n90": 4,
-      "area_min": 0.19,
-      "area_p2": 0.19,
-      "area_max": 1.61
-     },
-     "toe": {
-      "dih_max": 146.8,
-      "dih_n120": 4,
-      "dih_n90": 4,
-      "area_min": 0.502,
-      "area_p2": 0.502,
-      "area_max": 1.46
-     },
-     "body_inside_area_cm2": 352.8,
-     "body_inside_maxdepth_cm": 0.82,
-     "body_leg_pairs": 58,
-     "body_cut_leg_area_cm2": 994.2915156558192,
-     "floor_min_z": 0.2298,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 5,
-        "turn_abs_max": 34.0,
-        "turn_change_max": 34.0,
-        "stretch_max": 2.8,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 5,
-        "turn_abs_max": 146.0,
-        "turn_change_max": 146.0,
-        "stretch_max": 1.0,
-        "stretch_min": 0.7
-       }
-      },
-      "ankle": {
-       "front": {
-        "vertices": 5,
-        "turn_abs_max": 179.9,
-        "turn_change_max": 179.9,
-        "stretch_max": 1.0,
-        "stretch_min": 0.26
-       },
-       "back": {
-        "vertices": 5,
-        "turn_abs_max": 20.1,
-        "turn_change_max": 20.1,
-        "stretch_max": 1.74,
-        "stretch_min": 1.0
-       }
-      }
-     }
-    },
-    "crouch120": {
-     "junc": {
-      "dih_max": 153.0,
-      "dih_n120": 4,
-      "dih_n90": 8,
-      "area_min": 0.575,
-      "area_p2": 0.575,
-      "area_max": 3.25
-     },
-     "knee": {
-      "dih_max": 128.5,
-      "dih_n120": 4,
-      "dih_n90": 4,
-      "area_min": 0.613,
-      "area_p2": 0.613,
-      "area_max": 2.76
-     },
-     "ankle": {
-      "dih_max": 112.4,
-      "dih_n120": 0,
-      "dih_n90": 4,
-      "area_min": 0.197,
-      "area_p2": 0.197,
-      "area_max": 1.75
-     },
-     "toe": {
-      "dih_max": 135.9,
-      "dih_n120": 4,
-      "dih_n90": 4,
-      "area_min": 0.494,
-      "area_p2": 0.494,
-      "area_max": 1.59
-     },
-     "body_inside_area_cm2": 521.8,
-     "body_inside_maxdepth_cm": 1.22,
-     "body_leg_pairs": 64,
-     "body_cut_leg_area_cm2": 1474.934995044809,
-     "floor_min_z": 0.3974,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 5,
-        "turn_abs_max": 47.6,
-        "turn_change_max": 47.6,
-        "stretch_max": 3.08,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 5,
-        "turn_abs_max": 107.5,
-        "turn_change_max": 107.5,
-        "stretch_max": 1.09,
-        "stretch_min": 1.0
-       }
-      },
-      "ankle": {
-       "front": {
-        "vertices": 5,
-        "turn_abs_max": 117.5,
-        "turn_change_max": 117.5,
-        "stretch_max": 1.0,
-        "stretch_min": 0.49
-       },
-       "back": {
-        "vertices": 5,
-        "turn_abs_max": 24.5,
-        "turn_change_max": 24.5,
-        "stretch_max": 1.93,
-        "stretch_min": 1.0
-       }
-      }
-     }
-    },
-    "tuck": {
-     "junc": {
-      "dih_max": 136.7,
-      "dih_n120": 4,
-      "dih_n90": 6,
-      "area_min": 0.997,
-      "area_p2": 0.997,
-      "area_max": 4.6
-     },
-     "knee": {
-      "dih_max": 106.4,
-      "dih_n120": 0,
-      "dih_n90": 4,
-      "area_min": 0.55,
-      "area_p2": 0.55,
-      "area_max": 2.79
-     },
-     "ankle": {
-      "dih_max": 55.3,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.805,
-      "area_p2": 0.805,
-      "area_max": 1.42
-     },
-     "toe": {
-      "dih_max": 87.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.753,
-      "area_p2": 0.753,
-      "area_max": 1.26
-     },
-     "body_inside_area_cm2": 2108.8,
-     "body_inside_maxdepth_cm": 7.78,
-     "body_leg_pairs": 138,
-     "body_cut_leg_area_cm2": 3106.7706738313004,
-     "floor_min_z": 0.5883,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 5,
-        "turn_abs_max": 59.1,
-        "turn_change_max": 59.1,
-        "stretch_max": 3.16,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 5,
-        "turn_abs_max": 90.1,
-        "turn_change_max": 90.1,
-        "stretch_max": 1.36,
-        "stretch_min": 1.0
-       }
-      },
-      "ankle": {
-       "front": {
-        "vertices": 5,
-        "turn_abs_max": 11.3,
-        "turn_change_max": 11.3,
-        "stretch_max": 1.48,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 5,
-        "turn_abs_max": 26.4,
-        "turn_change_max": 26.4,
-        "stretch_max": 1.0,
-        "stretch_min": 0.83
-       }
-      },
-      "toe": {
-       "outline": {
-        "vertices": 9,
-        "turn_abs_max": 88.2,
-        "turn_change_max": 26.4,
-        "stretch_max": 1.0,
-        "stretch_min": 0.74
-       }
-      }
-     }
-    },
-    "seatedV": {
-     "junc": {
-      "dih_max": 109.0,
-      "dih_n120": 0,
-      "dih_n90": 6,
-      "area_min": 0.45,
-      "area_p2": 0.45,
-      "area_max": 4.09
-     },
-     "knee": {
-      "dih_max": 154.1,
-      "dih_n120": 4,
-      "dih_n90": 4,
-      "area_min": 0.685,
-      "area_p2": 0.685,
-      "area_max": 2.65
-     },
-     "ankle": {
-      "dih_max": 53.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.779,
-      "area_p2": 0.779,
-      "area_max": 1.15
-     },
-     "toe": {
-      "dih_max": 87.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.866,
-      "area_p2": 0.866,
-      "area_max": 1.1
-     },
-     "body_inside_area_cm2": 1036.5,
-     "body_inside_maxdepth_cm": 2.59,
-     "body_leg_pairs": 94,
-     "body_cut_leg_area_cm2": 2223.542913239616,
-     "floor_min_z": 0.3453,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 5,
-        "turn_abs_max": 41.7,
-        "turn_change_max": 41.7,
-        "stretch_max": 2.89,
-        "stretch_min": 0.87
-       },
-       "back": {
-        "vertices": 5,
-        "turn_abs_max": 127.4,
-        "turn_change_max": 127.4,
-        "stretch_max": 0.99,
-        "stretch_min": 0.7
-       }
-      }
-     }
-    },
-    "groundV": {
-     "junc": {
-      "dih_max": 138.0,
-      "dih_n120": 2,
-      "dih_n90": 6,
-      "area_min": 0.277,
-      "area_p2": 0.277,
-      "area_max": 5.11
-     },
-     "knee": {
-      "dih_max": 164.0,
-      "dih_n120": 4,
-      "dih_n90": 4,
-      "area_min": 0.621,
-      "area_p2": 0.621,
-      "area_max": 2.51
-     },
-     "ankle": {
-      "dih_max": 53.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.919,
-      "area_p2": 0.919,
-      "area_max": 1.11
-     },
-     "toe": {
-      "dih_max": 87.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.951,
-      "area_p2": 0.951,
-      "area_max": 1.07
-     },
-     "body_inside_area_cm2": 2885.4,
-     "body_inside_maxdepth_cm": 11.46,
-     "body_leg_pairs": 106,
-     "body_cut_leg_area_cm2": 2496.0271529473657,
-     "floor_min_z": 0.6493,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 5,
-        "turn_abs_max": 35.3,
-        "turn_change_max": 35.3,
-        "stretch_max": 2.44,
-        "stretch_min": 0.91
-       },
-       "back": {
-        "vertices": 5,
-        "turn_abs_max": 158.9,
-        "turn_change_max": 158.9,
-        "stretch_max": 0.95,
-        "stretch_min": 0.65
-       }
-      }
-     }
-    },
-    "wide": {
-     "junc": {
-      "dih_max": 164.7,
-      "dih_n120": 6,
-      "dih_n90": 6,
-      "area_min": 0.373,
-      "area_p2": 0.373,
-      "area_max": 2.06
-     },
-     "knee": {
-      "dih_max": 53.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.863,
-      "area_p2": 0.863,
-      "area_max": 1.33
-     },
-     "ankle": {
-      "dih_max": 54.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.463,
-      "area_p2": 0.491,
-      "area_max": 1.44
-     },
-     "toe": {
-      "dih_max": 87.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.709,
-      "area_p2": 0.716,
-      "area_max": 1.3
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.34,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": 0.075,
-     "lines": {
-      "ankle": {
-       "front": {
-        "vertices": 5,
-        "turn_abs_max": 7.1,
-        "turn_change_max": 7.1,
-        "stretch_max": 0.91,
-        "stretch_min": 0.79
-       },
-       "back": {
-        "vertices": 5,
-        "turn_abs_max": 5.3,
-        "turn_change_max": 5.3,
-        "stretch_max": 1.08,
-        "stretch_min": 0.91
-       }
-      }
-     }
-    },
-    "worklift": {
-     "junc": {
-      "dih_max": 129.8,
-      "dih_n120": 2,
-      "dih_n90": 5,
-      "area_min": 0.727,
-      "area_p2": 0.804,
-      "area_max": 4.15
-     },
-     "knee": {
-      "dih_max": 105.8,
-      "dih_n120": 0,
-      "dih_n90": 2,
-      "area_min": 0.575,
-      "area_p2": 0.579,
-      "area_max": 2.18
-     },
-     "ankle": {
-      "dih_max": 54.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.779,
-      "area_p2": 0.779,
-      "area_max": 1.28
-     },
-     "toe": {
-      "dih_max": 87.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.801,
-      "area_p2": 0.803,
-      "area_max": 1.15
-     },
-     "body_inside_area_cm2": 923.5,
-     "body_inside_maxdepth_cm": 3.02,
-     "body_leg_pairs": 42,
-     "body_cut_leg_area_cm2": 1130.434562148902,
-     "floor_min_z": 0.0051,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 5,
-        "turn_abs_max": 24.9,
-        "turn_change_max": 24.9,
-        "stretch_max": 2.33,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 5,
-        "turn_abs_max": 133.0,
-        "turn_change_max": 133.0,
-        "stretch_max": 1.0,
-        "stretch_min": 0.52
-       }
-      },
-      "toe": {
-       "outline": {
-        "vertices": 9,
-        "turn_abs_max": 87.9,
-        "turn_change_max": 19.4,
-        "stretch_max": 1.37,
-        "stretch_min": 0.79
-       }
-      }
-     }
-    },
-    "runswing": {
-     "junc": {
-      "dih_max": 156.4,
-      "dih_n120": 4,
-      "dih_n90": 9,
-      "area_min": 0.367,
-      "area_p2": 0.535,
-      "area_max": 3.07
-     },
-     "knee": {
-      "dih_max": 132.4,
-      "dih_n120": 2,
-      "dih_n90": 2,
-      "area_min": 0.572,
-      "area_p2": 0.578,
-      "area_max": 2.32
-     },
-     "ankle": {
-      "dih_max": 53.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.58,
-      "area_p2": 0.642,
-      "area_max": 1.52
-     },
-     "toe": {
-      "dih_max": 87.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.787,
-      "area_p2": 0.798,
-      "area_max": 1.33
-     },
-     "body_inside_area_cm2": 241.5,
-     "body_inside_maxdepth_cm": 1.04,
-     "body_leg_pairs": 51,
-     "body_cut_leg_area_cm2": 815.9004114396453,
-     "floor_min_z": 0.1709,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 5,
-        "turn_abs_max": 21.7,
-        "turn_change_max": 21.7,
-        "stretch_max": 2.03,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 5,
-        "turn_abs_max": 83.3,
-        "turn_change_max": 83.3,
-        "stretch_max": 1.0,
-        "stretch_min": 0.56
-       }
-      },
-      "ankle": {
-       "front": {
-        "vertices": 5,
-        "turn_abs_max": 13.3,
-        "turn_change_max": 13.3,
-        "stretch_max": 1.59,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 5,
-        "turn_abs_max": 22.3,
-        "turn_change_max": 22.3,
-        "stretch_max": 1.0,
-        "stretch_min": 0.52
-       }
-      }
-     }
-    },
-    "ankle": {
-     "junc": {
-      "dih_max": 65.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 53.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 59.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.248,
-      "area_p2": 0.288,
-      "area_max": 1.7
-     },
-     "toe": {
-      "dih_max": 87.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.573,
-      "area_p2": 0.589,
-      "area_max": 1.45
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0401,
-     "lines": {
-      "ankle": {
-       "front": {
-        "vertices": 5,
-        "turn_abs_max": 91.5,
-        "turn_change_max": 91.5,
-        "stretch_max": 1.0,
-        "stretch_min": 0.2
-       },
-       "back": {
-        "vertices": 5,
-        "turn_abs_max": 16.8,
-        "turn_change_max": 16.8,
-        "stretch_max": 1.6,
-        "stretch_min": 1.0
-       }
-      }
-     }
-    },
-    "toegrip": {
-     "junc": {
-      "dih_max": 129.8,
-      "dih_n120": 4,
-      "dih_n90": 8,
-      "area_min": 0.891,
-      "area_p2": 0.891,
-      "area_max": 4.15
-     },
-     "knee": {
-      "dih_max": 105.8,
-      "dih_n120": 0,
-      "dih_n90": 4,
-      "area_min": 0.575,
-      "area_p2": 0.575,
-      "area_max": 2.18
-     },
-     "ankle": {
-      "dih_max": 55.7,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.779,
-      "area_p2": 0.779,
-      "area_max": 1.47
-     },
-     "toe": {
-      "dih_max": 92.0,
-      "dih_n120": 0,
-      "dih_n90": 4,
-      "area_min": 0.58,
-      "area_p2": 0.584,
-      "area_max": 1.43
-     },
-     "body_inside_area_cm2": 1847.1,
-     "body_inside_maxdepth_cm": 3.02,
-     "body_leg_pairs": 84,
-     "body_cut_leg_area_cm2": 2260.8693901834454,
-     "floor_min_z": 0.4342,
-     "lines": {
-      "toe": {
-       "outline": {
-        "vertices": 9,
-        "turn_abs_max": 89.8,
-        "turn_change_max": 47.4,
-        "stretch_max": 1.63,
-        "stretch_min": 0.56
-       }
-      }
-     }
-    },
-    "toestand": {
-     "junc": {
-      "dih_max": 65.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 53.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 55.9,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.962,
-      "area_p2": 0.965,
-      "area_max": 1.3
-     },
-     "toe": {
-      "dih_max": 92.0,
-      "dih_n120": 0,
-      "dih_n90": 4,
-      "area_min": 0.58,
-      "area_p2": 0.584,
-      "area_max": 1.43
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0127,
-     "lines": {
-      "toe": {
-       "outline": {
-        "vertices": 9,
-        "turn_abs_max": 89.8,
-        "turn_change_max": 47.4,
-        "stretch_max": 1.44,
-        "stretch_min": 0.56
-       }
-      }
-     }
-    },
-    "twist40": {
-     "junc": {
-      "dih_max": 79.2,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.922,
-      "area_p2": 0.922,
-      "area_max": 1.24
-     },
-     "knee": {
-      "dih_max": 53.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 53.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "toe": {
-      "dih_max": 87.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0071,
-     "lines": {}
-    },
-    "ftwist30": {
-     "junc": {
-      "dih_max": 171.7,
-      "dih_n120": 4,
-      "dih_n90": 8,
-      "area_min": 0.287,
-      "area_p2": 0.287,
-      "area_max": 2.14
-     },
-     "knee": {
-      "dih_max": 57.2,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.662,
-      "area_p2": 0.662,
-      "area_max": 1.83
-     },
-     "ankle": {
-      "dih_max": 54.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.96,
-      "area_p2": 0.961,
-      "area_max": 1.01
-     },
-     "toe": {
-      "dih_max": 87.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.974,
-      "area_p2": 0.974,
-      "area_max": 1.0
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.51,
-     "body_leg_pairs": 30,
-     "body_cut_leg_area_cm2": 274.4823763065933,
-     "floor_min_z": 0.0435,
-     "lines": {}
-    },
-    "knee60": {
-     "junc": {
-      "dih_max": 148.2,
-      "dih_n120": 4,
-      "dih_n90": 8,
-      "area_min": 0.296,
-      "area_p2": 0.296,
-      "area_max": 2.37
-     },
-     "knee": {
-      "dih_max": 105.8,
-      "dih_n120": 0,
-      "dih_n90": 4,
-      "area_min": 0.575,
-      "area_p2": 0.575,
-      "area_max": 2.18
-     },
-     "ankle": {
-      "dih_max": 53.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "toe": {
-      "dih_max": 87.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.63,
-     "body_leg_pairs": 40,
-     "body_cut_leg_area_cm2": 407.26705116333113,
-     "floor_min_z": 0.081,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 5,
-        "turn_abs_max": 24.9,
-        "turn_change_max": 24.9,
-        "stretch_max": 2.33,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 5,
-        "turn_abs_max": 133.0,
-        "turn_change_max": 133.0,
-        "stretch_max": 1.0,
-        "stretch_min": 0.52
-       }
-      }
-     }
-    },
-    "dorsi35": {
-     "junc": {
-      "dih_max": 65.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 53.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 59.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.248,
-      "area_p2": 0.248,
-      "area_max": 1.5
-     },
-     "toe": {
-      "dih_max": 87.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.573,
-      "area_p2": 0.573,
-      "area_max": 1.36
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0401,
-     "lines": {
-      "ankle": {
-       "front": {
-        "vertices": 5,
-        "turn_abs_max": 91.5,
-        "turn_change_max": 91.5,
-        "stretch_max": 1.0,
-        "stretch_min": 0.2
-       },
-       "back": {
-        "vertices": 5,
-        "turn_abs_max": 16.8,
-        "turn_change_max": 16.8,
-        "stretch_max": 1.6,
-        "stretch_min": 1.0
-       }
-      }
-     }
-    },
-    "plantar35": {
-     "junc": {
-      "dih_max": 65.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 53.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 53.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.404,
-      "area_p2": 0.404,
-      "area_max": 1.7
-     },
-     "toe": {
-      "dih_max": 87.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.735,
-      "area_p2": 0.735,
-      "area_max": 1.45
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0374,
-     "lines": {
-      "ankle": {
-       "front": {
-        "vertices": 5,
-        "turn_abs_max": 16.7,
-        "turn_change_max": 16.7,
-        "stretch_max": 1.81,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 5,
-        "turn_abs_max": 37.9,
-        "turn_change_max": 37.9,
-        "stretch_max": 1.0,
-        "stretch_min": 0.32
-       }
-      }
-     }
-    },
-    "toe+45stand": {
-     "junc": {
-      "dih_max": 65.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 53.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 55.9,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.3
-     },
-     "toe": {
-      "dih_max": 90.2,
-      "dih_n120": 0,
-      "dih_n90": 4,
-      "area_min": 0.58,
-      "area_p2": 0.58,
-      "area_max": 1.05
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0127,
-     "lines": {
-      "toe": {
-       "outline": {
-        "vertices": 9,
-        "turn_abs_max": 89.8,
-        "turn_change_max": 47.4,
-        "stretch_max": 1.44,
-        "stretch_min": 0.56
-       }
-      }
-     }
-    },
-    "toe-45stand": {
-     "junc": {
-      "dih_max": 65.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 53.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 55.9,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.962,
-      "area_p2": 0.962,
-      "area_max": 1.0
-     },
-     "toe": {
-      "dih_max": 92.0,
-      "dih_n120": 0,
-      "dih_n90": 4,
-      "area_min": 0.781,
-      "area_p2": 0.781,
-      "area_max": 1.43
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0071,
-     "lines": {
-      "toe": {
-       "outline": {
-        "vertices": 9,
-        "turn_abs_max": 88.2,
-        "turn_change_max": 51.8,
-        "stretch_max": 1.4,
-        "stretch_min": 0.72
-       }
-      }
-     }
-    },
-    "toe+45lift": {
-     "junc": {
-      "dih_max": 129.8,
-      "dih_n120": 4,
-      "dih_n90": 8,
-      "area_min": 0.891,
-      "area_p2": 0.891,
-      "area_max": 4.15
-     },
-     "knee": {
-      "dih_max": 105.8,
-      "dih_n120": 0,
-      "dih_n90": 4,
-      "area_min": 0.575,
-      "area_p2": 0.575,
-      "area_max": 2.18
-     },
-     "ankle": {
-      "dih_max": 55.7,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.779,
-      "area_p2": 0.779,
-      "area_max": 1.47
-     },
-     "toe": {
-      "dih_max": 90.2,
-      "dih_n120": 0,
-      "dih_n90": 4,
-      "area_min": 0.58,
-      "area_p2": 0.58,
-      "area_max": 1.16
-     },
-     "body_inside_area_cm2": 1847.1,
-     "body_inside_maxdepth_cm": 3.02,
-     "body_leg_pairs": 84,
-     "body_cut_leg_area_cm2": 2260.8693901834454,
-     "floor_min_z": 0.4394,
-     "lines": {
-      "toe": {
-       "outline": {
-        "vertices": 9,
-        "turn_abs_max": 89.8,
-        "turn_change_max": 47.4,
-        "stretch_max": 1.63,
-        "stretch_min": 0.56
-       }
-      }
-     }
-    },
-    "toe-45lift": {
-     "junc": {
-      "dih_max": 129.8,
-      "dih_n120": 4,
-      "dih_n90": 8,
-      "area_min": 0.891,
-      "area_p2": 0.891,
-      "area_max": 4.15
-     },
-     "knee": {
-      "dih_max": 105.8,
-      "dih_n120": 0,
-      "dih_n90": 4,
-      "area_min": 0.575,
-      "area_p2": 0.575,
-      "area_max": 2.18
-     },
-     "ankle": {
-      "dih_max": 55.3,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.779,
-      "area_p2": 0.779,
-      "area_max": 1.09
-     },
-     "toe": {
-      "dih_max": 92.0,
-      "dih_n120": 0,
-      "dih_n90": 4,
-      "area_min": 0.86,
-      "area_p2": 0.86,
-      "area_max": 1.43
-     },
-     "body_inside_area_cm2": 1847.1,
-     "body_inside_maxdepth_cm": 3.02,
-     "body_leg_pairs": 84,
-     "body_cut_leg_area_cm2": 2260.8693901834454,
-     "floor_min_z": 0.4342,
-     "lines": {
-      "toe": {
-       "outline": {
-        "vertices": 9,
-        "turn_abs_max": 88.2,
-        "turn_change_max": 37.8,
-        "stretch_max": 1.4,
-        "stretch_min": 0.82
-       }
-      }
-     }
-    }
-   },
-   "rev2": {
-    "neutral": {
-     "junc": {
-      "dih_max": 61.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 26.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 26.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "toe": {
-      "dih_max": 77.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0071,
-     "lines": {}
-    },
-    "crouch30": {
-     "junc": {
-      "dih_max": 77.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.643,
-      "area_p2": 0.75,
-      "area_max": 1.27
-     },
-     "knee": {
-      "dih_max": 50.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.497,
-      "area_p2": 0.582,
-      "area_max": 2.09
-     },
-     "ankle": {
-      "dih_max": 26.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.65,
-      "area_p2": 0.668,
-      "area_max": 1.22
-     },
-     "toe": {
-      "dih_max": 77.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.732,
-      "area_p2": 0.74,
-      "area_max": 1.18
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.18,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": 0.0205,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 11.4,
-        "turn_change_max": 11.5,
-        "stretch_max": 2.14,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 55.5,
-        "turn_change_max": 52.4,
-        "stretch_max": 1.0,
-        "stretch_min": 0.46
-       }
-      },
-      "ankle": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 27.4,
-        "turn_change_max": 12.6,
-        "stretch_max": 1.0,
-        "stretch_min": 0.64
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 6.3,
-        "turn_change_max": 5.0,
-        "stretch_max": 1.23,
-        "stretch_min": 1.0
-       }
-      }
-     }
-    },
-    "crouch90": {
-     "junc": {
-      "dih_max": 163.9,
-      "dih_n120": 4,
-      "dih_n90": 8,
-      "area_min": 0.347,
-      "area_p2": 0.381,
-      "area_max": 1.89
-     },
-     "knee": {
-      "dih_max": 131.3,
-      "dih_n120": 4,
-      "dih_n90": 8,
-      "area_min": 0.315,
-      "area_p2": 0.4,
-      "area_max": 3.76
-     },
-     "ankle": {
-      "dih_max": 128.4,
-      "dih_n120": 4,
-      "dih_n90": 12,
-      "area_min": 0.056,
-      "area_p2": 0.081,
-      "area_max": 1.58
-     },
-     "toe": {
-      "dih_max": 77.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.306,
-      "area_p2": 0.319,
-      "area_max": 1.51
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.66,
-     "body_leg_pairs": 32,
-     "body_cut_leg_area_cm2": 81.28240843708154,
-     "floor_min_z": 0.2299,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 28.8,
-        "turn_change_max": 29.2,
-        "stretch_max": 3.93,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 91.4,
-        "turn_change_max": 93.3,
-        "stretch_max": 1.14,
-        "stretch_min": 0.8
-       }
-      },
-      "ankle": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 78.0,
-        "turn_change_max": 81.2,
-        "stretch_max": 1.0,
-        "stretch_min": 0.11
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 8.8,
-        "turn_change_max": 11.3,
-        "stretch_max": 1.61,
-        "stretch_min": 1.0
-       }
-      }
-     }
-    },
-    "crouch120": {
-     "junc": {
-      "dih_max": 138.2,
-      "dih_n120": 8,
-      "dih_n90": 18,
-      "area_min": 0.179,
-      "area_p2": 0.27,
-      "area_max": 2.21
-     },
-     "knee": {
-      "dih_max": 98.0,
-      "dih_n120": 0,
-      "dih_n90": 4,
-      "area_min": 0.221,
-      "area_p2": 0.422,
-      "area_max": 4.22
-     },
-     "ankle": {
-      "dih_max": 109.8,
-      "dih_n120": 0,
-      "dih_n90": 8,
-      "area_min": 0.035,
-      "area_p2": 0.215,
-      "area_max": 1.72
-     },
-     "toe": {
-      "dih_max": 77.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.299,
-      "area_p2": 0.313,
-      "area_max": 1.65
-     },
-     "body_inside_area_cm2": 225.4,
-     "body_inside_maxdepth_cm": 1.75,
-     "body_leg_pairs": 76,
-     "body_cut_leg_area_cm2": 248.53213126426948,
-     "floor_min_z": 0.3974,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 39.1,
-        "turn_change_max": 39.5,
-        "stretch_max": 4.45,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 79.4,
-        "turn_change_max": 81.3,
-        "stretch_max": 1.65,
-        "stretch_min": 0.97
-       }
-      },
-      "ankle": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 51.4,
-        "turn_change_max": 76.3,
-        "stretch_max": 1.0,
-        "stretch_min": 0.38
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 10.8,
-        "turn_change_max": 13.5,
-        "stretch_max": 1.76,
-        "stretch_min": 1.0
-       }
-      }
-     }
-    },
-    "tuck": {
-     "junc": {
-      "dih_max": 160.2,
-      "dih_n120": 8,
-      "dih_n90": 16,
-      "area_min": 0.238,
-      "area_p2": 0.301,
-      "area_max": 3.05
-     },
-     "knee": {
-      "dih_max": 128.2,
-      "dih_n120": 4,
-      "dih_n90": 4,
-      "area_min": 0.188,
-      "area_p2": 0.228,
-      "area_max": 4.39
-     },
-     "ankle": {
-      "dih_max": 26.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.686,
-      "area_p2": 0.707,
-      "area_max": 1.52
-     },
-     "toe": {
-      "dih_max": 77.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.657,
-      "area_p2": 0.663,
-      "area_max": 1.7
-     },
-     "body_inside_area_cm2": 1996.7,
-     "body_inside_maxdepth_cm": 8.49,
-     "body_leg_pairs": 170,
-     "body_cut_leg_area_cm2": 1064.8649528730343,
-     "floor_min_z": 0.5888,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 48.0,
-        "turn_change_max": 48.4,
-        "stretch_max": 4.65,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 68.8,
-        "turn_change_max": 70.6,
-        "stretch_max": 2.0,
-        "stretch_min": 1.0
-       }
-      },
-      "ankle": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 19.5,
-        "turn_change_max": 23.0,
-        "stretch_max": 1.74,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 16.5,
-        "turn_change_max": 11.7,
-        "stretch_max": 1.0,
-        "stretch_min": 0.67
-       }
-      },
-      "toe": {
-       "outline": {
-        "vertices": 14,
-        "turn_abs_max": 52.7,
-        "turn_change_max": 23.0,
-        "stretch_max": 1.74,
-        "stretch_min": 0.64
-       }
-      }
-     }
-    },
-    "seatedV": {
-     "junc": {
-      "dih_max": 172.7,
-      "dih_n120": 18,
-      "dih_n90": 24,
-      "area_min": 0.047,
-      "area_p2": 0.141,
-      "area_max": 2.6
-     },
-     "knee": {
-      "dih_max": 111.6,
-      "dih_n120": 0,
-      "dih_n90": 8,
-      "area_min": 0.33,
-      "area_p2": 0.406,
-      "area_max": 3.94
-     },
-     "ankle": {
-      "dih_max": 26.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.768,
-      "area_p2": 0.778,
-      "area_max": 1.15
-     },
-     "toe": {
-      "dih_max": 77.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.822,
-      "area_p2": 0.827,
-      "area_max": 1.12
-     },
-     "body_inside_area_cm2": 588.3,
-     "body_inside_maxdepth_cm": 4.91,
-     "body_leg_pairs": 108,
-     "body_cut_leg_area_cm2": 448.6096738128653,
-     "floor_min_z": 0.3443,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 34.6,
-        "turn_change_max": 35.0,
-        "stretch_max": 4.02,
-        "stretch_min": 0.87
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 95.6,
-        "turn_change_max": 97.4,
-        "stretch_max": 1.31,
-        "stretch_min": 0.87
-       }
-      }
-     }
-    },
-    "groundV": {
-     "junc": {
-      "dih_max": 173.3,
-      "dih_n120": 14,
-      "dih_n90": 20,
-      "area_min": 0.106,
-      "area_p2": 0.26,
-      "area_max": 3.21
-     },
-     "knee": {
-      "dih_max": 143.7,
-      "dih_n120": 4,
-      "dih_n90": 4,
-      "area_min": 0.278,
-      "area_p2": 0.438,
-      "area_max": 3.65
-     },
-     "ankle": {
-      "dih_max": 26.3,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.924,
-      "area_p2": 0.927,
-      "area_max": 1.11
-     },
-     "toe": {
-      "dih_max": 77.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.942,
-      "area_p2": 0.943,
-      "area_max": 1.09
-     },
-     "body_inside_area_cm2": 2547.9,
-     "body_inside_maxdepth_cm": 9.98,
-     "body_leg_pairs": 138,
-     "body_cut_leg_area_cm2": 808.9800471792807,
-     "floor_min_z": 0.6548,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 30.3,
-        "turn_change_max": 30.7,
-        "stretch_max": 3.34,
-        "stretch_min": 0.91
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 87.1,
-        "turn_change_max": 90.0,
-        "stretch_max": 1.02,
-        "stretch_min": 0.62
-       }
-      }
-     }
-    },
-    "wide": {
-     "junc": {
-      "dih_max": 92.0,
-      "dih_n120": 0,
-      "dih_n90": 2,
-      "area_min": 0.546,
-      "area_p2": 0.616,
-      "area_max": 1.51
-     },
-     "knee": {
-      "dih_max": 26.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.749,
-      "area_p2": 0.767,
-      "area_max": 1.56
-     },
-     "ankle": {
-      "dih_max": 27.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.36,
-      "area_p2": 0.439,
-      "area_max": 1.51
-     },
-     "toe": {
-      "dih_max": 77.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.603,
-      "area_p2": 0.615,
-      "area_max": 1.39
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.27,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": 0.075,
-     "lines": {
-      "ankle": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 26.1,
-        "turn_change_max": 5.9,
-        "stretch_max": 1.0,
-        "stretch_min": 0.8
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 6.2,
-        "turn_change_max": 2.9,
-        "stretch_max": 1.08,
-        "stretch_min": 0.91
-       }
-      }
-     }
-    },
-    "worklift": {
-     "junc": {
-      "dih_max": 170.0,
-      "dih_n120": 8,
-      "dih_n90": 10,
-      "area_min": 0.269,
-      "area_p2": 0.381,
-      "area_max": 2.77
-     },
-     "knee": {
-      "dih_max": 155.8,
-      "dih_n120": 2,
-      "dih_n90": 4,
-      "area_min": 0.256,
-      "area_p2": 0.587,
-      "area_max": 3.03
-     },
-     "ankle": {
-      "dih_max": 26.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.768,
-      "area_p2": 0.784,
-      "area_max": 1.15
-     },
-     "toe": {
-      "dih_max": 77.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.729,
-      "area_p2": 0.757,
-      "area_max": 1.3
-     },
-     "body_inside_area_cm2": 456.9,
-     "body_inside_maxdepth_cm": 5.89,
-     "body_leg_pairs": 55,
-     "body_cut_leg_area_cm2": 279.294089034996,
-     "floor_min_z": 0.0052,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 18.5,
-        "turn_change_max": 18.9,
-        "stretch_max": 3.14,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 136.8,
-        "turn_change_max": 139.9,
-        "stretch_max": 1.0,
-        "stretch_min": 0.29
-       }
-      },
-      "toe": {
-       "outline": {
-        "vertices": 14,
-        "turn_abs_max": 53.8,
-        "turn_change_max": 17.4,
-        "stretch_max": 1.34,
-        "stretch_min": 0.71
-       }
-      }
-     }
-    },
-    "runswing": {
-     "junc": {
-      "dih_max": 121.5,
-      "dih_n120": 1,
-      "dih_n90": 8,
-      "area_min": 0.201,
-      "area_p2": 0.453,
-      "area_max": 2.11
-     },
-     "knee": {
-      "dih_max": 138.0,
-      "dih_n120": 2,
-      "dih_n90": 6,
-      "area_min": 0.243,
-      "area_p2": 0.437,
-      "area_max": 3.3
-     },
-     "ankle": {
-      "dih_max": 26.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.603,
-      "area_p2": 0.657,
-      "area_max": 1.54
-     },
-     "toe": {
-      "dih_max": 77.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.732,
-      "area_p2": 0.776,
-      "area_max": 1.42
-     },
-     "body_inside_area_cm2": 28.9,
-     "body_inside_maxdepth_cm": 1.11,
-     "body_leg_pairs": 30,
-     "body_cut_leg_area_cm2": 74.4501809728339,
-     "floor_min_z": 0.1699,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 13.9,
-        "turn_change_max": 14.0,
-        "stretch_max": 2.66,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 125.5,
-        "turn_change_max": 122.4,
-        "stretch_max": 1.0,
-        "stretch_min": 0.25
-       }
-      },
-      "ankle": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 17.0,
-        "turn_change_max": 9.1,
-        "stretch_max": 1.56,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 21.1,
-        "turn_change_max": 16.3,
-        "stretch_max": 1.0,
-        "stretch_min": 0.59
-       }
-      }
-     }
-    },
-    "ankle": {
-     "junc": {
-      "dih_max": 61.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 26.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 61.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.167,
-      "area_p2": 0.327,
-      "area_max": 1.74
-     },
-     "toe": {
-      "dih_max": 77.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.404,
-      "area_p2": 0.522,
-      "area_max": 1.58
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0407,
-     "lines": {
-      "ankle": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 67.7,
-        "turn_change_max": 57.2,
-        "stretch_max": 1.0,
-        "stretch_min": 0.14
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 8.1,
-        "turn_change_max": 9.5,
-        "stretch_max": 1.49,
-        "stretch_min": 1.0
-       }
-      }
-     }
-    },
-    "toegrip": {
-     "junc": {
-      "dih_max": 170.0,
-      "dih_n120": 16,
-      "dih_n90": 20,
-      "area_min": 0.269,
-      "area_p2": 0.359,
-      "area_max": 2.77
-     },
-     "knee": {
-      "dih_max": 155.8,
-      "dih_n120": 4,
-      "dih_n90": 8,
-      "area_min": 0.256,
-      "area_p2": 0.302,
-      "area_max": 3.03
-     },
-     "ankle": {
-      "dih_max": 26.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.723,
-      "area_p2": 0.776,
-      "area_max": 1.15
-     },
-     "toe": {
-      "dih_max": 89.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.117,
-      "area_p2": 0.375,
-      "area_max": 1.66
-     },
-     "body_inside_area_cm2": 913.7,
-     "body_inside_maxdepth_cm": 5.89,
-     "body_leg_pairs": 111,
-     "body_cut_leg_area_cm2": 567.3267915561812,
-     "floor_min_z": 0.4293,
-     "lines": {
-      "toe": {
-       "outline": {
-        "vertices": 14,
-        "turn_abs_max": 43.1,
-        "turn_change_max": 30.3,
-        "stretch_max": 1.74,
-        "stretch_min": 0.33
-       }
-      }
-     }
-    },
-    "toestand": {
-     "junc": {
-      "dih_max": 61.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 26.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 26.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.939,
-      "area_p2": 0.997,
-      "area_max": 1.16
-     },
-     "toe": {
-      "dih_max": 77.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.145,
-      "area_p2": 0.375,
-      "area_max": 1.7
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0107,
-     "lines": {
-      "toe": {
-       "outline": {
-        "vertices": 14,
-        "turn_abs_max": 43.1,
-        "turn_change_max": 30.0,
-        "stretch_max": 1.78,
-        "stretch_min": 0.33
-       }
-      }
-     }
-    },
-    "twist40": {
-     "junc": {
-      "dih_max": 69.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.888,
-      "area_p2": 0.891,
-      "area_max": 1.2
-     },
-     "knee": {
-      "dih_max": 26.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.986,
-      "area_p2": 0.99,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 26.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "toe": {
-      "dih_max": 77.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0071,
-     "lines": {}
-    },
-    "ftwist30": {
-     "junc": {
-      "dih_max": 124.8,
-      "dih_n120": 2,
-      "dih_n90": 4,
-      "area_min": 0.353,
-      "area_p2": 0.549,
-      "area_max": 1.57
-     },
-     "knee": {
-      "dih_max": 85.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.343,
-      "area_p2": 0.517,
-      "area_max": 2.43
-     },
-     "ankle": {
-      "dih_max": 26.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.892,
-      "area_p2": 0.908,
-      "area_max": 1.09
-     },
-     "toe": {
-      "dih_max": 77.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.951,
-      "area_p2": 0.962,
-      "area_max": 1.01
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.4,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": 0.0427,
-     "lines": {}
-    },
-    "knee60": {
-     "junc": {
-      "dih_max": 160.3,
-      "dih_n120": 4,
-      "dih_n90": 4,
-      "area_min": 0.314,
-      "area_p2": 0.503,
-      "area_max": 1.7
-     },
-     "knee": {
-      "dih_max": 155.8,
-      "dih_n120": 4,
-      "dih_n90": 8,
-      "area_min": 0.256,
-      "area_p2": 0.302,
-      "area_max": 3.03
-     },
-     "ankle": {
-      "dih_max": 26.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "toe": {
-      "dih_max": 77.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.5,
-     "body_leg_pairs": 4,
-     "body_cut_leg_area_cm2": 17.03689866712375,
-     "floor_min_z": 0.0786,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 18.5,
-        "turn_change_max": 18.9,
-        "stretch_max": 3.14,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 136.8,
-        "turn_change_max": 139.9,
-        "stretch_max": 1.0,
-        "stretch_min": 0.29
-       }
-      }
-     }
-    },
-    "dorsi35": {
-     "junc": {
-      "dih_max": 61.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 26.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 61.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.167,
-      "area_p2": 0.263,
-      "area_max": 1.47
-     },
-     "toe": {
-      "dih_max": 77.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.404,
-      "area_p2": 0.42,
-      "area_max": 1.41
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0338,
-     "lines": {
-      "ankle": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 67.7,
-        "turn_change_max": 57.2,
-        "stretch_max": 1.0,
-        "stretch_min": 0.14
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 8.1,
-        "turn_change_max": 9.5,
-        "stretch_max": 1.49,
-        "stretch_min": 1.0
-       }
-      }
-     }
-    },
-    "plantar35": {
-     "junc": {
-      "dih_max": 61.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 26.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 31.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.436,
-      "area_p2": 0.498,
-      "area_max": 1.74
-     },
-     "toe": {
-      "dih_max": 77.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.656,
-      "area_p2": 0.661,
-      "area_max": 1.58
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0407,
-     "lines": {
-      "ankle": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 13.7,
-        "turn_change_max": 11.3,
-        "stretch_max": 1.77,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 34.5,
-        "turn_change_max": 29.7,
-        "stretch_max": 1.0,
-        "stretch_min": 0.41
-       }
-      }
-     }
-    },
-    "toe+45stand": {
-     "junc": {
-      "dih_max": 61.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 26.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 26.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.16
-     },
-     "toe": {
-      "dih_max": 77.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.362,
-      "area_p2": 0.375,
-      "area_max": 1.7
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0107,
-     "lines": {
-      "toe": {
-       "outline": {
-        "vertices": 14,
-        "turn_abs_max": 43.1,
-        "turn_change_max": 30.0,
-        "stretch_max": 1.78,
-        "stretch_min": 0.33
-       }
-      }
-     }
-    },
-    "toe-45stand": {
-     "junc": {
-      "dih_max": 61.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 26.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 26.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.939,
-      "area_p2": 0.965,
-      "area_max": 1.0
-     },
-     "toe": {
-      "dih_max": 77.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.145,
-      "area_p2": 0.202,
-      "area_max": 1.48
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0071,
-     "lines": {
-      "toe": {
-       "outline": {
-        "vertices": 14,
-        "turn_abs_max": 83.3,
-        "turn_change_max": 58.3,
-        "stretch_max": 1.53,
-        "stretch_min": 0.07
-       }
-      }
-     }
-    },
-    "toe+45lift": {
-     "junc": {
-      "dih_max": 170.0,
-      "dih_n120": 16,
-      "dih_n90": 20,
-      "area_min": 0.269,
-      "area_p2": 0.359,
-      "area_max": 2.77
-     },
-     "knee": {
-      "dih_max": 155.8,
-      "dih_n120": 4,
-      "dih_n90": 8,
-      "area_min": 0.256,
-      "area_p2": 0.302,
-      "area_max": 3.03
-     },
-     "ankle": {
-      "dih_max": 26.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.768,
-      "area_p2": 0.786,
-      "area_max": 1.15
-     },
-     "toe": {
-      "dih_max": 77.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.362,
-      "area_p2": 0.375,
-      "area_max": 1.66
-     },
-     "body_inside_area_cm2": 913.7,
-     "body_inside_maxdepth_cm": 5.89,
-     "body_leg_pairs": 111,
-     "body_cut_leg_area_cm2": 567.3267915561812,
-     "floor_min_z": 0.4293,
-     "lines": {
-      "toe": {
-       "outline": {
-        "vertices": 14,
-        "turn_abs_max": 43.1,
-        "turn_change_max": 30.3,
-        "stretch_max": 1.74,
-        "stretch_min": 0.33
-       }
-      }
-     }
-    },
-    "toe-45lift": {
-     "junc": {
-      "dih_max": 170.0,
-      "dih_n120": 16,
-      "dih_n90": 20,
-      "area_min": 0.269,
-      "area_p2": 0.359,
-      "area_max": 2.77
-     },
-     "knee": {
-      "dih_max": 155.8,
-      "dih_n120": 4,
-      "dih_n90": 8,
-      "area_min": 0.256,
-      "area_p2": 0.302,
-      "area_max": 3.03
-     },
-     "ankle": {
-      "dih_max": 26.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.723,
-      "area_p2": 0.768,
-      "area_max": 1.15
-     },
-     "toe": {
-      "dih_max": 89.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.117,
-      "area_p2": 0.174,
-      "area_max": 1.48
-     },
-     "body_inside_area_cm2": 913.7,
-     "body_inside_maxdepth_cm": 5.89,
-     "body_leg_pairs": 111,
-     "body_cut_leg_area_cm2": 567.3267915561812,
-     "floor_min_z": 0.4293,
-     "lines": {
-      "toe": {
-       "outline": {
-        "vertices": 14,
-        "turn_abs_max": 126.4,
-        "turn_change_max": 101.4,
-        "stretch_max": 1.53,
-        "stretch_min": 0.05
-       }
-      }
-     }
-    }
-   },
-   "after": {
-    "neutral": {
-     "junc": {
-      "dih_max": 60.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 27.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 33.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "toe": {
-      "dih_max": 40.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0071,
-     "lines": {}
-    },
-    "crouch30": {
-     "junc": {
-      "dih_max": 82.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.602,
-      "area_p2": 0.721,
-      "area_max": 1.21
-     },
-     "knee": {
-      "dih_max": 26.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.679,
-      "area_p2": 0.708,
-      "area_max": 1.37
-     },
-     "ankle": {
-      "dih_max": 33.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.788,
-      "area_p2": 0.812,
-      "area_max": 1.18
-     },
-     "toe": {
-      "dih_max": 40.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.875,
-      "area_p2": 0.893,
-      "area_max": 1.1
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.2,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": 0.0205,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 10,
-        "turn_abs_max": 6.0,
-        "turn_change_max": 5.2,
-        "stretch_max": 1.38,
-        "stretch_min": 1.06
-       },
-       "back": {
-        "vertices": 10,
-        "turn_abs_max": 12.5,
-        "turn_change_max": 11.0,
-        "stretch_max": 0.99,
-        "stretch_min": 0.66
-       }
-      },
-      "ankle": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 32.6,
-        "turn_change_max": 7.4,
-        "stretch_max": 1.0,
-        "stretch_min": 0.78
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 30.7,
-        "turn_change_max": 3.7,
-        "stretch_max": 1.19,
-        "stretch_min": 1.0
-       }
-      }
-     }
-    },
-    "crouch90": {
-     "junc": {
-      "dih_max": 139.5,
-      "dih_n120": 2,
-      "dih_n90": 8,
-      "area_min": 0.323,
-      "area_p2": 0.414,
-      "area_max": 1.77
-     },
-     "knee": {
-      "dih_max": 130.5,
-      "dih_n120": 4,
-      "dih_n90": 8,
-      "area_min": 0.107,
-      "area_p2": 0.164,
-      "area_max": 1.8
-     },
-     "ankle": {
-      "dih_max": 43.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.328,
-      "area_p2": 0.412,
-      "area_max": 1.56
-     },
-     "toe": {
-      "dih_max": 43.1,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.66,
-      "area_p2": 0.687,
-      "area_max": 1.28
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.73,
-     "body_leg_pairs": 44,
-     "body_cut_leg_area_cm2": 110.18223968838643,
-     "floor_min_z": 0.2299,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 10,
-        "turn_abs_max": 11.4,
-        "turn_change_max": 11.0,
-        "stretch_max": 1.85,
-        "stretch_min": 1.16
-       },
-       "back": {
-        "vertices": 10,
-        "turn_abs_max": 104.8,
-        "turn_change_max": 106.4,
-        "stretch_max": 1.01,
-        "stretch_min": 0.15
-       }
-      },
-      "ankle": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 46.1,
-        "turn_change_max": 20.3,
-        "stretch_max": 1.0,
-        "stretch_min": 0.31
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 30.7,
-        "turn_change_max": 8.8,
-        "stretch_max": 1.58,
-        "stretch_min": 1.0
-       }
-      }
-     }
-    },
-    "crouch120": {
-     "junc": {
-      "dih_max": 171.7,
-      "dih_n120": 8,
-      "dih_n90": 12,
-      "area_min": 0.173,
-      "area_p2": 0.304,
-      "area_max": 2.05
-     },
-     "knee": {
-      "dih_max": 118.2,
-      "dih_n120": 0,
-      "dih_n90": 8,
-      "area_min": 0.175,
-      "area_p2": 0.216,
-      "area_max": 2.04
-     },
-     "ankle": {
-      "dih_max": 51.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.088,
-      "area_p2": 0.207,
-      "area_max": 1.73
-     },
-     "toe": {
-      "dih_max": 49.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.6,
-      "area_p2": 0.606,
-      "area_max": 1.35
-     },
-     "body_inside_area_cm2": 280.4,
-     "body_inside_maxdepth_cm": 2.1,
-     "body_leg_pairs": 72,
-     "body_cut_leg_area_cm2": 249.25086389170642,
-     "floor_min_z": 0.3974,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 10,
-        "turn_abs_max": 15.0,
-        "turn_change_max": 13.2,
-        "stretch_max": 1.91,
-        "stretch_min": 1.18
-       },
-       "back": {
-        "vertices": 10,
-        "turn_abs_max": 46.7,
-        "turn_change_max": 48.3,
-        "stretch_max": 1.11,
-        "stretch_min": 0.53
-       }
-      },
-      "ankle": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 52.9,
-        "turn_change_max": 30.2,
-        "stretch_max": 1.07,
-        "stretch_min": 0.06
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 30.7,
-        "turn_change_max": 10.9,
-        "stretch_max": 1.76,
-        "stretch_min": 1.0
-       }
-      }
-     }
-    },
-    "tuck": {
-     "junc": {
-      "dih_max": 167.1,
-      "dih_n120": 8,
-      "dih_n90": 12,
-      "area_min": 0.232,
-      "area_p2": 0.386,
-      "area_max": 2.8
-     },
-     "knee": {
-      "dih_max": 127.3,
-      "dih_n120": 4,
-      "dih_n90": 8,
-      "area_min": 0.1,
-      "area_p2": 0.151,
-      "area_max": 2.77
-     },
-     "ankle": {
-      "dih_max": 35.9,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.776,
-      "area_p2": 0.812,
-      "area_max": 1.57
-     },
-     "toe": {
-      "dih_max": 38.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.516,
-      "area_p2": 0.565,
-      "area_max": 1.36
-     },
-     "body_inside_area_cm2": 2037.5,
-     "body_inside_maxdepth_cm": 8.72,
-     "body_leg_pairs": 174,
-     "body_cut_leg_area_cm2": 1413.8430063863,
-     "floor_min_z": 0.585,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 10,
-        "turn_abs_max": 18.6,
-        "turn_change_max": 15.1,
-        "stretch_max": 1.85,
-        "stretch_min": 1.17
-       },
-       "back": {
-        "vertices": 10,
-        "turn_abs_max": 35.3,
-        "turn_change_max": 36.8,
-        "stretch_max": 1.19,
-        "stretch_min": 0.83
-       }
-      },
-      "ankle": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 32.6,
-        "turn_change_max": 16.5,
-        "stretch_max": 1.6,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 30.7,
-        "turn_change_max": 8.3,
-        "stretch_max": 1.0,
-        "stretch_min": 0.77
-       }
-      },
-      "toe": {
-       "outline": {
-        "vertices": 18,
-        "turn_abs_max": 32.6,
-        "turn_change_max": 23.9,
-        "stretch_max": 1.6,
-        "stretch_min": 0.54
-       }
-      }
-     }
-    },
-    "seatedV": {
-     "junc": {
-      "dih_max": 134.4,
-      "dih_n120": 6,
-      "dih_n90": 16,
-      "area_min": 0.208,
-      "area_p2": 0.29,
-      "area_max": 2.39
-     },
-     "knee": {
-      "dih_max": 133.1,
-      "dih_n120": 4,
-      "dih_n90": 8,
-      "area_min": 0.095,
-      "area_p2": 0.22,
-      "area_max": 2.31
-     },
-     "ankle": {
-      "dih_max": 33.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.86,
-      "area_p2": 0.864,
-      "area_max": 1.12
-     },
-     "toe": {
-      "dih_max": 40.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.917,
-      "area_p2": 0.929,
-      "area_max": 1.07
-     },
-     "body_inside_area_cm2": 593.9,
-     "body_inside_maxdepth_cm": 5.3,
-     "body_leg_pairs": 104,
-     "body_cut_leg_area_cm2": 397.4769120567362,
-     "floor_min_z": 0.3451,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 10,
-        "turn_abs_max": 12.8,
-        "turn_change_max": 12.4,
-        "stretch_max": 1.84,
-        "stretch_min": 1.15
-       },
-       "back": {
-        "vertices": 10,
-        "turn_abs_max": 67.4,
-        "turn_change_max": 68.9,
-        "stretch_max": 1.0,
-        "stretch_min": 0.25
-       }
-      }
-     }
-    },
-    "groundV": {
-     "junc": {
-      "dih_max": 157.0,
-      "dih_n120": 8,
-      "dih_n90": 20,
-      "area_min": 0.143,
-      "area_p2": 0.164,
-      "area_max": 2.93
-     },
-     "knee": {
-      "dih_max": 178.0,
-      "dih_n120": 4,
-      "dih_n90": 4,
-      "area_min": 0.073,
-      "area_p2": 0.209,
-      "area_max": 2.77
-     },
-     "ankle": {
-      "dih_max": 33.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.946,
-      "area_p2": 0.946,
-      "area_max": 1.08
-     },
-     "toe": {
-      "dih_max": 40.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.967,
-      "area_p2": 0.973,
-      "area_max": 1.04
-     },
-     "body_inside_area_cm2": 2563.7,
-     "body_inside_maxdepth_cm": 10.18,
-     "body_leg_pairs": 140,
-     "body_cut_leg_area_cm2": 1200.659384009809,
-     "floor_min_z": 0.6616,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 10,
-        "turn_abs_max": 12.7,
-        "turn_change_max": 12.2,
-        "stretch_max": 1.6,
-        "stretch_min": 1.11
-       },
-       "back": {
-        "vertices": 10,
-        "turn_abs_max": 139.2,
-        "turn_change_max": 140.8,
-        "stretch_max": 0.98,
-        "stretch_min": 0.09
-       }
-      }
-     }
-    },
-    "wide": {
-     "junc": {
-      "dih_max": 86.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.447,
-      "area_p2": 0.526,
-      "area_max": 1.42
-     },
-     "knee": {
-      "dih_max": 28.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.846,
-      "area_p2": 0.859,
-      "area_max": 1.23
-     },
-     "ankle": {
-      "dih_max": 34.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.66,
-      "area_p2": 0.686,
-      "area_max": 1.34
-     },
-     "toe": {
-      "dih_max": 40.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.813,
-      "area_p2": 0.829,
-      "area_max": 1.17
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.3,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": 0.075,
-     "lines": {
-      "ankle": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 32.6,
-        "turn_change_max": 4.1,
-        "stretch_max": 1.0,
-        "stretch_min": 0.78
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 30.7,
-        "turn_change_max": 2.7,
-        "stretch_max": 1.05,
-        "stretch_min": 0.95
-       }
-      }
-     }
-    },
-    "worklift": {
-     "junc": {
-      "dih_max": 160.3,
-      "dih_n120": 6,
-      "dih_n90": 8,
-      "area_min": 0.274,
-      "area_p2": 0.467,
-      "area_max": 2.55
-     },
-     "knee": {
-      "dih_max": 39.7,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.315,
-      "area_p2": 0.501,
-      "area_max": 2.39
-     },
-     "ankle": {
-      "dih_max": 36.3,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.86,
-      "area_p2": 0.864,
-      "area_max": 1.17
-     },
-     "toe": {
-      "dih_max": 40.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.616,
-      "area_p2": 0.711,
-      "area_max": 1.09
-     },
-     "body_inside_area_cm2": 432.7,
-     "body_inside_maxdepth_cm": 5.99,
-     "body_leg_pairs": 54,
-     "body_cut_leg_area_cm2": 310.78676954024195,
-     "floor_min_z": 0.0052,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 10,
-        "turn_abs_max": 9.1,
-        "turn_change_max": 8.5,
-        "stretch_max": 1.67,
-        "stretch_min": 1.11
-       },
-       "back": {
-        "vertices": 10,
-        "turn_abs_max": 44.2,
-        "turn_change_max": 42.7,
-        "stretch_max": 1.0,
-        "stretch_min": 0.28
-       }
-      },
-      "toe": {
-       "outline": {
-        "vertices": 18,
-        "turn_abs_max": 32.6,
-        "turn_change_max": 17.9,
-        "stretch_max": 1.19,
-        "stretch_min": 0.64
-       }
-      }
-     }
-    },
-    "runswing": {
-     "junc": {
-      "dih_max": 131.4,
-      "dih_n120": 2,
-      "dih_n90": 7,
-      "area_min": 0.184,
-      "area_p2": 0.482,
-      "area_max": 1.96
-     },
-     "knee": {
-      "dih_max": 63.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.192,
-      "area_p2": 0.413,
-      "area_max": 1.87
-     },
-     "ankle": {
-      "dih_max": 33.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.717,
-      "area_p2": 0.791,
-      "area_max": 1.43
-     },
-     "toe": {
-      "dih_max": 40.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.84,
-      "area_p2": 0.893,
-      "area_max": 1.2
-     },
-     "body_inside_area_cm2": 65.0,
-     "body_inside_maxdepth_cm": 1.56,
-     "body_leg_pairs": 31,
-     "body_cut_leg_area_cm2": 84.12414468181719,
-     "floor_min_z": 0.1706,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 10,
-        "turn_abs_max": 7.6,
-        "turn_change_max": 7.0,
-        "stretch_max": 1.54,
-        "stretch_min": 1.09
-       },
-       "back": {
-        "vertices": 10,
-        "turn_abs_max": 23.2,
-        "turn_change_max": 21.7,
-        "stretch_max": 0.99,
-        "stretch_min": 0.47
-       }
-      },
-      "ankle": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 32.6,
-        "turn_change_max": 7.2,
-        "stretch_max": 1.44,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 30.7,
-        "turn_change_max": 10.9,
-        "stretch_max": 1.0,
-        "stretch_min": 0.71
-       }
-      }
-     }
-    },
-    "ankle": {
-     "junc": {
-      "dih_max": 60.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 27.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 33.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.485,
-      "area_p2": 0.598,
-      "area_max": 1.61
-     },
-     "toe": {
-      "dih_max": 40.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.721,
-      "area_p2": 0.786,
-      "area_max": 1.27
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0366,
-     "lines": {
-      "ankle": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 40.9,
-        "turn_change_max": 18.5,
-        "stretch_max": 1.0,
-        "stretch_min": 0.47
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 30.7,
-        "turn_change_max": 7.2,
-        "stretch_max": 1.45,
-        "stretch_min": 1.0
-       }
-      }
-     }
-    },
-    "toegrip": {
-     "junc": {
-      "dih_max": 160.3,
-      "dih_n120": 12,
-      "dih_n90": 16,
-      "area_min": 0.274,
-      "area_p2": 0.373,
-      "area_max": 2.55
-     },
-     "knee": {
-      "dih_max": 39.7,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.315,
-      "area_p2": 0.403,
-      "area_max": 2.39
-     },
-     "ankle": {
-      "dih_max": 42.2,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.629,
-      "area_p2": 0.727,
-      "area_max": 1.43
-     },
-     "toe": {
-      "dih_max": 91.7,
-      "dih_n120": 0,
-      "dih_n90": 2,
-      "area_min": 0.112,
-      "area_p2": 0.396,
-      "area_max": 1.74
-     },
-     "body_inside_area_cm2": 865.4,
-     "body_inside_maxdepth_cm": 5.99,
-     "body_leg_pairs": 108,
-     "body_cut_leg_area_cm2": 619.9461726962236,
-     "floor_min_z": 0.4384,
-     "lines": {
-      "toe": {
-       "outline": {
-        "vertices": 18,
-        "turn_abs_max": 49.4,
-        "turn_change_max": 55.2,
-        "stretch_max": 1.47,
-        "stretch_min": 0.16
-       }
-      }
-     }
-    },
-    "toestand": {
-     "junc": {
-      "dih_max": 60.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 27.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 42.3,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.655,
-      "area_p2": 0.748,
-      "area_max": 1.56
-     },
-     "toe": {
-      "dih_max": 91.7,
-      "dih_n120": 0,
-      "dih_n90": 2,
-      "area_min": 0.112,
-      "area_p2": 0.396,
-      "area_max": 1.74
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0132,
-     "lines": {
-      "toe": {
-       "outline": {
-        "vertices": 18,
-        "turn_abs_max": 49.4,
-        "turn_change_max": 55.2,
-        "stretch_max": 1.6,
-        "stretch_min": 0.16
-       }
-      }
-     }
-    },
-    "twist40": {
-     "junc": {
-      "dih_max": 68.3,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.778,
-      "area_p2": 0.812,
-      "area_max": 1.23
-     },
-     "knee": {
-      "dih_max": 27.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.933,
-      "area_p2": 0.971,
-      "area_max": 1.04
-     },
-     "ankle": {
-      "dih_max": 33.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "toe": {
-      "dih_max": 40.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0071,
-     "lines": {}
-    },
-    "ftwist30": {
-     "junc": {
-      "dih_max": 143.5,
-      "dih_n120": 4,
-      "dih_n90": 4,
-      "area_min": 0.299,
-      "area_p2": 0.544,
-      "area_max": 1.48
-     },
-     "knee": {
-      "dih_max": 26.4,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.56,
-      "area_p2": 0.604,
-      "area_max": 1.47
-     },
-     "ankle": {
-      "dih_max": 33.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.955,
-      "area_p2": 0.956,
-      "area_max": 1.02
-     },
-     "toe": {
-      "dih_max": 40.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.975,
-      "area_p2": 0.979,
-      "area_max": 1.02
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.45,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": 0.0436,
-     "lines": {}
-    },
-    "knee60": {
-     "junc": {
-      "dih_max": 173.9,
-      "dih_n120": 4,
-      "dih_n90": 4,
-      "area_min": 0.301,
-      "area_p2": 0.482,
-      "area_max": 1.6
-     },
-     "knee": {
-      "dih_max": 39.7,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.315,
-      "area_p2": 0.403,
-      "area_max": 1.64
-     },
-     "ankle": {
-      "dih_max": 33.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "toe": {
-      "dih_max": 40.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.56,
-     "body_leg_pairs": 13,
-     "body_cut_leg_area_cm2": 35.70486817102248,
-     "floor_min_z": 0.0813,
-     "lines": {
-      "knee": {
-       "front": {
-        "vertices": 10,
-        "turn_abs_max": 9.1,
-        "turn_change_max": 8.5,
-        "stretch_max": 1.67,
-        "stretch_min": 1.11
-       },
-       "back": {
-        "vertices": 10,
-        "turn_abs_max": 44.2,
-        "turn_change_max": 42.7,
-        "stretch_max": 1.0,
-        "stretch_min": 0.28
-       }
-      }
-     }
-    },
-    "dorsi35": {
-     "junc": {
-      "dih_max": 60.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 27.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 33.8,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.485,
-      "area_p2": 0.55,
-      "area_max": 1.43
-     },
-     "toe": {
-      "dih_max": 40.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.721,
-      "area_p2": 0.752,
-      "area_max": 1.22
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0258,
-     "lines": {
-      "ankle": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 40.9,
-        "turn_change_max": 18.5,
-        "stretch_max": 1.0,
-        "stretch_min": 0.47
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 30.7,
-        "turn_change_max": 7.2,
-        "stretch_max": 1.45,
-        "stretch_min": 1.0
-       }
-      }
-     }
-    },
-    "plantar35": {
-     "junc": {
-      "dih_max": 60.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 27.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 33.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.598,
-      "area_p2": 0.655,
-      "area_max": 1.61
-     },
-     "toe": {
-      "dih_max": 40.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.786,
-      "area_p2": 0.813,
-      "area_max": 1.27
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0366,
-     "lines": {
-      "ankle": {
-       "front": {
-        "vertices": 11,
-        "turn_abs_max": 32.6,
-        "turn_change_max": 9.5,
-        "stretch_max": 1.63,
-        "stretch_min": 1.0
-       },
-       "back": {
-        "vertices": 11,
-        "turn_abs_max": 30.7,
-        "turn_change_max": 15.8,
-        "stretch_max": 1.0,
-        "stretch_min": 0.58
-       }
-      }
-     }
-    },
-    "toe+45stand": {
-     "junc": {
-      "dih_max": 60.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 27.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 37.2,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.56
-     },
-     "toe": {
-      "dih_max": 91.7,
-      "dih_n120": 0,
-      "dih_n90": 4,
-      "area_min": 0.112,
-      "area_p2": 0.301,
-      "area_max": 1.34
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0132,
-     "lines": {
-      "toe": {
-       "outline": {
-        "vertices": 18,
-        "turn_abs_max": 49.4,
-        "turn_change_max": 55.2,
-        "stretch_max": 1.6,
-        "stretch_min": 0.16
-       }
-      }
-     }
-    },
-    "toe-45stand": {
-     "junc": {
-      "dih_max": 60.6,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "knee": {
-      "dih_max": 27.0,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 1.0,
-      "area_p2": 1.0,
-      "area_max": 1.0
-     },
-     "ankle": {
-      "dih_max": 42.3,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.655,
-      "area_p2": 0.657,
-      "area_max": 1.01
-     },
-     "toe": {
-      "dih_max": 49.2,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.504,
-      "area_p2": 0.605,
-      "area_max": 1.74
-     },
-     "body_inside_area_cm2": 0.0,
-     "body_inside_maxdepth_cm": 0.0,
-     "body_leg_pairs": 0,
-     "body_cut_leg_area_cm2": 0.0,
-     "floor_min_z": -0.0071,
-     "lines": {
-      "toe": {
-       "outline": {
-        "vertices": 18,
-        "turn_abs_max": 52.1,
-        "turn_change_max": 45.7,
-        "stretch_max": 1.69,
-        "stretch_min": 0.47
-       }
-      }
-     }
-    },
-    "toe+45lift": {
-     "junc": {
-      "dih_max": 160.3,
-      "dih_n120": 12,
-      "dih_n90": 16,
-      "area_min": 0.274,
-      "area_p2": 0.373,
-      "area_max": 2.55
-     },
-     "knee": {
-      "dih_max": 39.7,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.315,
-      "area_p2": 0.403,
-      "area_max": 2.39
-     },
-     "ankle": {
-      "dih_max": 37.5,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.864,
-      "area_p2": 0.873,
-      "area_max": 1.43
-     },
-     "toe": {
-      "dih_max": 91.7,
-      "dih_n120": 0,
-      "dih_n90": 4,
-      "area_min": 0.112,
-      "area_p2": 0.301,
-      "area_max": 1.26
-     },
-     "body_inside_area_cm2": 865.4,
-     "body_inside_maxdepth_cm": 5.99,
-     "body_leg_pairs": 108,
-     "body_cut_leg_area_cm2": 619.9461726962236,
-     "floor_min_z": 0.4384,
-     "lines": {
-      "toe": {
-       "outline": {
-        "vertices": 18,
-        "turn_abs_max": 49.4,
-        "turn_change_max": 55.2,
-        "stretch_max": 1.47,
-        "stretch_min": 0.16
-       }
-      }
-     }
-    },
-    "toe-45lift": {
-     "junc": {
-      "dih_max": 160.3,
-      "dih_n120": 12,
-      "dih_n90": 16,
-      "area_min": 0.274,
-      "area_p2": 0.373,
-      "area_max": 2.55
-     },
-     "knee": {
-      "dih_max": 39.7,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.315,
-      "area_p2": 0.403,
-      "area_max": 2.39
-     },
-     "ankle": {
-      "dih_max": 42.2,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.629,
-      "area_p2": 0.629,
-      "area_max": 1.12
-     },
-     "toe": {
-      "dih_max": 53.3,
-      "dih_n120": 0,
-      "dih_n90": 0,
-      "area_min": 0.427,
-      "area_p2": 0.548,
-      "area_max": 1.74
-     },
-     "body_inside_area_cm2": 865.4,
-     "body_inside_maxdepth_cm": 5.99,
-     "body_leg_pairs": 108,
-     "body_cut_leg_area_cm2": 619.9461726962236,
-     "floor_min_z": 0.4384,
-     "lines": {
-      "toe": {
-       "outline": {
-        "vertices": 18,
-        "turn_abs_max": 57.5,
-        "turn_change_max": 54.7,
-        "stretch_max": 1.69,
-        "stretch_min": 0.39
-       }
-      }
-     }
-    }
-   },
-   "tool": "pipeline/wako_deform_metrics.py"
-  },
-  "two_d_optimisation": {
-   "knee": "front line of 9 fan loops (s = +11.6 ... -9.4 cm, weights 0.043 ... 0.954, rigid thigh/shin ends) optimised for 60/90/120/145 deg: predicted max turn 17.2 deg, stretch 1.86 at 145",
-   "ankle": "8 loops z 0.198 ... 0.059 with weights 0.16 ... 0.90 optimised so the front never folds back (dorsi up to 60) and the back never folds back (plantar 35); predicted max turn 16-26 deg",
-   "scripts": "scratch mesh_work3/knee_opt.py, ankle_opt.py (not shipped)"
-  },
-  "notes": {
-   "hip_limit": "the hip joint sits 11 cm above the body bottom: at 110-120 deg flexion the upper thigh is inside the rigid body and leaves through its front face, so any skin joining the fixed junction ring to it dips into the body (linear blend skinning, no helper bone or corrective shape, which Godot drops under the current import settings). The slow-behind hip weights halve the visible depth at hip 110 versus rev2; up to hip ~100 there is no socket. Recommended: keep runtime hip flexion <= ~95-100 deg in the tuck and add the rest as body pitch, or allow a hip helper bone / lower hip pivot in a later round.",
-   "runtime_tuck_today": "wako_head_leap.gd _stunt_leg_points lifts the ankle target 0.30 m up (0.045 m back) with a forward knee pole: with thigh 0.41 / shin 0.399 that is about hip 45 deg / knee 102 deg at full tuck, well inside the socket-free range",
-   "ankle_fold": "at 45-60 deg flat-sole dorsiflexion the shin front (11.5 cm in front of the ankle hinge) must pass over the foot front; the broad blend turns this into one smooth rounded fold instead of the rev2 wedge/crumple (front turn change 81 -> 20 deg at crouch 90)",
-   "toe_folds": "a +-45 deg toe rotation about an axis 5.5 cm behind the front face and 5.6 cm above the sole must fold ~4 cm of surface: -45 forms one rounded crease above the lifted pad, +45 one crease under the pad (plantar). Standing +45 still sinks below the floor, as any toe curled into the ground would."
-  }
+  "notes": [
+   "knee bisector depth 0.199 / 0.200 m at 60 / 90 deg (round 3: 0.180 / 0.169, original 0.186 / 0.198) with the 145 deg front line still <= 1.97x stretch and 18.5 deg turn change",
+   "shin x thigh pairs at 120-145 deg are a rigid back-of-thigh / back-of-shin contact line (two 20 cm tubes folded to 35-60 deg must overlap); the count scales with tessellation (16 vs 8 sides in the original)",
+   "the ankle front of a flat-foot crouch is a closed crease: the folded skin lies between the two rigid surfaces, so the front-line turn reads ~170 deg while the visible silhouette has no slot: the remaining 4.1 mm 'notch' is the designed toe-cap groove itself (same at rest)",
+   "silhouette_slot_px at tuck [side] is 144 px (orig 61, round 3 58): it is the open wedge between the tucked foot's instep and the rigid ball 'seat' under the body (two separate parts, see mesh_work4 evimg), not a skin slit; crouch90 / crouch120 side slots are 42 / 82 px (orig 44 / 76, round 3 90 / 138): the natural back-of-knee and front-of-ankle wedges, with no hooked ankle slot",
+   "volume numbers count interpenetrating regions twice (divergence theorem); hip poses are now exact (rigid ball), e.g. hip -35: 0 cm3 (round 3: -1460, original -278)"
+  ]
+ },
+ "godot_lod_check": {
+  "auto_lod_triangles_before": [
+   1110,
+   554,
+   276,
+   138,
+   68,
+   44
+  ],
+  "auto_lod_triangles_after": [
+   2774,
+   1386,
+   692,
+   346,
+   172,
+   86,
+   42
+  ],
+  "how": "RenderingServer.mesh_get_surface(...).lods of the imported wakoMesh (Godot's default generate_lods); visual check renders/deformation/godot_lod_check_before_after.jpg forces coarser LODs at close range with Viewport.mesh_lod_threshold 8 and 24 px (default 1)",
+  "result": "at 8 px the after mesh reads like LOD0 (ball, socket and knee intact); at a forced 24 px both meshes facet and the after tuck knee shows small cracks along the back crease -- only reached when Wako is small on screen at the default 1 px threshold"
  },
  "toe_animation_check": {
   "method": "33 actions evaluated at 7 frames each in the original and rebuilt files; toe tail displacement relative to the foot, projected on the toe's own pointing direction and on world up",
@@ -6531,41 +2237,41 @@
   "NOTE: with the flip both toe.basis.x and toe.basis.y are negated (Godot): every foot-held tool, gun control and cargo anchor built from the toe frame turns 180 deg about vertical until these consumers are retuned; the grip point (head + 0.035 along +Y, at y 0.095 / z 0.049) now lies about 2 cm inside the toe pad's front face (front of the foot at y 0.119 m)"
  ],
  "runtime_benchmark": {
-  "setup": "64 instances playing wk_run, identical untextured material, Godot 4.7.1 Forward+ on lavapipe (software Vulkan, 4 shared CPU threads), 640x360, frames 41-240, 2 interleaved runs per mesh while other jobs loaded the machine (load average ~35)",
+  "setup": "64 instances playing wk_run, identical untextured material, Godot 4.7.1 Forward+ on lavapipe (software Vulkan, shared CPU), 640x360, frames 41-240, 2 interleaved runs per mesh (before = original Wako.blend, after = round-4 Wako.blend) while other jobs loaded the machine (load averages after each run: 37.90, 34.07, 34.37; 33.36, 33.40, 34.13; 31.88, 33.06, 33.99; 27.34, 31.85, 33.54)",
   "runs": [
    {
     "frames": 200,
     "instances": 64,
-    "mean_ms": 171.36012,
-    "median_ms": 111.942,
+    "mean_ms": 113.24628,
+    "median_ms": 84.04,
     "primitives_in_frame": 141824,
     "mesh": "before"
    },
    {
     "frames": 200,
     "instances": 64,
-    "mean_ms": 190.33338,
-    "median_ms": 131.297,
-    "primitives_in_frame": 118296,
+    "mean_ms": 160.995525,
+    "median_ms": 115.959,
+    "primitives_in_frame": 177152,
     "mesh": "after"
    },
    {
     "frames": 200,
     "instances": 64,
-    "mean_ms": 134.780185,
-    "median_ms": 98.133,
+    "mean_ms": 120.935265,
+    "median_ms": 84.056,
     "primitives_in_frame": 141824,
     "mesh": "before"
    },
    {
     "frames": 200,
     "instances": 64,
-    "mean_ms": 158.33474,
-    "median_ms": 110.089,
-    "primitives_in_frame": 119568,
+    "mean_ms": 155.425845,
+    "median_ms": 110.772,
+    "primitives_in_frame": 177152,
     "mesh": "after"
    }
   ],
-  "note": "noisy on a shared CPU (the same mesh varies 98-112 ms); after is ~10-15 % slower in this software-skinned setup (1484 vs 792 GPU vertices, 2550 vs 1110 triangles), which does not predict GPU cost. rev2 had 1450 GPU vertices / 2486 triangles."
+  "note": "noisy on a shared CPU.  Median frame time before [84.04, 84.056] ms, after [110.772, 115.959] ms: after is ~35 % slower in this software-rasterised, CPU-skinned setup (1674 vs 792 GPU vertices, 2774 vs 1110 triangles), which does not predict GPU cost.  primitives_in_frame depends on Godot's auto-generated mesh LODs and shadow culling, so it is not 2x the triangle count.  Round 3 (1484 GPU vertices / 2550 triangles) measured ~10-15 % slower than the original in the same setup."
  }
 }
