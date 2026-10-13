@@ -210,19 +210,21 @@ void fragment() {
 		float lower_aa = aa_width(vec2(1.0, -slope.y), uv_dx, uv_dy);
 		float seam_aa = aa_width(vec2(1.0, -seam_slope), uv_dx, uv_dy);
 		// Each lid meets the disc rim through a rounded corner (a smooth
-		// intersection of their distances, k ~.12R, .3R for a smiling cheek),
-		// so a slanted or arched lid never leaves a pointed wedge on the rim.
+		// intersection of their distances: k ~.12R, growing to ~.34R for a
+		// fully slanted lid and .3R for a smiling cheek), so a slanted or
+		// arched lid never leaves a pointed wedge on the rim.
 		// The rim distance sits just outside the painted soft edge, so a lid
 		// that does not cross the disc changes nothing.
 		float norm_upper = sqrt(1.0 + slope.x * slope.x);
 		float norm_lower = sqrt(1.0 + slope.y * slope.y);
 		float d_rim = (disc_r - IRIS_R) * pop - 0.0015;
 		float rim_aa = disc_aa * pop;
-		float k_upper = 0.12 * IRIS_R;
+		float k_upper = (0.12 + 0.22 * abs(tilt)) * IRIS_R;
 		float k_lower = (0.12 + 0.18 * smile_shape) * IRIS_R;
 		float d_upper = smooth_max(delta.x / norm_upper, d_rim, k_upper);
 		float d_lower = smooth_max(-delta.y / norm_lower, d_rim, k_lower);
-		float aa_upper = mix(rim_aa, upper_aa / norm_upper, clamp(0.5 + 0.5 * (delta.x / norm_upper - d_rim) / k_upper, 0.0, 1.0));
+		float lid_rule = clamp(0.5 + 0.5 * (delta.x / norm_upper - d_rim) / k_upper, 0.0, 1.0);
+		float aa_upper = mix(rim_aa, upper_aa / norm_upper, lid_rule);
 		float aa_lower = mix(rim_aa, lower_aa / norm_lower, clamp(0.5 + 0.5 * (-delta.y / norm_lower - d_rim) / k_lower, 0.0, 1.0));
 		// Both edges of the finite opening resolve together at every angle: a
 		// broad footprint never leaves an opaque iris streak outside it.
@@ -235,7 +237,9 @@ void fragment() {
 		// Lash line only where a lowered lid really crosses the dark disc
 		// (never at rest, where the lid just hugs the rim).
 		float lid_cover = sqrt(max(1.0 - yn * yn, 0.0)) + lift - edges.x;
-		float lash = ink_band(delta.x - 0.0009, 0.0009, upper_aa) * smoothstep(0.14, 0.32, lid_cover);
+		// The lash rides the rounded opening edge and fades out through the
+		// corner where the rim takes over (no line floating past the eye).
+		float lash = ink_band(d_upper - 0.0009, 0.0009, aa_upper) * smoothstep(0.14, 0.32, lid_cover) * smoothstep(0.3, 0.7, lid_rule);
 		float lower_line = ink_band(delta.y + 0.0006, 0.0006, lower_aa) * smoothstep(0.1, 0.3, lr);
 		float lid_lines = max(lash * 0.6, lower_line * 0.35) * eye_region * smoothstep(0.3, 0.6, openness)
 			* (1.0 - smoothstep(0.0, 0.3, smile));
