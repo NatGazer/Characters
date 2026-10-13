@@ -297,14 +297,15 @@ static func _gates(rows: Array, prepare: Array, outbound: Array, contact: Array,
 	# Return push-off and flight.
 	if back.size() > 20:
 		var takeoff_speed := 0.0
-		for row: Dictionary in back.slice(0, 30): takeoff_speed = maxf(takeoff_speed, _vec(row.v).length())
+		for row: Dictionary in back.slice(0, 60): takeoff_speed = maxf(takeoff_speed, _vec(row.v).length())
 		var worst_dv := 0.0
 		var knee_at_speed = null
 		var push_ticks := 0
-		for index in range(1, mini(back.size(), 30)):
+		for index in range(1, mini(back.size(), 60)):
 			var dv := _vec(back[index].v).distance_to(_vec(back[index - 1].v))
 			worst_dv = maxf(worst_dv, dv)
-			if dv > .05: push_ticks += 1
+			# Ticks of the push itself: the speed grows (a ballistic rise slows).
+			if _vec(back[index].v).length() - _vec(back[index - 1].v).length() > .05: push_ticks += 1
 			if knee_at_speed == null and _vec(back[index].v).length() >= .95*takeoff_speed: knee_at_speed = maxf(float(back[index].knee[0]), float(back[index].knee[1]))
 		var top_index := 0
 		for index in back.size():

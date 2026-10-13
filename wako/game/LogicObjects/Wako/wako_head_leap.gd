@@ -69,7 +69,11 @@ const SPIN_RAMP := .03
 const SPIN_BRAKE := 20.0
 const TUCK_SPIN_START := .08
 const TUCK_SPIN_SECONDS := .16
-const IMPACT_SPIN := 1.5
+# Spin carried into the impact: a small solo stock takes the roof at a brisk
+# turn (the real contact stops it); a wide stock or crew turns slower so the
+# trailing roof edge cannot reach the stock before the roof is level.
+const IMPACT_SPIN := 2.6
+const WIDE_IMPACT_SPIN := 2.0
 const OPEN_LEAD := .22
 const MAXIMUM_SPIN := 6.0
 const MINIMUM_SPIN := 2.2
@@ -138,8 +142,7 @@ const LEG_WHIP := deg_to_rad(18.0)
 const WHIP_SECONDS := .05
 const RECOIL_SECONDS := .07
 const TUCK_IN_SECONDS := .16
-const OPEN_SECONDS := .13
-const KICK_SECONDS := RETURN_LEAD+RETURN_PUSH-.012
+const OPEN_SECONDS := .14
 const MAXIMUM_PIN_POINT := deg_to_rad(62.0)
 const TRAIL_SECONDS := .05
 const TOE_CURL := deg_to_rad(22.0)
@@ -305,6 +308,9 @@ var _squash := .0
 var _splay := .0
 var _twin := 0.0
 var _return_lead := RETURN_LEAD
+# The head push lasts at least RETURN_PUSH; a faster (fallback) return pushes
+# longer so the stock's support can carry it inside its friction cone.
+var _push_seconds := RETURN_PUSH
 var _restart_angles: Array = []
 var _elevation_guess := deg_to_rad(55.0)
 static var _args: PackedStringArray = []
@@ -523,6 +529,7 @@ func _prepare(source: RigidBody3D, members: Array, bounds: AABB, axis: int, inde
 	_support_from = -1.0
 	_support_to = -1.0
 	_return_lead = RETURN_LEAD
+	_push_seconds = RETURN_PUSH
 	_twin = float(members.find(worker)) if members.size()>1 else 0.0
 	flight_stats = {"source":source.part_id if "part_id" in source else str(source.name),"crew":members.size()}
 	_stock_bounds = bounds
@@ -1214,11 +1221,14 @@ func _plan_outbound_flare(apex: float, impact: float, seconds: float, plateau: f
 	_beat_brake = vertical.flare
 	return true
 
+func _impact_spin() -> float:
+	return IMPACT_SPIN if _small_stock_timing() and _plan_tier=="brisk" else WIDE_IMPACT_SPIN
+
 func _spin_track(total: float, release: float, peak: float, open: float) -> Array:
 	# Release coast, tuck spin-up, tucked coast, one brake while the legs open,
 	# a slower final turn into the impact. Accelerations are trapezoids.
 	var up := (peak-release)/(TUCK_SPIN_SECONDS-SPIN_RAMP)
-	var brake := maxf(peak-IMPACT_SPIN,0.0)
+	var brake := maxf(peak-_impact_spin(),0.0)
 	var window := maxf(brake/SPIN_BRAKE+SPIN_RAMP,2.0*SPIN_RAMP+.001)
 	var deceleration := brake/(window-SPIN_RAMP)
 	var coast := open-TUCK_SPIN_START-TUCK_SPIN_SECONDS
@@ -1230,12 +1240,12 @@ func _spin_track(total: float, release: float, peak: float, open: float) -> Arra
 func _plan_outbound_spin(total: float, release: float, tier := "brisk") -> bool:
 	# P0-3 (round 3): the push-off's spin, faster in the tuck, slower once the
 	# legs open; the half-turn completes exactly at the head impact.
-	var opening := func(peak: float) -> float: return minf(total-OPEN_LEAD,total-(maxf(peak-IMPACT_SPIN,0.0)/SPIN_BRAKE+SPIN_RAMP)-.02)
+	var opening := func(peak: float) -> float: return minf(total-OPEN_LEAD,total-(maxf(peak-_impact_spin(),0.0)/SPIN_BRAKE+SPIN_RAMP)-.02)
 	var fastest := _spin_track(total,release,MAXIMUM_SPIN,opening.call(MAXIMUM_SPIN))
 	if fastest.is_empty() or _track_at(fastest,total,0)<_rotation_angle:
 		arc_failure="half-turn needs more than %.1frad/s in %.2fs" % [MAXIMUM_SPIN,total]
 		return false
-	var low := minf(IMPACT_SPIN,release)
+	var low := minf(_impact_spin(),release)
 	var slowest := _spin_track(total,release,low,opening.call(low))
 	if not slowest.is_empty() and _track_at(slowest,total,0)>_rotation_angle:
 		arc_failure="%.2fs flight overturns the half-turn even untucked" % total
@@ -1271,15 +1281,26 @@ func _landing_destination(short: float) -> Transform3D:
 	var direction := back.normalized() if back.length_squared()>.0001 else Vector3.ZERO
 	return Transform3D(_home.basis,_home.origin-direction*short)
 
+func _kick_seconds() -> float:
+	return RETURN_LEAD+_push_seconds-.012
+
+func _fit_push(velocity: Vector3) -> float:
+	# Shortest push (>= RETURN_PUSH) whose peak feed the support can carry with
+	# at most 80% of the force budget left as assist.
+	for push: float in [RETURN_PUSH,.12,.14,.16,.18,.20,.22]:
+		var feed := velocity/(push-PUSH_RAMP)+contact_normal*GRAVITY
+		if (feed-_support_reaction(feed,contact_normal)).length()<=MAXIMUM_ACCELERATION*FORCE_BUDGET*.8: return push
+	return .22
+
 func _push_tracks(start: Vector3, velocity: Vector3) -> Array:
 	# Hold through the leg snap, then a trapezoid push to `velocity` paired with
 	# the stock's support (gravity stays supported until the head leaves).
 	var lead := _return_lead
-	var peak := velocity/(RETURN_PUSH-PUSH_RAMP)
+	var peak := velocity/(_push_seconds-PUSH_RAMP)
 	var tracks: Array = []
 	for axis in 3:
 		var track: Array=[_segment(0.0,lead,PackedFloat64Array([start[axis]]))]
-		track.append_array(_jerk_track(lead,start[axis],0.0,0.0,[[PUSH_RAMP,peak[axis]],[RETURN_PUSH-2.0*PUSH_RAMP,peak[axis]],[PUSH_RAMP,0.0]]))
+		track.append_array(_jerk_track(lead,start[axis],0.0,0.0,[[PUSH_RAMP,peak[axis]],[_push_seconds-2.0*PUSH_RAMP,peak[axis]],[PUSH_RAMP,0.0]]))
 		tracks.append(track)
 	return tracks
 
@@ -1292,6 +1313,7 @@ func _plan_return_flight(seconds: float, apex: float, tier: String) -> bool:
 	_plan_candidate = [seconds,apex]
 	var heavy := not _small_stock_timing()
 	_return_lead = RETURN_LEAD+(STRAIN_SECONDS if heavy else 0.0)
+	_push_seconds = RETURN_PUSH
 	var decel := HEAVY_DRIFT_DECEL if heavy else SOLO_DRIFT_DECEL
 	var lift_cap := LONG_LIFT if tier=="long" else (HEAVY_LIFT if heavy else SOLO_LIFT)
 	var start: Vector3 = _flight_start*_com_local
@@ -1306,7 +1328,7 @@ func _plan_return_flight(seconds: float, apex: float, tier: String) -> bool:
 		_destination = _landing_destination(short)
 		end = _destination*_com_local
 		var guess := velocity.normalized() if velocity.length()>.1 else ((end-start).slide(Vector3.UP).normalized()*cos(deg_to_rad(55.0))+Vector3.UP*sin(deg_to_rad(55.0)))
-		var push_end := start+guess*(velocity.length()*RETURN_PUSH*.5)
+		var push_end := start+guess*(velocity.length()*_push_seconds*.5)
 		var rise := end.y+apex-push_end.y
 		if rise<=.05:
 			arc_failure="return apex below the push-off"
@@ -1326,6 +1348,7 @@ func _plan_return_flight(seconds: float, apex: float, tier: String) -> bool:
 			brake = (horizontal-drift)/seconds
 		velocity = direction*horizontal+Vector3.UP*vertical
 		short = clampf(drift*drift/(2.0*LAND_BRAKE),0.0,.16)
+		_push_seconds = _fit_push(velocity)
 	var lift := GRAVITY-gravity
 	if lift>lift_cap or lift<-1.0:
 		arc_failure="return needs %.1fm/s² of lift (cap %.1f)" % [lift,lift_cap]
@@ -1333,12 +1356,12 @@ func _plan_return_flight(seconds: float, apex: float, tier: String) -> bool:
 	if velocity.length()>MAXIMUM_SPEED:
 		arc_failure="return push-off %.2fm/s exceeds %.1fm/s" % [velocity.length(),MAXIMUM_SPEED]
 		return false
-	var per_tick := velocity.length()/(RETURN_PUSH-PUSH_RAMP)/120.0
+	var per_tick := velocity.length()/(_push_seconds-PUSH_RAMP)/120.0
 	if per_tick>.6:
 		arc_failure="return push changes speed %.2fm/s in one tick" % per_tick
 		return false
 	var tracks := _push_tracks(start,velocity)
-	var takeoff := _return_lead+RETURN_PUSH
+	var takeoff := _return_lead+_push_seconds
 	var push_end := Vector3(_track_at(tracks[0],takeoff,0),_track_at(tracks[1],takeoff,0),_track_at(tracks[2],takeoff,0))
 	var decel_vector := -direction*brake+Vector3.UP*(-gravity)
 	for axis in 3:
@@ -1358,11 +1381,11 @@ func _plan_return_flight(seconds: float, apex: float, tier: String) -> bool:
 	# The push-off spin scales with the rewind it must cover in the flight.
 	var omega0 := clampf((1.15 if crew_timing else 1.3)*_rotation_angle/seconds,2.5,CREW_RETURN_SPIN+1.0 if crew_timing else MAXIMUM_SPIN)
 	var omega1 := minf(LANDING_SPIN,.4*_rotation_angle/seconds)
-	var ramp_angle := .5*omega0*RETURN_PUSH
+	var ramp_angle := .5*omega0*_push_seconds
 	var spin := _quintic(ramp_angle,omega0,0.0,_rotation_angle,omega1,0.0,seconds)
-	var spin_peak := omega0/(RETURN_PUSH-PUSH_RAMP)
+	var spin_peak := omega0/(_push_seconds-PUSH_RAMP)
 	_track_spin = [_segment(0.0,_return_lead,PackedFloat64Array([0.0]))]
-	_track_spin.append_array(_jerk_track(_return_lead,0.0,0.0,0.0,[[PUSH_RAMP,spin_peak],[RETURN_PUSH-2.0*PUSH_RAMP,spin_peak],[PUSH_RAMP,0.0]]))
+	_track_spin.append_array(_jerk_track(_return_lead,0.0,0.0,0.0,[[PUSH_RAMP,spin_peak],[_push_seconds-2.0*PUSH_RAMP,spin_peak],[PUSH_RAMP,0.0]]))
 	_track_spin.append(_segment(takeoff,takeoff+seconds,spin))
 	_launch_spin = _rotation_axis*omega0
 	var peak_alpha := .0
@@ -1385,15 +1408,15 @@ func _prepend_return_push(velocity: Vector3) -> void:
 	# supported head push (its tracks start at the push-off's end).
 	var start: Vector3 = _flight_start*_com_local
 	var tracks := _push_tracks(start,velocity)
-	var takeoff := _return_lead+RETURN_PUSH
+	var takeoff := _return_lead+_push_seconds
 	_track_x = tracks[0]+_shift_track(_track_x,takeoff)
 	_track_y = tracks[1]+_shift_track(_track_y,takeoff)
 	_track_z = tracks[2]+_shift_track(_track_z,takeoff)
 	var omega0 := _spin_angle(0.0,1)
-	var spin_peak := omega0/(RETURN_PUSH-PUSH_RAMP)
+	var spin_peak := omega0/(_push_seconds-PUSH_RAMP)
 	var spin_prefix: Array=[_segment(0.0,_return_lead,PackedFloat64Array([0.0]))]
-	spin_prefix.append_array(_jerk_track(_return_lead,0.0,0.0,0.0,[[PUSH_RAMP,spin_peak],[RETURN_PUSH-2.0*PUSH_RAMP,spin_peak],[PUSH_RAMP,0.0]]))
-	var offset := .5*omega0*RETURN_PUSH
+	spin_prefix.append_array(_jerk_track(_return_lead,0.0,0.0,0.0,[[PUSH_RAMP,spin_peak],[_push_seconds-2.0*PUSH_RAMP,spin_peak],[PUSH_RAMP,0.0]]))
+	var offset := .5*omega0*_push_seconds
 	var shifted := _shift_track(_track_spin,takeoff)
 	for segment: PackedFloat64Array in shifted: segment[2]+=offset
 	_track_spin = spin_prefix+shifted
@@ -1905,7 +1928,7 @@ static func attach_group(source: RigidBody3D, members: Array) -> bool:
 		# over the leg kick (no instantaneous launch impulse).
 		controller._support_body=support.get("collider") as Object
 		controller._support_point=support.get("position",member.global_position)
-		controller._support_normal=Vector3.UP
+		controller._support_normal=controller.contact_normal
 		if controller._support_body is RigidBody3D: controller._support_body.sleeping=false
 		controller.state="return"
 		controller.elapsed=0.0
@@ -1919,14 +1942,16 @@ func _plan_return(candidate: Array, tier: String, direction: float) -> bool:
 	var heavy := not _small_stock_timing()
 	_return_lead = RETURN_LEAD+(STRAIN_SECONDS if heavy else 0.0)
 	_destination = _home
+	_push_seconds = RETURN_PUSH
 	if not _plan_flight(float(candidate[0]),float(candidate[1]),true,"legacy"): return false
 	var velocity := _launch_velocity
+	_push_seconds = _fit_push(velocity)
 	var omega0 := _spin_angle(0.0,1)
 	var start: Vector3 = _flight_start*_com_local
 	var takeoff := _push_tracks(start,velocity)
-	var push_end := Vector3(_track_at(takeoff[0],_return_lead+RETURN_PUSH,0),_track_at(takeoff[1],_return_lead+RETURN_PUSH,0),_track_at(takeoff[2],_return_lead+RETURN_PUSH,0))
+	var push_end := Vector3(_track_at(takeoff[0],_return_lead+_push_seconds,0),_track_at(takeoff[1],_return_lead+_push_seconds,0),_track_at(takeoff[2],_return_lead+_push_seconds,0))
 	var angle := _rotation_angle
-	_rotation_angle = angle-.5*omega0*RETURN_PUSH
+	_rotation_angle = angle-.5*omega0*_push_seconds
 	var planned := _plan_flight(float(candidate[0]),float(candidate[1]),true,"legacy",velocity,false,push_end)
 	_rotation_angle = angle
 	if not planned: return false
@@ -1935,7 +1960,7 @@ func _plan_return(candidate: Array, tier: String, direction: float) -> bool:
 
 const PLAN_FIELDS := ["_flight_start","_destination","_launch_velocity","_flight_seconds","_com_local","_track_x","_track_y","_track_z","_track_spin",
 	"_beat_brake","_beat_open","_beat_spin_end","_rotation_axis","_rotation_angle","_touchdown_velocity","_launch_spin","_plan_tier","_plan_candidate",
-	"_support_from","_support_to","_return_lead"]
+	"_support_from","_support_to","_return_lead","_push_seconds"]
 
 func _plan_snapshot() -> Dictionary:
 	var snapshot := {}
@@ -2071,7 +2096,7 @@ var _samples_key: Array = []
 
 func _refresh_samples() -> void:
 	var key: Array = [_flight_seconds,_rotation_angle,_rotation_axis,_launch_velocity,_launch_spin,_com_local,_flight_start,_destination,_root_local,
-		_plan_tier,_plan_candidate,_return_lead,_stunt_capacity,_splay,_planning_return,_return_started,_restart_leg_points.size(),_restart_angles,
+		_plan_tier,_plan_candidate,_return_lead,_push_seconds,_stunt_capacity,_splay,_planning_return,_return_started,_restart_leg_points.size(),_restart_angles,
 		_beat_brake,_beat_open,_beat_spin_end,_support_from,_track_x.size(),_track_y.size(),_track_spin.size(),_twin,_cargo_local,_launch_leg_pose]
 	if key!=_samples_key:
 		_samples.clear()
@@ -2244,9 +2269,12 @@ func _arc_clear(with_cargo: bool, from_time := 0.0, quick_only := false, quick_d
 		if quick_done: break
 		var time := _flight_seconds*float(step)/steps
 		if time<from_time-.000001: continue
-		var acceleration := (_planned_com(time,2)+Vector3.UP*GRAVITY).length()
-		if acceleration>MAXIMUM_ACCELERATION*FORCE_BUDGET and not _supported_at(time):
-			arc_failure="force budget at %.3fs: %.3fm/s²" % [time,acceleration]
+		var feed := _planned_com(time,2)+Vector3.UP*GRAVITY
+		# A supported push needs assist only beyond what its support can push
+		# (no pull, friction cone, bounded); the same .9 x 2g budget applies.
+		var acceleration := (feed-_support_reaction(feed,contact_normal)).length() if _supported_at(time) else feed.length()
+		if acceleration>MAXIMUM_ACCELERATION*FORCE_BUDGET:
+			arc_failure="force budget at %.3fs: %.3fm/s²%s" % [time,acceleration," beyond the supported push" if _supported_at(time) else ""]
 			return false
 		if step==0: continue
 		head_query.transform = _sample(time)[2]
@@ -2960,8 +2988,8 @@ func _return_angles(time: float) -> Array:
 	var kick_start := maxf(_return_lead-RETURN_LEAD,0.0)
 	var angles: Array = LEG_WHIP_POSE
 	if kick_start>0.0: angles = _angles_lerp(LEG_WHIP_POSE,LEG_STRAIN,smoothstep(0.0,kick_start*.8,time))
-	angles = _angles_lerp(angles,LEG_KICK,smoothstep(kick_start,kick_start+KICK_SECONDS,time))
-	var tuck_start := kick_start+KICK_SECONDS+.01
+	angles = _angles_lerp(angles,LEG_KICK,smoothstep(kick_start,kick_start+_kick_seconds(),time))
+	var tuck_start := kick_start+_kick_seconds()+.01
 	var tucked := tuck_start+.17
 	var land_start := maxf(tucked+.04,_flight_seconds*.6)
 	if time<land_start: angles = _into_tuck(angles,smoothstep(tuck_start,tucked,time))
@@ -3276,7 +3304,7 @@ func _squash_now() -> float:
 		amount = _squash_depth*float(shape.call(_impact_clock))/float(shape.call(peak))
 	if state=="return" and _return_lead>RETURN_LEAD+.001:
 		var kick_start := _return_lead-RETURN_LEAD
-		amount += STRAIN_SQUASH*smoothstep(0.0,kick_start*.8,elapsed)*(1.0-smoothstep(_return_lead,_return_lead+RETURN_PUSH*.6,elapsed))
+		amount += STRAIN_SQUASH*smoothstep(0.0,kick_start*.8,elapsed)*(1.0-smoothstep(_return_lead,_return_lead+_push_seconds*.6,elapsed))
 	return amount
 
 func _apply_squash(sk: Skeleton3D, root_world: Transform3D, amount: float) -> void:
