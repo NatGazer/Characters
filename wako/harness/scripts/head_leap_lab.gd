@@ -61,7 +61,7 @@ func setup() -> void:
 		if arg.begins_with("--push-at="): push_at = float(arg.trim_prefix("--push-at="))
 	var focus := Vector3(0, .75, -.8)
 	match case_name:
-		"solo", "interrupt", "hit", "save", "push":
+		"solo", "interrupt", "hit", "save", "push", "late_block":
 			part = _part("bracket", Vector3(0, .15, -(gap+.15)))
 			crew = [spawn_wako(Vector3(0, 1.0, 0), "leap_solo")]
 		"large":
@@ -193,6 +193,12 @@ func scenario(delta: float) -> void:
 			caption("%s · %s %.2fs" % [case_name, leap.state, leap.elapsed])
 			# Coordinator stand-ins: cancel / external hit / save during flight.
 			_watch_safety()
+			if case_name == "late_block" and leap.state == "prepare" and leap.elapsed >= .1 and not outcome.has("late_block"):
+				# A crate lands in the admitted flight path during the gather.
+				outcome.late_block = {"elapsed": leap.elapsed}
+				add_box(Vector3(0, 1.25, -.75).rotated(Vector3.UP, heading), Vector3(.5, .5, .5), Color(.4, .5, .6))
+			if case_name == "late_block" and outcome.has("late_block") and not outcome.late_block.has("outcome") and leap.state != "prepare":
+				outcome.late_block.outcome = {"state": leap.state, "reason": leap.reason, "launched": leap.flight_stats.has("launch_outbound"), "recheck_ms": leap.flight_stats.get("gather_recheck_ms")}
 			if case_name == "push" and leap.state == "outbound" and leap.elapsed >= push_at and not outcome.has("pushed"):
 				# The stock is knocked mid-dive: toward the incoming head, or sideways.
 				var impulse := Vector3(0, 2.2, 1.6) if push_kind == "toward" else Vector3(2.0, .5, 0)

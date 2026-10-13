@@ -313,6 +313,7 @@ var _return_lead := RETURN_LEAD
 var _push_seconds := RETURN_PUSH
 # Outbound: seconds from the first assisted brake/flare tick to the last.
 var _assist_span := 0.0
+var _rechecked := false
 var _restart_angles: Array = []
 var _elevation_guess := deg_to_rad(55.0)
 static var _args: PackedStringArray = []
@@ -532,6 +533,7 @@ func _prepare(source: RigidBody3D, members: Array, bounds: AABB, axis: int, inde
 	_support_to = -1.0
 	_return_lead = RETURN_LEAD
 	_push_seconds = RETURN_PUSH
+	_rechecked = false
 	_twin = float(members.find(worker)) if members.size()>1 else 0.0
 	flight_stats = {"source":source.part_id if "part_id" in source else str(source.name),"crew":members.size()}
 	_stock_bounds = bounds
@@ -1616,6 +1618,21 @@ func advance(delta: float) -> void:
 		# The planted feet carry the planned crouch, lunge and drive; once the
 		# drive has begun the push completes and an abort recovers in the air.
 		_follow_prep(minf(elapsed,_prep_seconds))
+		if crew[0]==worker and not _rechecked and elapsed>=_prep_crouch-.05:
+			# Last chance before the drive commits: the admitted arc is checked
+			# again against the CURRENT world (its planned frames are cached, so
+			# only the shape queries run); a blocked arc stands back up.
+			_rechecked = true
+			var started := Time.get_ticks_usec()
+			var clear: bool = not _stock_moved() and crew.all(func(member: Node) -> bool: return member.head_leap._prep_clear() and member.head_leap._arc_quick()) \
+				and crew.all(func(member: Node) -> bool: return member.head_leap._arc_clear(false,0.0,false,true))
+			flight_stats.gather_recheck_ms = (Time.get_ticks_usec()-started)/1000.0
+			if not clear:
+				var blocker := arc_failure
+				for member: Node in crew:
+					if not member.head_leap.arc_failure.is_empty(): blocker = member.head_leap.arc_failure
+				abort("The head-first arc became obstructed during the gather; standing back up: "+(blocker if not blocker.is_empty() else "the stock moved"))
+				return
 		if elapsed < _prep_seconds or crew[0]!=worker: return
 		if not crew.all(func(member: Node) -> bool: return member.head_leap.state=="prepare" and member.head_leap.elapsed>=member.head_leap._prep_seconds-.0001): return
 		for member: Node in crew:
