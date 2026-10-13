@@ -5,6 +5,7 @@ const MassGeometry = preload("res://Components/Contraptions/rolling_balance.gd")
 const Gait = preload("res://LogicObjects/Wako/wako_gait.gd")
 # Knee pole splay: knees point at the face and slightly outward.
 const POLE_SPLAY := .12
+const GAIT_RELEASE_BLEND := .16  # s: another owner's legs blend in from the gait's last joints
 const POLE_TURN_RATE := 12.0
 # Existing negative phase resets also cancel a missed landing; no saved state.
 const WALK_PENDING_LANDING := -2.0
@@ -43,6 +44,8 @@ var evaluated_valid := false
 var evaluated_basis := Basis.IDENTITY
 var evaluation_serial := 0
 var _gait_rotations: Dictionary = {}
+var _gait_release_rotations: Dictionary = {}
+var _gait_release_age := INF
 var _head_gait_continuation := false
 var _head_gait_rotations: Dictionary = {}
 var _head_gait_settle_time := 0.0
@@ -87,9 +90,7 @@ var _held_lift := 0.0
 var _held_lift_time := 0.0
 var _held_shift := Vector3.ZERO
 var _walk_rest_feet: Array[Basis] = []
-var _walk_swing_start: Array[Vector3] = [Vector3.ZERO,Vector3.ZERO]
 var _walk_swing_phase := [-1.0,-1.0]
-var _walk_swing_landing: Array[Vector3] = [Vector3.ZERO,Vector3.ZERO]
 var _walking_ik := false
 # Ordinary locomotion planner (clock, swings, plants, settle steps, acting).
 var gait: RefCounted
@@ -113,7 +114,6 @@ var _pivot_start_local := Vector3.ZERO
 var _pivot_support: WeakRef
 var _pivot_local := Vector3.ZERO
 var _pivot_rid := RID()
-var _pivot_next_side := 0
 var _pivot_return_side := -1
 var _pivot_work_side := -1
 var _stopped_turn_pose_ready := false
@@ -233,6 +233,9 @@ func _process_modification_with_delta(delta: float) -> void:
 				_head_joint_rotations[bone] = (sk.global_basis*sk.get_bone_global_pose(bone).basis).get_rotation_quaternion().normalized()
 		return
 	if not sk or not worker.on_ground:
+		# Ordinary locomotion that runs off an edge keeps its own flying legs
+		# (tuck, then reach for the ground) instead of an authored clip pose.
+		var fly: bool = sk != null and _air_allowed() and gait.air(delta)
 		_head_work_continuation = false
 		_head_work_settle = 0.0
 		_head_ground_continuation = false
@@ -279,7 +282,8 @@ func _process_modification_with_delta(delta: float) -> void:
 		_motion_intent = false
 		_motion_start_age = 0.0
 		evaluated_balance_support_side = -1
-		gait.reset()
+		if fly: _air_legs(sk)
+		else: gait.reset()
 		if sk and worker.ragdoll: worker.ragdoll.remember_pose()
 		return
 	# Only this same native-contact Head lease acquires the work handoff.
@@ -421,7 +425,14 @@ func _process_modification_with_delta(delta: float) -> void:
 	var walking: bool = not native_peer_stance and worker.action.is_empty() and worker._animation.current_animation in ["wk_walkcycle", "work/carry", "work/run"]
 	# Ordinary terrain travel and its idle landing own Cartesian sole targets.
 	# Head and foot actions retain their separate captured-pose handoffs.
+	var was_walking_ik := _walking_ik
 	_walking_ik = worker.action.is_empty() and (head_prepare or (not _head_gait_continuation and _work_release.is_empty() and worker._animation.current_animation in ["wk_idle","wk_walkcycle","work/carry","work/run"]))
+	if was_walking_ik and not _walking_ik and evaluated_valid:
+		# The gait can hand its legs over mid-stride (an action begins on
+		# arrival or interrupts): remember its last joints for a short blend.
+		_gait_release_rotations = _gait_rotations.duplicate()
+		for side in 2: _gait_release_rotations[_chains[side][2]] = evaluated_ankles[side].get_rotation_quaternion()
+		_gait_release_age = 0.0
 	_update_travel_pole_handoff(delta)
 	_gait_sides = [false, false]
 	if _walking_ik:
@@ -429,7 +440,9 @@ func _process_modification_with_delta(delta: float) -> void:
 		# plants; the planner then only finishes swings already in the air.
 		var hold_feet: bool = head_prepare or _head_ground_continuation or native_peer_stance
 		gait.plan(sk,delta,_settle_allowed(),hold_feet,_head_work_continuation)
-	else: gait.reset()
+	# Another owner took the legs: the locomotion acting fades out instead of
+	# vanishing in one tick (and a resume continues from what is left).
+	else: gait.release(delta)
 	if walking or worker.action in ["place","brace"] or supported_head_pickup:
 		if not _gait_handoff_active: _gait_handoff_velocity = [Vector3.ZERO,Vector3.ZERO]
 		_gait_handoff_active = true
@@ -756,6 +769,8 @@ func _process_modification_with_delta(delta: float) -> void:
 				_project_sole_above_terrain(sk,side,local_inv,delta)
 				if _gait_handoff_active and evaluated_valid: _blend_gait_handoff(sk,side,local_inv,speed,delta)
 	else: _gait_rotations.clear()
+	if not _walking_ik and _gait_release_age < GAIT_RELEASE_BLEND:
+		_blend_gait_release(sk,manipulation,delta)
 	_blend_work_release(sk,delta)
 	if free_tool and not _head_gait_continuation and not _work_release.is_empty():
 		# The captured fitting sole follows a moving rig after the earlier
@@ -1400,12 +1415,6 @@ func _walk_ground(point: Vector3) -> Dictionary:
 	var hit := worker.get_world_3d().direct_space_state.intersect_ray(_terrain_query)
 	return hit if not hit.is_empty() and hit.normal.y>.6 else {}
 
-func _walk_swing_progress(t: float) -> float:
-	# Ease only the departure and landing; the middle visibly travels forward.
-	const EDGE := .12
-	if t<EDGE: return t*t/(2.0*EDGE*(1.0-EDGE))
-	if t>1.0-EDGE: return 1.0-(1.0-t)*(1.0-t)/(2.0*EDGE*(1.0-EDGE))
-	return (t-EDGE*.5)/(1.0-EDGE)
 
 func _stopped_turn_allowed() -> bool:
 	return worker.on_ground and _walking_ik and evaluated_valid and worker.action.is_empty() \
@@ -1580,6 +1589,52 @@ func _continue_cancelled_pivot(sk: Skeleton3D, delta: float, manipulation: bool)
 	_support_local[side]=hit.collider.to_local(hit.position) if hit.collider is Node3D else Vector3.ZERO
 	_pivot_start_local=owner.to_local(hit.position)
 
+func _air_allowed() -> bool:
+	# Only a plain locomotion flight: actions, a foot-held tool, head/back
+	# owners, idle play and water keep their own airborne presentation.
+	return worker.action.is_empty() and not worker.tool_foot_occupied() \
+		and not (worker.head_leap and worker.head_leap.active()) \
+		and not (worker.back_tool and (worker.back_tool.busy() or worker.back_tool.pose_owned())) \
+		and not (worker.idle_play and (worker.idle_play.state not in ["","run"] or worker.idle_play.water_support_active() or worker.idle_play.physical_recovery_pending()))
+
+func _air_legs(sk: Skeleton3D) -> void:
+	# Solve the flying legs the gait planned (Gait.air): same face-bent
+	# two-link solve and fading acting root as on the ground.
+	if gait.acting(): sk.set_bone_global_pose(0,gait.acting_root(sk,sk.get_bone_global_pose(0)))
+	var local_inv := sk.global_transform.affine_inverse()
+	for side in 2:
+		var chain: Array = _chains[side]
+		var basis: Basis = sk.global_basis.inverse()*gait.out_basis[side]
+		_solve(sk,chain[0],chain[1],chain[2],local_inv*gait.out_sole[side]-basis*Vector3(0,_ankle_height[side],0),1.0,basis)
+		if _toes[side] >= 0:
+			var rest := sk.get_bone_rest(_toes[side]).basis.get_rotation_quaternion()
+			var wanted := (Quaternion(gait._toe_axis[side],gait.out_toe[side])*rest).normalized()
+			sk.set_bone_pose_rotation(_toes[side],sk.get_bone_pose_rotation(_toes[side]).slerp(wanted,maxf(gait.locomotion_weight,.5)))
+
+func _blend_gait_release(sk: Skeleton3D, manipulation: bool, delta: float) -> void:
+	# Owners without their own joint handoff (step, push, pull, ...) read
+	# authored clip feet: entered mid-stride that is a one-tick knee snap. Ease
+	# their legs in from the gait's last joints over GAIT_RELEASE_BLEND; owners
+	# that already filter from _gait_rotations, and a manipulated work foot,
+	# keep their own continuity.
+	_gait_release_age += delta
+	var filtered: bool = worker.action in ["","interrupted","place","brace"]
+	var w := smoothstep(0.0, GAIT_RELEASE_BLEND, _gait_release_age)
+	var rebase: Basis = sk.global_basis.inverse()*worker.global_basis*evaluated_worker.basis.inverse()
+	for side in 2:
+		if filtered or (manipulation and side == worker.work_foot_side): continue
+		var chain: Array = _chains[side]
+		for bone: int in [chain[0],chain[1]]:
+			if not _gait_release_rotations.has(bone): continue
+			var previous: Quaternion = _gait_release_rotations[bone]
+			sk.set_bone_pose_rotation(bone,previous.slerp(sk.get_bone_pose_rotation(bone),w))
+		if _gait_release_rotations.has(chain[2]):
+			var foot_pose := sk.get_bone_global_pose(chain[2])
+			var previous_foot: Quaternion = (rebase*Basis(_gait_release_rotations[chain[2]] as Quaternion)).get_rotation_quaternion()
+			foot_pose.basis = Basis(previous_foot.slerp(foot_pose.basis.get_rotation_quaternion(),w))
+			sk.set_bone_global_pose(chain[2],foot_pose)
+	if _gait_release_age >= GAIT_RELEASE_BLEND: _gait_release_rotations.clear()
+
 func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walking: bool, _speed: float, _phase: float, delta: float) -> void:
 	# Ordinary locomotion: the gait planner owns the sole, its yaw/roll and the
 	# plant/support bookkeeping; this solves the finite leg and publishes it.
@@ -1597,7 +1652,7 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 			planted = false
 			hit = {}
 	if not planted:
-		gait.validate_landing(side,hip,delta)
+		gait.validate_landing(side,hip)
 		# An airborne sole keeps its own column and rises until the leg can
 		# reach it (down-steps, descents); clamping along the leg would drag
 		# it back toward the hip. Planted soles stay exact or are re-planned.
@@ -1983,7 +2038,10 @@ func _weight_transfer(sk: Skeleton3D, walking: bool, speed: float, delta: float)
 	# lead): it replaces the clip's root while travelling and the old walking
 	# sway below. Work/greeting/balance layers still apply on top of it.
 	var gait_acting: bool = _walking_ik and gait.active
-	if gait_acting:
+	# While another owner takes over (or hands back), the same procedural
+	# root keeps fading by its own weight, so neither switch pops the cube.
+	var gait_shown: bool = gait.acting()
+	if gait_shown:
 		root = gait.acting_root(sk,root)
 		sk.set_bone_global_pose(0,root)
 	evaluated_unbalanced_root = sk.global_transform * root
@@ -2099,9 +2157,9 @@ func _weight_transfer(sk: Skeleton3D, walking: bool, speed: float, delta: float)
 	_sway_roll_state = lerpf(_sway_roll_state, roll, blend)
 	_sway_pitch = lerpf(_sway_pitch, pitch, blend)
 	# Published totals include the gait's own lateral shift and roll.
-	var gait_weight: float = gait.locomotion_weight if gait_acting else 0.0
-	_sway_offset = _sway_shift.x + (gait.body_shift*gait_weight if gait_acting else 0.0)
-	_sway_roll = _sway_roll_state + (gait.body_roll*gait_weight if gait_acting else 0.0)
+	var gait_weight: float = gait.locomotion_weight if gait_shown else 0.0
+	_sway_offset = _sway_shift.x + gait.body_shift*gait_weight
+	_sway_roll = _sway_roll_state + gait.body_roll*gait_weight
 	# Bounded translation and tilt precede the same finite leg solves. Their
 	# soles/tools remain on real targets; head fixtures follow this evaluated
 	# cube. Upright support still belongs to the existing native capsule, so

@@ -70,7 +70,8 @@ var gait_speed := 0.0
 # Post-limit commanded travel velocity (zero when not navigating). The gait
 # planner predicts landings from it with this same force law.
 var locomotion_desired := Vector3.ZERO
-var _step_audio: AudioStreamPlayer3D
+var _step_voices: Array[AudioStreamPlayer3D] = []
+var _step_voice := 0
 var _step_counts := [0, 0]
 var _step_rng := RandomNumberGenerator.new()
 var _clip_resync := false
@@ -264,17 +265,19 @@ func _ready() -> void:
 	_work_audio.unit_size = 2.0
 	_work_audio.volume_db = -15.0
 	add_child(_work_audio)
-	# Footsteps get their own polyphonic channel so a run's contacts never
-	# cut each other (or a tool contact) off.
+	# Footsteps get their own small voice pool so a run's contacts never cut
+	# each other (or a tool contact) off, and a new step's volume/pitch never
+	# retunes a step that is still ringing.
 	_step_rng.seed = absi(str(worker_id).hash())+3301
-	_step_audio = AudioStreamPlayer3D.new()
-	_step_audio.name = "WakoFootsteps"
-	_step_audio.max_distance = 20.0
-	_step_audio.unit_size = 2.0
-	_step_audio.volume_db = -14.0
-	_step_audio.max_polyphony = 4
-	_step_audio.stream = FOOTSTEP
-	add_child(_step_audio)
+	for i in 3:
+		var voice := AudioStreamPlayer3D.new()
+		voice.name = "WakoFootsteps%d" % i
+		voice.max_distance = 20.0
+		voice.unit_size = 2.0
+		voice.volume_db = -14.0
+		voice.stream = FOOTSTEP
+		add_child(voice)
+		_step_voices.append(voice)
 	personality = Personality.new()
 	personality.setup(self)
 	bind_eye_smile_source(personality)
@@ -898,7 +901,9 @@ func _update_animation(delta: float) -> void:
 	var playback := 1.0
 	var locomotion_clips := ["wk_walkcycle", "work/carry", "work/run"]
 	var travelling: bool = _animation.current_animation in locomotion_clips
-	if gait_speed > (0.11 if travelling else 0.15) and on_ground:
+	# Hysteresis upward only: entering travel needs .2 m/s, while arriving
+	# still drops to idle at the original .15 (work settle gates wait on it).
+	if gait_speed > (0.15 if travelling else 0.2) and on_ground:
 		var running: bool = gait_speed > (2.35 if _animation.current_animation == "work/run" else 2.6)
 		clip = "work/carry" if carrying else "work/run" if running else "wk_walkcycle"
 		var gait: RefCounted = _pose.gait if _pose else null
@@ -937,11 +942,13 @@ func _update_animation(delta: float) -> void:
 			var count: int = planner.landing_count[side]
 			if count != _step_counts[side]:
 				_step_counts[side] = count
-				if on_ground and _step_audio:
+				if on_ground and not _step_voices.is_empty():
 					var strength: float = planner.landing_strength[side]
-					_step_audio.volume_db = lerpf(-22.0, -10.0, strength)
-					_step_audio.pitch_scale = lerpf(.92, 1.18, strength) * _step_rng.randf_range(.94, 1.06)
-					_step_audio.play()
+					var voice: AudioStreamPlayer3D = _step_voices[_step_voice]
+					_step_voice = (_step_voice + 1) % _step_voices.size()
+					voice.volume_db = lerpf(-22.0, -10.0, strength)
+					voice.pitch_scale = lerpf(.92, 1.18, strength) * _step_rng.randf_range(.94, 1.06)
+					voice.play()
 		_pending_step_side = -1
 		return
 	# The imported cycle plants the left sole near 90%, right near 40%; IK and sounds share that actual clip.
