@@ -91,8 +91,8 @@ func _run() -> void:
 				valid_bindings = false
 			elif target is Skeleton3D and path.get_subname_count() > 0:
 				valid_bindings = valid_bindings and target.find_bone(path.get_subname(0)) >= 0
-	_check(clips.size() == 33 and valid_bindings and source_methods == 0,
-		"all 33 original clips bind to real named nodes/bones without duplicate work callbacks")
+	_check(clips.size() >= 33 and valid_bindings and source_methods == 0,
+		"all %d wk_ clips (original 33 + new sit/social/swim/dance set) bind to real named nodes/bones without duplicate work callbacks" % clips.size())
 	var worker := Worker.instantiate()
 	worker.worker_id = "standalone_asset"
 	worker.paused = true
