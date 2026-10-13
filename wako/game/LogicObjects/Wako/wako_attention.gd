@@ -8,7 +8,9 @@ extends RefCounted
 ## idle scan points on its existing perception cadence (~4 Hz, desynchronised),
 ## with novelty, salience, distance, facing and personality traits. Hysteresis,
 ## random fixation holds and a crowd penalty on shared targets keep a crowd
-## from staring in sync. At most one visibility ray is spent per switch.
+## from staring in sync. At most one visibility ray is spent per switch; it
+## targets the event's own actor/part, and a rejected or vanished target is
+## never kept (fall back to a candidate that needs no ray, or let go).
 const RING := 40
 const RADIUS := 11.0
 const PLAYER_KEY := 1
@@ -39,6 +41,8 @@ var _span := 1.0
 var _player_last := Vector3.INF
 var _player_speed := 0.0
 var _scan_point := Vector3.INF
+var _scan_count := 0
+var _blocked: Dictionary = {}
 var profile_scans := 0
 var profile_usec := 0
 
@@ -46,8 +50,10 @@ static func now() -> float:
 	return float(Engine.get_physics_frames())/float(Engine.physics_ticks_per_second)
 
 ## Post one real event. owner: the Wako (or node) it belongs to; follow: an
-## optional node whose live position the watchers track (a dancer, a tool).
-static func post(owner: Node3D, event_kind: StringName, position: Vector3, salience: float, ttl := 1.6, follow: Node3D = null) -> void:
+## optional node whose live position the watchers track (a dancer, a tool);
+## see: the body a visibility ray may hit and still count as seeing the event
+## (default: follow, else the owner), e.g. the part a work contact lands on.
+static func post(owner: Node3D, event_kind: StringName, position: Vector3, salience: float, ttl := 1.6, follow: Node3D = null, see: Node3D = null) -> void:
 	if not is_instance_valid(owner) or not owner.is_inside_tree() or not position.is_finite(): return
 	var tree_id := owner.get_tree().get_instance_id()
 	if tree_id!=_tree_id:
@@ -57,7 +63,8 @@ static func post(owner: Node3D, event_kind: StringName, position: Vector3, salie
 		_tree_id = tree_id
 	_serial += 1
 	var entry := {"serial":_serial,"kind":event_kind,"pos":position,"sal":salience,"time":now(),"ttl":ttl,
-		"owner":owner.get_instance_id(),"node":weakref(follow) if follow else null}
+		"owner":owner.get_instance_id(),"node":weakref(follow) if follow else null,
+		"see":weakref(see if see else follow if follow else owner)}
 	if _ring.size()<RING: _ring.append(entry)
 	else: _ring[_head] = entry
 	_head = (_head+1)%RING
@@ -104,6 +111,10 @@ func _set_watch(key: int) -> void:
 ## already-visible player (or null). can_see: Callable(point, target) for the
 ## single switch ray.
 func scan(player: Node3D, can_see: Callable) -> void:
+	# Far/off-screen faces think at half the perception rate.
+	_scan_count += 1
+	var eyes: RefCounted = worker.get("eyes")
+	if eyes and int(eyes._lod)>=2 and _scan_count%2==1: return
 	var began := Time.get_ticks_usec()
 	var t := now()
 	var dt := clampf(t-_last_scan,0.0,1.0) if _last_scan>=0.0 else 0.0
@@ -119,7 +130,12 @@ func scan(player: Node3D, can_see: Callable) -> void:
 	var best_node: Node3D
 	var best_kind: StringName = &""
 	var best_novel := false
-	var best_owner := 0
+	var best_see: WeakRef
+	# Fallback candidate that needs no ray (the seen player, a scan point),
+	# and the current target's fresh state if it is still present.
+	var safe_score := 0.0
+	var safe := {}
+	var current := {}
 	# The seen player: a social target, livelier when moving, near or making
 	# eye contact through the camera; damped when the crowd already watches.
 	if is_instance_valid(player):
@@ -137,8 +153,11 @@ func scan(player: Node3D, can_see: Callable) -> void:
 		var others := int(_watchers.get(PLAYER_KEY,0))-(1 if _key==PLAYER_KEY else 0)
 		interest /= 1.0+.7*maxf(others,0)
 		var score := _score(interest,PLAYER_KEY,at,head,forward,distance,t)
+		var candidate := {"key":PLAYER_KEY,"score":score,"point":at,"node":player,"kind":&"player","novel":false}
+		if _key==PLAYER_KEY: current = candidate
+		if score>safe_score: safe_score = score; safe = candidate
 		if score>best_score:
-			best_score = score; best_key = PLAYER_KEY; best_point = at; best_node = player; best_kind = &"player"; best_novel = false
+			best_score = score; best_key = PLAYER_KEY; best_point = at; best_node = player; best_kind = &"player"; best_novel = false; best_see = null
 	else:
 		_player_last = Vector3.INF
 	# Recent real events on the shared board (bounded ring).
@@ -159,10 +178,13 @@ func scan(player: Node3D, can_see: Callable) -> void:
 		var interest: float = float(entry.sal)*(.45+.55*novelty)*_curious
 		var others := int(_watchers.get(key,0))-(1 if _key==key else 0)
 		interest /= 1.0+.25*maxf(others,0)
+		# An event this Wako could not see a moment ago is not re-tried at once.
+		if t<float(_blocked.get(key,-1.0)): continue
 		var score := _score(interest,key,at,head,forward,distance,t)
+		if key==_key: current = {"key":key,"score":score,"point":at,"node":follow,"kind":entry.kind,"novel":novelty>.55}
 		if score>best_score:
 			best_score = score; best_key = key; best_point = at; best_node = follow; best_kind = entry.kind
-			best_novel = novelty>.55; best_owner = int(entry.owner)
+			best_novel = novelty>.55; best_see = entry.get("see")
 	# Personal idle scan point (ground ahead, horizon to a side, sky).
 	if not _scan_point.is_finite() or (_key==SCAN_KEY and _hold<=0.0):
 		_scan_point = _new_scan_point(head,forward)
@@ -171,12 +193,27 @@ func scan(player: Node3D, can_see: Callable) -> void:
 			serial += 1
 			_hold = .9*_span*_rng.randf_range(.6,1.5)
 	var scan_score := _score(.2,SCAN_KEY,_scan_point,head,forward,head.distance_to(_scan_point),t)
+	var scan_candidate := {"key":SCAN_KEY,"score":scan_score,"point":_scan_point,"node":null,"kind":&"scan","novel":false}
+	if _key==SCAN_KEY: current = scan_candidate
+	if scan_score>safe_score: safe_score = scan_score; safe = scan_candidate
 	if scan_score>best_score:
-		best_score = scan_score; best_key = SCAN_KEY; best_point = _scan_point; best_node = null; best_kind = &"scan"; best_novel = false
-	if best_key!=0 and best_key!=_key:
-		# One visibility ray per switch, only toward another actor's event.
-		if best_owner!=0 and best_node==null and can_see.is_valid() and not can_see.call(best_point,worker):
+		best_score = scan_score; best_key = SCAN_KEY; best_point = _scan_point; best_node = null; best_kind = &"scan"; best_novel = false; best_see = null
+	if best_key!=0 and best_key!=_key and best_see:
+		# One visibility ray per switch toward another actor's event; a hit
+		# on that actor (or the part it works on) counts as seen.
+		var target: Node3D = best_see.get_ref()
+		if is_instance_valid(target) and can_see.is_valid() and not can_see.call(best_point,target):
+			_blocked[best_key] = t+1.0
+			if _blocked.size()>16:
+				for old: int in _blocked.keys():
+					if float(_blocked[old])<t: _blocked.erase(old)
+			# Fall back to the best target that needs no ray (or keep the
+			# current one if it is still really there).
+			var fallback: Dictionary = current if not current.is_empty() and float(current.score)>=safe_score else safe
 			best_key = 0
+			if not fallback.is_empty():
+				best_key = int(fallback.key); best_score = float(fallback.score); best_point = fallback.point
+				best_node = fallback.node; best_kind = fallback.kind; best_novel = bool(fallback.novel)
 	if best_key!=0 and best_key!=_key:
 		_seen[_key] = t
 		if _seen.size()>24:
@@ -193,6 +230,15 @@ func scan(player: Node3D, can_see: Callable) -> void:
 		point = best_point
 		node = weakref(best_node) if best_node else null
 		strength = clampf(best_score,0.0,1.0)
+	elif best_key==0 and _key!=0:
+		# Nothing real to switch to: keep the current target only while it is
+		# still present this scan (a player out of sight, an expired event
+		# or a freed actor is released, never tracked blind).
+		if current.is_empty(): release()
+		else:
+			point = current.point
+			node = weakref(current.node) if current.node else null
+			strength = clampf(float(current.score),0.0,1.0)
 	profile_scans += 1
 	profile_usec += Time.get_ticks_usec()-began
 

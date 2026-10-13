@@ -2,9 +2,9 @@ extends "res://harness/scripts/stage.gd"
 ## Face test: one Wako in close-up cycling REAL triggers through the shipped
 ## code paths (attention, work strokes with admitted contacts, the greeting
 ## smile, a hit, a live hostile notice -> alarm -> relief, a completion).
-## --part=a: idle life + work strokes; b: greeting + hit; c: threat + relief + win.
+## --part=a: idle life + work strokes; b: greeting + a bump (no enemy);
+## c: live hostile at 13 m (notice, darting watch, body turn) + relief + win.
 const Props := preload("res://harness/scripts/face_props.gd")
-const Eyes := preload("res://LogicObjects/Wako/wako_eyes.gd")
 var wako: RigidBody3D
 var player: Node3D
 var hostile: Node3D
@@ -15,7 +15,6 @@ var _flags := {}
 var _log_next := 0.0
 
 func setup() -> void:
-	Eyes.profiling = true
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--part="): part = arg.trim_prefix("--part=")
 	wako = spawn_wako(Vector3(0, .86, 0), "face_lab_" + part)
@@ -49,9 +48,9 @@ func scenario(_delta: float) -> void:
 		_log_next += .1
 		var e: RefCounted = wako.eyes
 		var v: Array = e._value
-		print("LAB t=%.2f open=%.2f gaze=(%.4f,%.4f) uc=%.2f lr=%.2f tilt=%.2f dil=%.2f pop=%.2f smile=%.2f mouth=(%.2f,%.2f,%.2f) alarm=%.2f act=%s p=%.2f voice=%s/%.2f att=%s" % [clock,
-			e._blink_value, e.gaze.x, e.gaze.y, v[0], v[1], v[2], v[4], v[5], v[6], v[7], v[8], v[9], v[11],
-			wako.action, wako.action_progress, wako.personality.voice_kind, wako.personality.voice_clock, wako.personality.attention.kind])
+		print("LAB t=%.2f open=%.2f gaze=(%.4f,%.4f) uc=%.2f lr=%.2f tilt=%.2f dil=%.2f pop=%.2f smile=%.2f squeeze=%.2f mouth=(%.2f,%.2f,%.2f) alarm=%.2f act=%s p=%.2f voice=%s/%.2f att=%s look=%s heading=%.2f" % [clock,
+			e._blink_value, e.gaze.x, e.gaze.y, v[e.UC], v[e.LR], v[e.TILT], v[e.DIL], v[e.POP], v[e.SMILE], v[e.SQUEEZE], v[e.MOPEN], v[e.MCURVE], v[e.MWIDTH], v[e.ALARM],
+			wako.action, wako.action_progress, wako.personality.voice_kind, wako.personality.voice_clock, wako.personality.attention.kind, e._want_point if not e._want_node else e._want_node.get_ref(), wako._heading])
 
 func _part_a() -> void:
 	# Idle life: the player strolls past; attention, saccades, blinks.
@@ -80,7 +79,7 @@ func _part_b() -> void:
 		if clock > .4 and _once("smile"):
 			wako.personality._next_smile = 0.0
 		return
-	caption("hit: surprise, oops, recoil")
+	caption("bump (no enemy): surprise -> look where it came from -> uh-oh -> annoyed")
 	if _once("hit"):
 		wako.apply_hit(Vector3(.9, 0, .4) * wako.mass * 1.6)
 
@@ -89,11 +88,11 @@ func _part_c() -> void:
 	if clock < 1.0:
 		caption("watching")
 		return
-	if clock < 3.2:
-		caption("live hostile: widen -> focus -> worried alarm")
-		if _once("hostile"): hostile = Props.make_hostile(self, Vector3(-4.5, 0, -5.0))
+	if clock < 3.6:
+		caption("live hostile 13 m away: widen -> focus -> worried watch, darting glances, cube turns")
+		if _once("hostile"): hostile = Props.make_hostile(self, Vector3(-9.0, 0, -9.5))
 		return
-	if clock < 4.6:
+	if clock < 5.0:
 		caption("threat gone: relief + sigh")
 		if _once("kill"): Props.kill_hostile(hostile)
 		return

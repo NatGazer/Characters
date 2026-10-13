@@ -128,3 +128,74 @@ static func make_hostile(parent: Node, pos: Vector3) -> Node3D:
 
 static func kill_hostile(enemy: Node3D) -> void:
 	if is_instance_valid(enemy): enemy.alive = false
+
+## World position of the rendered (skinned) painted eye centres, found from
+## the mesh UVs: the midpoint of atlas (.409,.715) and (.409,.914).
+static func painted_eye_midpoint(wako: Node) -> Vector3:
+	var mesh_instance: MeshInstance3D = wako.get("_skin_mesh")
+	var skeleton: Skeleton3D = wako.get("_skeleton")
+	var arrays := mesh_instance.mesh.surface_get_arrays(0)
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var uvs: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]
+	var index: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+	var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+	var stride := int(float(bones.size()) / float(verts.size()))
+	var skin: Skin = mesh_instance.skin
+	var sum := Vector3.ZERO
+	var found := 0
+	for uv: Vector2 in [Vector2(.409, .715), Vector2(.409, .914)]:
+		for t in range(0, index.size(), 3):
+			var a := uvs[index[t]]
+			var e0 := uvs[index[t + 1]] - a
+			var e1 := uvs[index[t + 2]] - a
+			var p := uv - a
+			var d := e0.x * e1.y - e1.x * e0.y
+			if absf(d) < 1e-12: continue
+			var l1 := (p.x * e1.y - e1.x * p.y) / d
+			var l2 := (e0.x * p.y - p.x * e0.y) / d
+			if l1 < -1e-5 or l2 < -1e-5 or 1.0 - l1 - l2 < -1e-5: continue
+			var local := verts[index[t]] * (1.0 - l1 - l2) + verts[index[t + 1]] * l1 + verts[index[t + 2]] * l2
+			var world := Vector3.ZERO
+			var total := 0.0
+			var v: int = index[t]
+			for j in stride:
+				var w := weights[v * stride + j]
+				if w <= 0.0: continue
+				var bind := bones[v * stride + j]
+				var bone := skin.get_bind_bone(bind)
+				if bone < 0: bone = skeleton.find_bone(skin.get_bind_name(bind))
+				world += (skeleton.global_transform * skeleton.get_bone_global_pose(bone) * skin.get_bind_pose(bind) * local) * w
+				total += w
+			sum += world / maxf(total, 1e-6)
+			found += 1
+			break
+	return sum / found if found == 2 else Vector3.INF
+
+## Harness-only face profiler: takes over the helpers' face tick (the helper
+## skips it while face_external is set) and advances each face engine right
+## after its helper's own physics, timing every call.
+## Usage: Props.drive_faces(self, wakos).
+class FaceDriver extends Node:
+	var faces := {}
+	var usec := {}
+	var ticks := {}
+	func _physics_process(delta: float) -> void:
+		for w: Node in faces:
+			if not is_instance_valid(w): continue
+			var e: RefCounted = faces[w]
+			var t0 := Time.get_ticks_usec()
+			e.advance(delta)
+			usec[w] = int(usec.get(w, 0)) + Time.get_ticks_usec() - t0
+			ticks[w] = int(ticks.get(w, 0)) + 1
+	func per_tick(w: Node) -> float:
+		return float(usec.get(w, 0)) / maxf(float(ticks.get(w, 0)), 1.0)
+
+static func drive_faces(stage: Node, wakos: Array) -> FaceDriver:
+	var driver := FaceDriver.new()
+	driver.name = "FaceDriver"
+	for w: Node in wakos:
+		driver.faces[w] = w.get("eyes")
+		w.set("face_external", true)
+	stage.add_child(driver)
+	return driver

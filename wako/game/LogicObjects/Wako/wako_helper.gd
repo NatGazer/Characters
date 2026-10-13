@@ -157,26 +157,20 @@ var idle_play: RefCounted
 var pickup: RefCounted
 var back_tool: RefCounted
 var head_leap: RefCounted
-var _face_rng := RandomNumberGenerator.new()
-var _face_clock := 0.0
-var _next_blink := 0.0
-var _blink_age := -1.0
-var _eye_effort := 1.0
+# Uploaded pupil gaze (atlas UV), mirrored from the face engine each tick.
 var _eye_gaze := Vector2.ZERO
-var _eye_shader_openness := 1.0
-var _eye_shader_gaze := Vector2.ZERO
 var _eye_smile_source: WeakRef
-var _eye_smile := 0.0
-var _eye_shader_smile := 0.0
-var _face_alarm := 0.0
-var _face_shader_alarm := 0.0
-var _face_shader_startle := 0.0
 const Eyes := preload("res://LogicObjects/Wako/wako_eyes.gd")
 ## Face engine (blinks, saccades, event faces, uniform uploads).
 var eyes: RefCounted
 ## Coordinator gaze hint for the current lease phase (stock, tool, target or
 ## the next reserved target). Read by the eyes only; never a reach target.
 var attention_point := Vector3.INF
+## The same hint as a node when it moves (a part in flight, a fetched tool):
+## the eyes pursue it instead of re-aiming at a stale point.
+var attention_node: Node3D
+## Harness profiling only: something else advances the face each tick.
+var face_external := false
 var _work_axis := Vector3.ZERO
 var _work_axis_target := 0
 var _work_axis_tool := 0
@@ -1426,8 +1420,8 @@ func _apply_skin() -> void:
 	_skin_mesh.set_surface_override_material(0, _shared_skin_material)
 
 func _seed_expression() -> void:
-	_face_rng.seed = absi(worker_id.hash()) + 7439
-	# One face engine per helper; per-instance uniforms on the shared skin.
+	# One face engine per helper (seeded from worker_id); per-instance
+	# uniforms on the shared skin.
 	eyes = Eyes.new()
 	eyes.setup(self)
 
@@ -1442,14 +1436,13 @@ func bind_eye_smile_source(source: RefCounted) -> void:
 
 func _update_expression(delta: float) -> void:
 	# Runs every physics tick: blinks and saccades are evaluated at 120 Hz;
-	# the face brain runs at 30/15/6 Hz by camera distance and visibility, and
-	# only changed instance uniforms are uploaded.
-	if not eyes or not _skin_mesh: return
-	eyes.advance(delta)
-	_eye_gaze = eyes.gaze
+	# the face brain runs at 6/4/2 Hz by camera distance and visibility (12-20
+	# Hz while a near face acts, talks, strikes or is alarmed), and only changed
+	# instance uniforms are uploaded. The engine mirrors its gaze into _eye_gaze.
+	if eyes and _skin_mesh and not face_external: eyes.advance(delta)
 
 ## Short event face from a real trigger (surprise, joy, pride, worry,
-## relief, curious, notice, squeeze, flinch, satisfied).
+## annoyed, relief, curious, notice, squeeze, flinch, satisfied).
 func face_pulse(kind: StringName, amount := 1.0) -> void:
 	if eyes: eyes.pulse(kind, amount)
 

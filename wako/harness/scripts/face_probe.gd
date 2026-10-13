@@ -2,15 +2,15 @@ extends "res://harness/scripts/stage.gd"
 ## Headless face diagnostics: prints the uploaded uniforms, gaze and eye
 ## engine counters while a player walks past and a hostile appears.
 const Props := preload("res://harness/scripts/face_props.gd")
-const Eyes := preload("res://LogicObjects/Wako/wako_eyes.gd")
 var wako: RigidBody3D
 var player: Node3D
 var hostile: Node3D
 var _next := 0.0
+var driver: Node
 
 func setup() -> void:
-	Eyes.profiling = true
 	wako = spawn_wako(Vector3(0, .86, 0), "face_probe")
+	driver = Props.drive_faces(self, [wako])
 	cam_target = Vector3(0, 1.1, -.2)
 	cam_offset = Vector3(.35, .12, -1.45)
 	player = Props.make_player(self, Vector3(-2.2, .5, -2.6))
@@ -29,4 +29,4 @@ func scenario(_delta: float) -> void:
 			m.get_instance_shader_parameter(&"eye_lids"), m.get_instance_shader_parameter(&"eye_iris"),
 			m.get_instance_shader_parameter(&"mouth_shape"), m.get_instance_shader_parameter(&"eye_smile"),
 			m.get_instance_shader_parameter(&"face_alarm"), p.attention.kind, p.attention.point,
-			e.events.blink, e.events.saccade, e.uploads, float(e.profile_total_usec) / maxf(e.profile_ticks, 1), e._lod, float(p.profile_total_usec) / maxf(p.profile_ticks, 1), float(wako.idle_play.profile_total_usec) / maxf(wako.idle_play.profile_ticks, 1)])
+			e.events.blink, e.events.saccade, e.uploads, driver.per_tick(wako), e._lod, float(p.profile_total_usec) / maxf(p.profile_ticks, 1), float(wako.idle_play.profile_total_usec) / maxf(wako.idle_play.profile_ticks, 1)])

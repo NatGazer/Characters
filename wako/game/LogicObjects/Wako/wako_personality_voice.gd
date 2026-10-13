@@ -19,19 +19,23 @@ const NOTES := {
 const SEEDS := {"effort":[1,2,3],"inspect":[9,10,11],"assemble":[12,13,14],"repair":[15,16,17],"play":[4,5],"jump":[6,7],"warning":[8]}
 # Event kinds without their own PCM reuse a baked clip, re-pitched and/or
 # trimmed (time variation): [bank kind, clip index (-1 = any), pitch factor,
-# start offset s, length s (0 = to the end)]. pick() stays one random draw.
+# start offset s, length s (0 = to the end), optional pitch bend [at stream
+# time s, factor]]. pick() stays one random draw.
 const VARIANTS := {
 	"hup": ["jump",0,1.24,0.0,.12],
 	"hop": ["jump",1,1.30,0.0,.085],
 	"wee": ["jump",-1,1.12,0.0,0.0],
 	"grunt": ["effort",-1,.90,0.0,.17],
 	"nngh": ["effort",2,.80,0.0,.21],
-	"oops": ["play",1,1.06,0.0,0.0],
+	# "uh-oh": the two falling warning syllables, an octave down, the second
+	# bent lower still (a recognisable falling two-note contour).
+	"oops": ["warning",0,.62,0.0,0.0,[.17,.8]],
 	"yay": ["play",0,1.16,0.0,0.0],
 	"hmm": ["inspect",2,.88,0.0,0.0],
 	"huh": ["inspect",1,1.10,.17,.16],
 	"giggle": ["assemble",1,1.34,0.0,0.0],
-	"sigh": ["repair",1,.76,0.0,0.0],
+	# A slow falling exhale: the long warning fall, far below its pitch.
+	"sigh": ["warning",0,.46,.19,.17],
 }
 static var _bank: Dictionary = {}
 static var _notes_by_stream: Dictionary = {}
@@ -77,6 +81,7 @@ static func variant(kind: String, rng: RandomNumberGenerator, previous: AudioStr
 	var pitch := 1.0
 	var from := 0.0
 	var length := 0.0
+	var bend: Array = []
 	if spec.is_empty():
 		stream = pick(kind,rng,previous)
 	else:
@@ -86,7 +91,15 @@ static func variant(kind: String, rng: RandomNumberGenerator, previous: AudioStr
 		pitch = float(spec[2])
 		from = float(spec[3])
 		length = float(spec[4])
-	return {"stream":stream,"pitch":pitch,"from":from,"length":length,"notes":_notes_by_stream.get(stream.get_instance_id(),[])}
+		if spec.size()>5: bend = spec[5]
+	return {"stream":stream,"pitch":pitch,"from":from,"length":length,"bend":bend,"notes":_notes_by_stream.get(stream.get_instance_id(),[])}
+
+## True between the first syllable's onset and the last one's end (the jaw
+## stays slightly open across the gaps of one clip).
+static func within(notes: Array, t: float) -> bool:
+	if notes.is_empty(): return false
+	var last: Array = notes.back()
+	return t>=float(notes[0][0]) and t<float(last[0])+float(last[1])
 
 ## Jaw opening (0..1) of a clip at stream time t: per-syllable envelope, a
 ## little wider on the higher, excited part of each glide.

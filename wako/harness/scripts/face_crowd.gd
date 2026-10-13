@@ -5,7 +5,6 @@ extends "res://harness/scripts/stage.gd"
 ## often saccades/blinks coincide, plus per-Wako face cost.
 ## --headless-stats: run without the camera close-up requirements.
 const Props := preload("res://harness/scripts/face_props.gd")
-const Eyes := preload("res://LogicObjects/Wako/wako_eyes.gd")
 const COUNT := 12
 var crowd: Array[RigidBody3D] = []
 var player: Node3D
@@ -24,17 +23,23 @@ var _window_clock := 0.0
 var _rng := RandomNumberGenerator.new()
 var _gaze_prev := {}
 var _gaze_step_max := 0.0
+var _smile_seen := {}
+var _smile_window_max := 0
+var _greet_seen := {}
+var _greet_window_max := 0
+var _alarm_without_threat := 0.0
+var _gaze_spread_sum := 0.0
 
 var service: Node
+var driver: Node
 
 func setup() -> void:
-	Eyes.profiling = true
 	_rng.seed = 4242
 	# Real idle play (dance, hops, high-fives, routes) needs a scheduler/yard.
 	service = Props.make_coordinator(self, false)
 	for i in COUNT:
 		var col := i % 4
-		var row := i / 4
+		var row := floori(i / 4.0)
 		var pos := Vector3((col - 1.5) * 1.3 + _rng.randf_range(-.15, .15), .86, row * 1.6 + _rng.randf_range(-.2, .2))
 		var w: RigidBody3D = WAKO.instantiate()
 		w.worker_id = "crowd_%02d" % i
@@ -48,6 +53,7 @@ func setup() -> void:
 		_last_saccades.append(0)
 		_window_starts.append(0)
 	player = Props.make_player(self, Vector3(-3.5, .5, -2.6))
+	driver = Props.drive_faces(self, crowd)
 	cam_target = Vector3(0, .95, 1.4)
 	cam_offset = Vector3(.4, .55, -5.0)
 	# --far: camera 35 m away (face LOD 2) to measure the crowd cost at distance.
@@ -82,6 +88,29 @@ func _sample(delta: float) -> void:
 		keys[key] = int(keys.get(key, 0)) + 1
 		if crowd[i].personality.attention.kind == &"player" and e._want_node and e._want_node.get_ref() == player: watching_player += 1
 		if e._blink_value < .5: blinking += 1
+	# Smiles: how many different Wako showed an eye-smile within the last 1 s
+	# (the crowd budget keeps this well under 40%).
+	var smiling_window := 0
+	var greeting_window := 0
+	var gaze_sum := Vector2.ZERO
+	var gazes: Array[Vector2] = []
+	for i in COUNT:
+		var e: RefCounted = crowd[i].eyes
+		if float(e._value[e.SMILE]) > .5: _smile_seen[i] = clock
+		if clock - float(_smile_seen.get(i, -10.0)) < 1.0: smiling_window += 1
+		if float(crowd[i].personality.smile_weight) > .5: _greet_seen[i] = clock
+		if clock - float(_greet_seen.get(i, -10.0)) < 1.0: greeting_window += 1
+		var mesh: MeshInstance3D = crowd[i]._skin_mesh
+		var alarm: Variant = mesh.get_instance_shader_parameter(&"face_alarm")
+		if alarm != null and float(alarm) > .1 and crowd[i].personality._actual_threat() == null: _alarm_without_threat += delta
+		gazes.append(e.gaze)
+		gaze_sum += e.gaze
+	_smile_window_max = maxi(_smile_window_max, smiling_window)
+	_greet_window_max = maxi(_greet_window_max, greeting_window)
+	var mean_gaze := gaze_sum / COUNT
+	var spread := 0.0
+	for g in gazes: spread += g.distance_to(mean_gaze)
+	_gaze_spread_sum += spread / COUNT
 	var same := 0
 	for k in keys: same = maxi(same, int(keys[k]))
 	_same_sum += float(same) / COUNT
@@ -110,7 +139,7 @@ func _exit_tree() -> void:
 	var saccades := 0
 	var blinks := 0
 	for w in crowd:
-		eyes_usec += float(w.eyes.profile_total_usec) / maxf(w.eyes.profile_ticks, 1)
+		eyes_usec += driver.per_tick(w)
 		pers_usec += float(w.personality.profile_total_usec) / maxf(w.personality.profile_ticks, 1)
 		scans += w.personality.attention.profile_scans
 		scan_usec += w.personality.attention.profile_usec
@@ -119,5 +148,7 @@ func _exit_tree() -> void:
 		blinks += w.eyes.events.blink
 	print("CROWD samples=%d mean_share_same_target=%.2f max_share=%.2f mean_player_watchers=%.2f/%d max_player_watchers=%d sync_saccade_windows=%d/%d sync_blink_ticks=%d max_gaze_step=%.4f" % [
 		_samples, _same_sum / _samples, _same_max, _player_sum / _samples, COUNT, _player_max, _sync_saccade_windows, _windows, _sync_blink_samples, _gaze_step_max])
+	print("CROWD smiles: greeting smiles max %d/%d within any 1 s window (%.0f%%); any eye-smile (play contacts, voices, wins included) max %d/%d (%.0f%%); face_alarm>.1 without a live threat for %.2f Wako-seconds; mean gaze spread %.4f UV (range +-%.3f)" % [
+		_greet_window_max, COUNT, 100.0 * _greet_window_max / COUNT, _smile_window_max, COUNT, 100.0 * _smile_window_max / COUNT, _alarm_without_threat, _gaze_spread_sum / _samples, .03])
 	print("CROWD per-Wako avg usec/tick eyes=%.1f personality=%.1f attention_scan=%.1f usec/scan; saccades=%d blinks=%d uploads=%d over %.1fs" % [
 		eyes_usec / COUNT, pers_usec / COUNT, float(scan_usec) / maxf(scans, 1), saccades, blinks, uploads, clock])

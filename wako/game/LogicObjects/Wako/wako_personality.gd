@@ -9,6 +9,9 @@ const DANGER_RADIUS := 11.0
 static var _warning_until: Dictionary = {}
 # Only recent audible calls are retained, not a registry scanned per tick.
 static var _work_call_history: Array[Dictionary] = []
+# Smiles currently shown in each scene tree (instance id -> game time until
+# the smile and its release end): a crowd never beams all at once.
+static var _smiling: Dictionary = {}
 var worker: RigidBody3D
 var smile_weight := 0.0
 var greeting_weight := 0.0
@@ -60,6 +63,8 @@ var _clearance := PhysicsShapeQueryParameters3D.new()
 # for mouth sync (stream time of the playing clip, -1 when silent).
 var attention: RefCounted
 var heard_caller: WeakRef
+## The revalidated live hostile core this tick (or null), for the face.
+var live_threat: Node3D
 var heard_age := 10.0
 var voice_notes: Array = []
 var voice_clock := -1.0
@@ -74,11 +79,16 @@ var _chatter_remaining := 0.0
 var _queued_voice := ""
 var _queued_volume := 0.0
 var _queued_wait := 0.0
+var _queued_until := 0.0
+var _voice_bend_at := -1.0
+var _voice_bend := 1.0
+var _voice_base_pitch := 1.0
+var _hits_seen := 0
+var _threat_turn_wait := 0.0
 var _poll_action := ""
 var _poll_progress := 0.0
 var _poll_play := ""
 var _poll_leap := ""
-var _poll_reaction := 0.0
 var _poll_down := false
 var _poll_lands := 0
 var _alert_time := 0.0
@@ -121,13 +131,14 @@ func advance(delta: float) -> void:
 	_smile_remaining = maxf(0.0,_smile_remaining-delta)
 	greeting_age = minf(1.0,greeting_age+delta)
 	_work_voice_remaining = maxf(0.0,_work_voice_remaining-delta)
-	heard_age += delta
-	_chatter_remaining = maxf(0.0,_chatter_remaining-delta)
-	_advance_voice_clock(delta)
+	if voice_clock>=0.0 or not _queued_voice.is_empty(): _advance_voice_clock(delta)
 	_advance_work_voice(delta)
-	# Event voices poll real state at 15 Hz (crossings are edge-detected).
+	# Event voices poll real state at 10 Hz (crossings are edge-detected);
+	# the slow clocks (hearing, chatter cooldown) tick with them.
 	_poll_clock += delta
-	if _poll_clock>=1.0/15.0:
+	if _poll_clock>=.1:
+		heard_age += _poll_clock
+		_chatter_remaining = maxf(0.0,_chatter_remaining-_poll_clock)
 		_poll_voice_events(_poll_clock)
 		_poll_clock = 0.0
 	_cover_retry = maxf(0.0,_cover_retry-delta)
@@ -135,6 +146,12 @@ func advance(delta: float) -> void:
 		_scan_remaining = _rng.randf_range(.21,.29)
 		_observe_world()
 	var core := _actual_threat()
+	if core!=live_threat:
+		# A newly noticed (or lost) enemy wakes the face on the next tick, so
+		# the startle widen is never sampled late.
+		live_threat = core
+		var face: RefCounted = worker.get("eyes")
+		if face: face.wake()
 	# Eyes reuse this live cached observation; no new visibility query or
 	# remembered point survives actual enemy loss, defeat or departure.
 	alert_position = core.global_position if core else Vector3.INF
@@ -153,9 +170,10 @@ func advance(delta: float) -> void:
 		_smile_remaining = 0.0
 	var player: Node3D = _seen_player.get_ref() if _seen_player else null
 	if free_expression and not core and is_instance_valid(player):
-		if _next_smile<=0.0 and _smile_remaining<=0.0:
+		if _next_smile<=0.0 and _smile_remaining<=0.0 and _smile_allowed(player):
 			_smile_remaining = _rng.randf_range(1.3,2.8)
 			_next_smile = _rng.randf_range(6.0,15.0)
+			_smiling[worker.get_instance_id()] = Attention.now()+_smile_remaining+1.0
 			greeting_age = 0.0
 			_greeting_active = false
 			_greeting_pending = true
@@ -178,7 +196,9 @@ func advance(delta: float) -> void:
 	# the gaps between smiles. Only a real smile asks the body to turn.
 	look_position = player.global_position+Vector3.UP*.6 if free_expression and not core and is_instance_valid(player) else Vector3.INF
 	if wanted>0.0 and look_position.is_finite(): worker.face_point(look_position)
-	if _poll_clock==0.0: _follow_attention(1.0/15.0,free_expression and not core)
+	if _poll_clock==0.0:
+		_follow_attention(.1,free_expression and not core)
+		_threat_turn(.1,core)
 	var elapsed := Time.get_ticks_usec()-began
 	profile_ticks += 1
 	profile_total_usec += elapsed
@@ -303,9 +323,10 @@ func _observe_world() -> void:
 		and _can_see(player.global_position+Vector3.UP*.6,player):
 		_seen_player = weakref(player)
 	# Points of interest reuse this same perception cadence (no extra scan).
-	# Working or frightened Wako look at their job/threat; they free the slot.
+	# Working Wako and Wako facing a real live threat look at their job or
+	# threat and free the slot; a bumped Wako (fear, no enemy) keeps looking.
 	if attention:
-		if worker.current_job_id.is_empty() and worker.fear_time<=0.0 and not is_instance_valid(worker.station):
+		if worker.current_job_id.is_empty() and not _actual_threat() and not is_instance_valid(worker.station):
 			attention.scan(_seen_player.get_ref() if _seen_player else null,_can_see)
 		else: attention.release()
 
@@ -331,7 +352,9 @@ func _can_see(point: Vector3, target: Node3D) -> bool:
 	return is_instance_valid(assembly) and collider.get("assembly")==assembly
 
 func _warn(core: Node3D) -> void:
-	var now := Time.get_ticks_msec()*.001
+	# Game time (physics frames), so movie-maker and slowed frames never
+	# re-trigger a call early.
+	var now := Attention.now()
 	var key := core.get_instance_id()
 	if now<float(_warning_until.get(key,0.0)): return
 	# One sparse audible call per enemy reaches the nearby crew. Expiry and
@@ -346,6 +369,7 @@ func _warn(core: Node3D) -> void:
 			_queued_voice = "warning"
 			_queued_volume = -10.0
 			_queued_wait = .07
+			_queued_until = _clock+.5
 	Attention.post(worker,&"warning",worker.global_position+Vector3.UP*.5,.9,1.5,worker)
 	var service: Node = worker.coordinator
 	if not is_instance_valid(service) or not is_instance_valid(service.yard): return
@@ -461,7 +485,7 @@ func _on_work_contact(kind: String) -> void:
 	# stale signal or held/paused work must not create a pretend work sound.
 	if worker.action!=kind or not worker._contact_sent: return
 	events.work_contact += 1
-	Attention.post(worker,&"work_contact",worker.work_point(),.45,1.1)
+	Attention.post(worker,&"work_contact",worker.work_point(),.45,1.1,null,worker.work_target)
 	if worker.fear_time>0.0 or alert_weight>.001 or worker.paused or worker.work_action_held or not worker.on_ground \
 		or not worker.is_available() or not is_instance_valid(worker.work_target) or _work_voice_remaining>0.0: return
 	# Brisk work has sparse short vocal accents, not a voice on every blow.
@@ -481,7 +505,7 @@ func _on_work_contact(kind: String) -> void:
 	events.work_voice += 1
 
 func _work_call_room() -> bool:
-	var now := Time.get_ticks_msec()*.001
+	var now := Attention.now()
 	var tree_id := worker.get_tree().get_instance_id()
 	for index in range(_work_call_history.size()-1,-1,-1):
 		var call: Dictionary = _work_call_history[index]
@@ -493,7 +517,7 @@ func _work_call_room() -> bool:
 	return true
 
 func _remember_work_call() -> void:
-	_work_call_history.append({"until":Time.get_ticks_msec()*.001+_voice_rng.randf_range(.9,1.3),
+	_work_call_history.append({"until":Attention.now()+_voice_rng.randf_range(.9,1.3),
 		"position":worker.global_position,"tree":worker.get_tree().get_instance_id(),"owner":weakref(worker)})
 
 func work_completed(kind: String, job_id: String) -> void:
@@ -614,6 +638,10 @@ func _play_voice(kind: String, volume: float) -> bool:
 	_last_voice_streams[kind] = _voice.stream
 	_voice_kind = kind
 	_voice.pitch_scale = personality_pitch*_voice_rng.randf_range(.96,1.04)*float(voice.pitch)*(1.06 if kind in ["assemble","effort"] else 1.0)
+	_voice_base_pitch = _voice.pitch_scale
+	var bend: Array = voice.bend
+	_voice_bend_at = float(bend[0]) if bend.size()==2 else -1.0
+	_voice_bend = float(bend[1]) if bend.size()==2 else 1.0
 	_voice.volume_db = volume
 	_work_voice_volume = volume
 	_voice.play(float(voice.from))
@@ -622,15 +650,21 @@ func _play_voice(kind: String, volume: float) -> bool:
 	voice_clock = float(voice.from)
 	_voice_rate = _voice.pitch_scale
 	_voice_cut = float(voice.from)+float(voice.length) if float(voice.length)>0.0 else 0.0
-	# Listeners glance at the talker (warnings post their own event).
+	# Listeners glance at the talker (warnings post their own event); the
+	# face composes the first syllable on the next tick.
 	if kind!="warning": Attention.post(worker,&"voice",worker.global_position+Vector3.UP*.4,.3,.8,worker)
+	var face: RefCounted = worker.get("eyes")
+	if face: face.wake()
 	return true
 
-## Sparse event voice on a real trigger: personal chatter cooldown, crew
-## turn-taking, silence in danger (urgent calls excepted), one random draw.
-func say(kind: String, volume: float, chance := 1.0, urgent := false) -> bool:
-	if Shortcuts.quitting or not is_instance_valid(_voice) or _voice.playing: return false
-	if not urgent and (_chatter_remaining>0.0 or worker.fear_time>0.0 or alert_weight>.001 or worker.paused or not _work_call_room()): return false
+## Sparse event voice on a real trigger: personal chatter cooldown (urgent
+## calls skip only this), crew turn-taking, silence in danger unless this
+## Wako itself was hit (own_hit), one random draw.
+func say(kind: String, volume: float, chance := 1.0, urgent := false, own_hit := false) -> bool:
+	if Shortcuts.quitting or not is_instance_valid(_voice) or _voice.playing or worker.paused: return false
+	if not urgent and _chatter_remaining>0.0: return false
+	if not own_hit and (worker.fear_time>0.0 or alert_weight>.001): return false
+	if not _work_call_room(): return false
 	if _voice_rng.randf()>chance: return false
 	if not _play_voice(kind,volume): return false
 	_remember_work_call()
@@ -649,8 +683,14 @@ func _event_voice_supported() -> bool:
 	return true
 
 func _advance_voice_clock(delta: float) -> void:
-	if is_instance_valid(_voice) and _voice.playing:
+	# Every clip starts through _play_voice (which starts this clock); a
+	# silent face with nothing queued never calls this.
+	if voice_clock>=0.0 and is_instance_valid(_voice) and _voice.playing:
 		voice_clock += delta*_voice_rate
+		if _voice_bend_at>=0.0 and voice_clock>=_voice_bend_at:
+			# A short glide into the bent pitch (a falling second syllable).
+			_voice.pitch_scale = move_toward(_voice.pitch_scale,_voice_base_pitch*_voice_bend,delta*6.0)
+			_voice_rate = _voice.pitch_scale
 		# A clip can never outlive its own PCM (guards a silent/dummy audio
 		# server from holding the channel and the mouth open forever).
 		if _voice.stream and voice_clock>_voice.stream.get_length()+.15: _voice.stop()
@@ -659,6 +699,10 @@ func _advance_voice_clock(delta: float) -> void:
 		voice_clock = -1.0
 		voice_notes = []
 	if _queued_voice.is_empty(): return
+	# The urgent repeat only belongs right after its own call.
+	if _clock>_queued_until:
+		_queued_voice = ""
+		return
 	_queued_wait -= delta
 	if _queued_wait>0.0: return
 	var kind := _queued_voice
@@ -669,7 +713,6 @@ func _poll_voice_events(delta: float) -> void:
 	var action: String = worker.action
 	var progress: float = worker.action_progress
 	if action!=_poll_action:
-		if action=="interrupted": say("oops",-20.0,.8,true)
 		_poll_action = action
 		_poll_progress = 0.0
 	# Effort on real strokes: a sparse grunt on the draw before contact, a
@@ -694,11 +737,14 @@ func _poll_voice_events(delta: float) -> void:
 	if leap!=_poll_leap:
 		if leap=="prepare": say("hup",-22.0,.5)
 		_poll_leap = leap
-	# Stumbles, hits and falls: a surprised "oops".
-	var reaction: float = worker._reaction
+	# Real hits (counted by the face from apply_hit/take_damage/native
+	# impacts, never a job interruption) and falls: an "uh-oh". It still
+	# takes turns with nearby calls.
+	var face: RefCounted = worker.get("eyes")
+	var hits: int = int(face.events.hit) if face else 0
 	var down: bool = not worker.is_available()
-	if reaction>_poll_reaction+.08 or (down and not _poll_down): say("oops",-18.0 if down else -20.0,.75,true)
-	_poll_reaction = reaction
+	if hits!=_hits_seen or (down and not _poll_down): say("oops",-18.0 if down else -20.0,.75,true,true)
+	_hits_seen = hits
 	_poll_down = down
 	# A curious "huh?"/"hmm" now and then when attention jumps to a fresh,
 	# unusual event of another Wako (a flip, splash, fall, toss).
@@ -711,6 +757,36 @@ func _poll_voice_events(delta: float) -> void:
 	elif alert_weight<=.001:
 		if _alert_time>1.0: say("sigh",-22.0,.6)
 		_alert_time = 0.0
+
+func _smile_allowed(player: Node3D) -> bool:
+	# Smile at someone this Wako is really looking at, and only while few of
+	# the crew already beam (each tree keeps its own count).
+	var face: RefCounted = worker.get("eyes")
+	if face and not face.watching(player): return false
+	if attention and attention.kind!=&"player" and attention.point.is_finite(): return false
+	var now := Attention.now()
+	var active := 0
+	for id: int in _smiling.keys():
+		if float(_smiling[id])<now or not is_instance_id_valid(id): _smiling.erase(id)
+		elif (instance_from_id(id) as Node).get_tree()==worker.get_tree(): active += 1
+	var service: Node = worker.coordinator
+	var crew: int = service.workers.size() if is_instance_valid(service) else 1
+	return active<maxi(1,int(.2*crew))
+
+func _threat_turn(delta: float, core: Node3D) -> void:
+	# Watching a live enemy while standing (beyond the flee radius, or from
+	# cover): the eyes lead and the cube follows toward it.
+	_threat_turn_wait = maxf(0.0,_threat_turn_wait-delta)
+	if not core or _threat_turn_wait>0.0 or not worker.is_available() or not worker.on_ground or worker.paused: return
+	if not worker.current_job_id.is_empty() or worker.action not in ["","danger"] or is_instance_valid(worker.station) or worker.carrying: return
+	if worker.gait_speed>.25 or (worker.has_target and (worker.target_position-worker.global_position).slide(Vector3.UP).length()>.3): return
+	if worker.back_tool and worker.back_tool.busy(): return
+	var watch: SkeletonModifier3D = worker.threat_watch
+	if is_instance_valid(watch) and float(watch._notice_age)<.4: return
+	var to: Vector3 = (core.global_position-worker.global_position).slide(Vector3.UP)
+	if to.length_squared()<.04 or absf(wrapf(atan2(-to.x,-to.z)-worker._heading,-PI,PI))<.3: return
+	_threat_turn_wait = .9
+	worker.face_point(core.global_position)
 
 func _follow_attention(delta: float, idle: bool) -> void:
 	# A quiet planted Wako turns its body toward a strong point of interest
