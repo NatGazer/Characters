@@ -18,7 +18,7 @@ const FOOT_WORK := ["inspect", "assemble", "repair", "unbend", "maintenance", "t
 const GATHER_TOE_SPEED := 2.2
 const STUNT_TURN := 6.0
 # A brisk foot twirl on the way out of the seat (~1.3 rev/s peak).
-const RETRIEVE_TURN := 8.5
+const RETRIEVE_TURN := 10.5
 # Tray hardware (rubber + shelf + bronze socket) below each tray top, the
 # skin cube's bottom edge, and the clearance kept above it.
 const TRAY_HARDWARE_BELOW_TOP := .087
@@ -26,7 +26,7 @@ const CUBE_BOTTOM_Y := -.2625
 const HARDWARE_ABOVE_BOTTOM := .04
 # First-use cost guesses (ops) of one planner unit, refined as units run.
 const PLAN_UNIT_DEFAULT := {"pose":4,"solve":12,"arc_posture":90,"arc_native":40,"kick":30,"advance":20}
-const RETRIEVE_TOE_SPEED := 2.6
+const RETRIEVE_TOE_SPEED := 3.4
 const KICK_STROKE := .26 # Straight COM stroke of the kick (the thigh drives it).
 const KICK_RAMP := .03 # Speed ramp-in only: the tool leaves at full stroke speed.
 const KICK_TOE_SPEED := 4.4 # Stroke speed cap (the tool's own release speed is ~4.0-4.4).
@@ -277,6 +277,11 @@ const SEAT_REBOUND_SECONDS := .20
 const CLACK_SECONDS := .10
 var _plan_search: Dictionary = {}
 var _arc_fail_time := -1.0
+var _floor_margin := 0.0
+var _lift_off: Dictionary = {}
+const LIFT_OFF_RADIUS := .10
+const AIM_BEHIND := .015
+const CROUCH_MARGIN := .055 # Deepest acting crouch below the planning pose (gather/hold).
 var _seat_settling := false
 var _catch_keepout := false
 var _seat_flip := 1.0
@@ -293,6 +298,7 @@ var _catch_trim_at_catch := 0.0
 var _support_step: Dictionary = {} # Support foot's catch-up step during the flight.
 var _support_step_done := false
 var _draw_started := 0.0
+var _draw_lift_t0 := -1.0
 var _retrieval_time := 0.0
 static var _bronze: StandardMaterial3D
 static var _stone: StandardMaterial3D
@@ -578,6 +584,7 @@ func advance(delta: float) -> void:
 		_seat_settle_age += delta
 		if phase != "back": _seat_settling = false
 	_update_clack(delta)
+	if not _lift_off.is_empty() and (phase not in ["foot","prepare"] or stage in ["hold","kick","release"]): _lift_off.clear()
 	if stage in ["settle","proud"]:
 		_settle_time -= delta
 		if phase != "back": _set_stage("")
@@ -1337,16 +1344,27 @@ func _request_toss() -> void:
 	_capture_toe_binding()
 	_home_toe_in_ankle=_toe_in_ankle
 	if plan_debug: print("CONTRAPTION_BACK_TOOL toss_request t=",Engine.get_physics_frames()," legacy_pending=",_legacy_pending," keepouts=",tool.get_meta(&"worker_tool_keepouts",[]))
+	_lift_off.clear()
 	if not _frame_clear(_toe,_root,true) and _only_observed_support_contact():
-		# The ordinary controller uses exact visual slices while an attached
-		# stock BoxShape can still touch its support with an empty corner. Use
-		# its existing bounded 45 mm leg lift; do not waive native clearance.
-		if plan_debug: print("CONTRAPTION_BACK_TOOL toss_lift native=",JSON.stringify(last_native_obstacle)," posture=",JSON.stringify(_posture_debug(_tool_frame(_toe)))," lift=",worker._pose._held_lift)
-		worker._pose._held_lift_time=.35
-		_retry=.04
-		_tool_id=0
-		reason="Raising the original tool clear of its observed support"
-		return
+		# The ordinary carry can rest a wide stock box's empty corner on the
+		# ground it stands on. The gather then lifts it straight off that same
+		# support: within LIFT_OFF_RADIUS of the start, contact with exactly
+		# that support body is admitted only while it never gets deeper than
+		# it already is. Every other body, and every later pose, keeps the full
+		# native clearance (no separate .35 s ordinary lift first).
+		var support: Dictionary = worker.get_world_3d().direct_space_state.intersect_ray(worker._query)
+		_lift_off = {"rid":support.rid,"origin":_toe.origin,"gap":_native_support_gap(_tool_frame(_toe),worker._ground_point,worker.ground_normal)}
+		# The way home later ends with the same corner just clear of the ground.
+		var home_lift: float = clampf(.006-float(_lift_off.gap),0.0,.06)
+		_home_toe_body = _body_frame.affine_inverse()*Transform3D(_toe.basis,_toe.origin+worker.ground_normal*home_lift)
+		if not _frame_clear(_toe,_root,true) or float(_lift_off.gap) < -.045:
+			_lift_off.clear()
+			if plan_debug: print("CONTRAPTION_BACK_TOOL toss_lift native=",JSON.stringify(last_native_obstacle)," posture=",JSON.stringify(_posture_debug(_tool_frame(_toe)))," lift=",worker._pose._held_lift)
+			worker._pose._held_lift_time=.35
+			_retry=.04
+			_tool_id=0
+			reason="Raising the original tool clear of its observed support"
+			return
 	_stunt.clear()
 	_advance.clear()
 	reason = ""
@@ -1412,7 +1430,7 @@ func _request_toss() -> void:
 	_kick_time = 0.0
 	_stunt_metrics = {"planned": not _stunt.is_empty(), "plan_usec": validation_usec, "legacy_search_ops": search_ops}
 	if not _stunt.is_empty():
-		for key: String in ["apex","advance","flight_seconds","release_speed","launch_point","candidate","front","flip","search_ops","search_ticks","d_reach","kick_speed","kick_spin","kick_seconds","turns","spin_option","T_adv","rise","lean"]: _stunt_metrics[key] = _stunt.get(key)
+		for key: String in ["apex","advance","flight_seconds","release_speed","launch_point","candidate","front","flip","search_ops","search_ticks","d_reach","kick_speed","kick_spin","kick_seconds","turns","spin_option","T_adv","rise","lean","gather_route"]: _stunt_metrics[key] = _stunt.get(key)
 	_return_segment_index=-1
 	_stow_wait=0.0
 	reason = ""
@@ -1641,7 +1659,10 @@ func _plan_stunt() -> Dictionary:
 					_plan_note(ci,"support_reach",apex,float(advances[di]))
 					continue
 				var cock: Transform3D = plan.cock
-				if not _toe_reachable(cock,hip,_foot_side) or not _toe_reachable(plan.release,hip,_foot_side) or not _frame_clear(cock,_root,false):
+				_floor_margin = CROUCH_MARGIN
+				var cock_clear := _frame_clear(cock,_root,false)
+				_floor_margin = 0.0
+				if not _toe_reachable(cock,hip,_foot_side) or not _toe_reachable(plan.release,hip,_foot_side) or not cock_clear:
 					_plan_note(ci,"cock",apex,float(advances[di]))
 					continue
 				_plan_search.plan = plan
@@ -1655,7 +1676,10 @@ func _plan_stunt() -> Dictionary:
 				match check:
 					"arc_posture": passed = _stunt_arc_clear(_tool_frame(plan.release),plan.v,plan.omega,float(plan.T),forward,float(plan.advance),float(plan.T_adv),false)
 					"arc_native": passed = _stunt_arc_clear(_tool_frame(plan.release),plan.v,plan.omega,float(plan.T),forward,float(plan.advance),float(plan.T_adv),true)
-					"kick": passed = _kick_path_clear(plan,hip)
+					"kick":
+						_floor_margin = CROUCH_MARGIN
+						passed = _kick_path_clear(plan,hip)
+						_floor_margin = 0.0
 					"advance": passed = float(plan.advance) <= 0.0 or _advance_clear(forward,float(plan.advance))
 				if not passed:
 					_plan_note(ci,check,apex,float(plan.advance))
@@ -1676,7 +1700,9 @@ func _plan_stunt() -> Dictionary:
 				# fit the remaining budget (one route may span several ticks).
 				var plan: Dictionary = _plan_search.plan
 				var cached: Variant = _plan_search.gather.get(gather_key)
-				var routes := _gather_routes(plan.cock)
+				# First pass: short gathers only (a brisk raise into the cock); the
+				# outboard detours join only if no candidate has a short one.
+				var routes := _gather_routes(plan.cock,bool(_plan_search.get("long_gather",false)))
 				if cached == null:
 					var ri: int = _plan_search.route
 					if ri >= routes.size():
@@ -1695,6 +1721,7 @@ func _plan_stunt() -> Dictionary:
 					continue
 				var gather: Array[Transform3D] = routes[int(cached)]
 				plan.waypoints = gather
+				plan.gather_route = int(cached)
 				plan.candidate = ci
 				plan.front = bool(cand.front)
 				plan.launch_point = Vector3(cand.point)
@@ -1709,6 +1736,15 @@ func _plan_stunt() -> Dictionary:
 				return plan
 	_seat_flip = preferred
 	_commit_seat(tool)
+	if not bool(_plan_search.get("long_gather",false)):
+		# Second pass with the outboard gather detours (next tick).
+		_plan_search.long_gather = true
+		_plan_search.cand = 0
+		_plan_search.gather = {}
+		_plan_next_candidate()
+		_plan_search.cand = 0
+		_plan_search.ops = int(_plan_search.ops)+_plan_ops()-budget_start
+		return {"pending":true}
 	var spent := int(_plan_search.ops)+_plan_ops()-budget_start
 	_plan_search.clear()
 	return {"exhausted":true,"search_ops":spent}
@@ -1733,6 +1769,9 @@ func _chunk_route_clear(state: Dictionary,start: Transform3D,route: Array,room: 
 			var fraction := float(index)/count
 			var sample := Transform3D(Basis(from_q.slerp(end_q,fraction)),seg_start.origin.lerp(endpoint.origin,fraction))
 			if not _toe_reachable(sample,hip,side) or not _frame_clear(sample,_root,true):
+				if plan_debug:
+					var rel: Transform3D = _body_frame.affine_inverse()*sample
+					print("CONTRAPTION_BACK_TOOL route_refused seg=",seg,"/",route.size()," k=",index,"/",count," reach=",_toe_reachable(sample,hip,side)," toe_body=",rel.origin," y=",rel.basis.y," native=",JSON.stringify(last_native_obstacle).left(160)," posture=",JSON.stringify(_posture_debug(_tool_frame(sample))).left(300))
 				state.erase("c_seg")
 				state.erase("c_k")
 				return -1
@@ -1791,10 +1830,9 @@ func _stunt_candidates(tool: RigidBody3D) -> Array[Dictionary]:
 		# spike or handle-end slices into the cube's side as it travels inward:
 		# it is kicked with the blade fore-and-aft (sagittal) instead, and the
 		# ankle flick rolls it about the flight's own axis into the seat.
-		# Its thick offset handle needs the release a little lower than the mallet's.
-		for point: Vector3 in [Vector3(.48,-.64,.06),Vector3(.50,-.60,.04),Vector3(.46,-.68,.08),Vector3(.52,-.58,.02)]:
-			for lean: float in [55.0,70.0,40.0]:
-				specs.append([point,lean,APEX_MAIN+[2.12],[2],0,PI*.5])
+		for point: Vector3 in points:
+			for lean: float in [66.0,72.0,78.0]:
+				specs.append([point,lean,[2.12,2.18,2.24],[1],0])
 	for point: Vector3 in points:
 		for lean: float in [60.0,70.0]:
 			specs.append([point,lean,APEX_MAIN+[2.12,2.18],[0,2],1])
@@ -1962,7 +2000,7 @@ func _kick_path_clear(plan: Dictionary,hip: Vector3) -> bool:
 		previous = sample
 	return true
 
-func _gather_routes(cock: Transform3D) -> Array:
+func _gather_routes(cock: Transform3D,long := true) -> Array:
 	# From the actual current toe (any authored toe direction, e.g. a tool
 	# trailing behind on the floor) to the cocked pose. The tool turns
 	# upright OUTBOARD of the body, never through it; a wide cutter first
@@ -1984,9 +2022,22 @@ func _gather_routes(cock: Transform3D) -> Array:
 	var routes: Array = []
 	routes.append([cock])
 	routes.append([lifted,cock])
+	# Short arcs first: the shaft is raised (its far end up, off the floor)
+	# while the toe lifts, then it turns straight into the cocked pose.
+	var shaft: Vector3 = _toe.basis.y.normalized()
+	var raise_axis: Vector3 = shaft.cross(_body_frame.basis.y.normalized())
+	if raise_axis.length_squared() > .01:
+		raise_axis = raise_axis.normalized()
+		for pair: Vector2 in [Vector2(.12,deg_to_rad(35.0)),Vector2(.18,deg_to_rad(55.0))]:
+			var raised := Transform3D((Basis(raise_axis,pair.y)*_toe.basis).orthonormalized(),_toe.origin+_body_frame.basis.y*pair.x)
+			routes.append([raised,cock])
+	if not long: return _route_arrays(routes)
 	routes.append([Transform3D(_toe.basis,_body_frame*aside),Transform3D(upright,_body_frame*aside_up),cock])
 	if wide: routes.append([Transform3D(_toe.basis,_body_frame*aside),Transform3D(sagittal,_body_frame*aside_up),Transform3D(sagittal,_body_frame*Vector3(cock_local.origin.x,cock_local.origin.y,cock_local.origin.z-.12)),cock])
 	routes.append([lifted,Transform3D(_toe.basis,_body_frame*aside),Transform3D(upright,_body_frame*aside_up),cock])
+	return _route_arrays(routes)
+
+static func _route_arrays(routes: Array) -> Array:
 	var output: Array = []
 	for route: Array in routes:
 		var points: Array[Transform3D] = []
@@ -2011,7 +2062,9 @@ func _ballistic(release_tool: Transform3D,apex: float,d: float,forward: Vector3,
 	var seconds := .85
 	var seat_com := Vector3.ZERO
 	for pass_index in 3:
-		seat_com = settled*seat_point()+forward*d+ground_velocity*seconds+seat_basis_world*com_local+settled.basis.y*CATCH_CROUCH
+		# Aimed a little behind the seat line (AIM_BEHIND): the last part of
+		# the fall stays clear of the plate; the rubber settle slides it home.
+		seat_com = settled*(seat_point()+Vector3(0,0,AIM_BEHIND))+forward*d+ground_velocity*seconds+seat_basis_world*com_local+settled.basis.y*CATCH_CROUCH
 		var fall := apex-(seat_com.y-p0.y)
 		if fall < .05: return {}
 		seconds = vy/gravity+sqrt(2.0*fall/gravity)
@@ -2227,20 +2280,22 @@ func _request_retrieval(sk: Skeleton3D) -> void:
 	var admitted := false
 	var ops_start := _plan_ops()
 	var index := _retrieval_cand
-	var total := 5
+	var total := 6
 	while index < total:
 		if index > _retrieval_cand and _plan_ops()-ops_start > 70: break
 		var route: Array[Transform3D] = []
 		match index:
-			0: route = [lift,Transform3D(_toe.basis,_body_frame*beside_point),pre,target]
-			1: route = [lift,Transform3D(target.basis,_body_frame*beside_point),pre,target]
-			2: if behind_point.z > beside_point.z: route = [lift,Transform3D(target.basis,_body_frame*behind_point),pre,target]
-			3, 4:
+			# Direct: off the floor, straight up under the low handle end.
+			0: route = [lift,pre,target]
+			1: route = [lift,Transform3D(_toe.basis,_body_frame*beside_point),pre,target]
+			2: route = [lift,Transform3D(target.basis,_body_frame*beside_point),pre,target]
+			3: if behind_point.z > beside_point.z: route = [lift,Transform3D(target.basis,_body_frame*behind_point),pre,target]
+			4, 5:
 				# Original rear passage. Loose native stock can block its forward
 				# corner; withdraw beside the current empty toe before moving rearward.
 				var rear:=_reachable_rear(side,[_toe.basis,target.basis],-.52,hip)
 				if rear.is_finite():
-					if index == 3: route = [lift,Transform3D(_toe.basis,_body_frame*Vector3(side*.57,-.52,-.38)),Transform3D(target.basis,_body_frame*rear),target]
+					if index == 4: route = [lift,Transform3D(_toe.basis,_body_frame*Vector3(side*.57,-.52,-.38)),Transform3D(target.basis,_body_frame*rear),target]
 					else: route = [lift,Transform3D(_toe.basis,_body_frame*Vector3(side*.57,-.52,start_local.z)),
 						Transform3D(_toe.basis,_body_frame*rear),Transform3D(target.basis,_body_frame*rear),target]
 		index += 1
@@ -2248,7 +2303,7 @@ func _request_retrieval(sk: Skeleton3D) -> void:
 		if _empty_retrieval_path_clear(lift,route,hip):
 			admitted = true
 			_waypoints = route
-			_route_fast = index <= 3
+			_route_fast = index <= 4
 			break
 	if not admitted and index < total:
 		# Resume the remaining candidates next tick (the seated tool stays put).
@@ -2374,6 +2429,7 @@ func _attach_to_foot_observed(toe: Transform3D) -> void:
 	_draw_points = 0
 	_set_stage("draw")
 	_draw_started = _retrieval_time
+	_draw_lift_t0 = -1.0
 	_path_index = 0
 	_wait = 0.0
 	_age = 0.0
@@ -2766,8 +2822,11 @@ func _seat_spec(tool: RigidBody3D) -> Dictionary:
 	if is_instance_valid(tool) and _keepout_half_width(tool) > .2:
 		# Wide cutter: a shallower tilt and a larger far shift keep its blade
 		# outboard of the far leg and its keepout under the roof.
-		return {"tilt":deg_to_rad(15.0),"shift":.13,"y_max":-.10,"pads":[-.125,.12]}
-	return {"tilt":deg_to_rad(30.0),"shift":.05,"y_max":-.044,"pads":[-.14,.20]}
+		return {"tilt":deg_to_rad(15.0),"shift":.16,"y_max":-.10,"pads":[-.125,.12]}
+	# Compact head (mallet): its handle end sits low just outboard of the hip
+	# (an easy toe target: little abduction), the head peeks out past the far
+	# shoulder; both trays stay inside the hip lane and bracket the COM.
+	return {"tilt":deg_to_rad(30.0),"shift":.12,"y_max":-.044,"pads":[-.14,.14]}
 
 func _seat_layout_for(tool: RigidBody3D,s: float,f: float) -> Dictionary:
 	# Pure geometry for one tool/side/face (cached): seat frame (body), tray
@@ -3055,8 +3114,13 @@ func _acting_target(pose: SkeletonModifier3D,sk: Skeleton3D,unbalanced_com: Vect
 				yaw = _side_sign*-.30*smoothstep(.03,.22,reach_t)
 				pitch = .02*smoothstep(.05,.25,reach_t)
 			elif stage == "draw":
-				yaw = _side_sign*-.30*(1.0-smoothstep(0.0,.30,a))
-				pitch = -.085*smoothstep(0.0,.18,a)
+				# The cube holds still while the toe lifts the tool off the trays
+				# (it sits ~1 cm off the plate), then turns back and counter-pitches
+				# as the mass swings forward.
+				if _path_index >= 1 and _draw_lift_t0 < 0.0: _draw_lift_t0 = _stage_age
+				var b: float = maxf(_stage_age-_draw_lift_t0,0.0) if _draw_lift_t0 >= 0.0 else 0.0
+				yaw = _side_sign*-.30*(1.0-smoothstep(0.0,.30,b))
+				pitch = lerpf(.02,-.085,smoothstep(0.0,.18,b))
 			else:
 				var fade := 1.0-smoothstep(maxf(_return_segment_seconds-.18,0.0),_return_segment_seconds+.08,_return_segment_age) if _path_index >= _waypoints.size()-1 else 1.0
 				yaw = _side_sign*-.30*(1.0-smoothstep(0.0,.25,_retrieval_clock()-_draw_started))*fade
@@ -3496,7 +3560,9 @@ func _cancel_to_foot(explanation: String) -> bool:
 		_reset_foot_handoff(worker._pose)
 		return false
 	phase = "return"
-	_set_stage("home")
+	# Its own stage: the body's retrieval acting (glance yaw, counter-pitch)
+	# does not apply; the cube eases back to its ordinary sway.
+	_set_stage("retrace")
 	_return_search.clear()
 	_home_extension_done = true
 	_accept_return_route(route,0)
@@ -3819,7 +3885,10 @@ func _frame_clear(toe: Transform3D, root: Transform3D, native_obstacles: bool,sa
 	frame.inverse = same_request.inverse if not same_request.is_empty() and same_request.root==root else root.affine_inverse()
 	if not request_support_current:
 		frame.supported = worker.on_ground
-		frame.support_point = worker._ground_point
+		# Planning the crouched gather/hold: the body will sit up to
+		# CROUCH_MARGIN lower than when it is planned, so the same body-relative
+		# tool must keep that much more air above its support.
+		frame.support_point = worker._ground_point+worker.ground_normal*_floor_margin
 		frame.support_normal = worker.ground_normal
 	frame.basis = toe.basis
 	frame.toe_basis = toe.basis
@@ -3842,6 +3911,7 @@ func _frame_clear(toe: Transform3D, root: Transform3D, native_obstacles: bool,sa
 			_query.exclude=same_request.exclusions
 			return _reuse_return_native_sample(world,cached_sample)
 	var posture_started_usec: int=Time.get_ticks_usec() if return_preflight_timings_enabled else 0
+	var lifting_off := _lifting_off(toe)
 	ops_posture += 1
 	var posture_clear: bool=worker._tool_posture_clear(toe.origin,toe.basis.y,frame)
 	var near_plate: bool = plate_bounds.size != Vector3.ZERO and plate_bounds.grow(.62).has_point(frame.inverse*(toe.origin+toe.basis.y*.5075))
@@ -3857,10 +3927,17 @@ func _frame_clear(toe: Transform3D, root: Transform3D, native_obstacles: bool,sa
 	if return_preflight_timings_enabled:
 		_whole_tool_posture_usec+=Time.get_ticks_usec()-posture_started_usec
 		_whole_tool_posture_calls+=1
+	if not posture_clear and lifting_off:
+		# Lifting off its own support: the body and plate keepouts still apply.
+		var floorless := frame.duplicate()
+		floorless.supported = false
+		ops_posture += 1
+		posture_clear = worker._tool_posture_clear(toe.origin,toe.basis.y,floorless)
 	if not posture_clear: return false
 	if not native_obstacles: return true
 	if same_request.is_empty(): world=_tool_frame(toe)
 	var exclusions: Array[RID]=same_request.exclusions if not same_request.is_empty() else worker.query_exclusions()
+	if lifting_off: exclusions.append(_lift_off.rid)
 	if same_request.is_empty():
 		exclusions.append(tool.get_rid())
 		exclusions.append(holder.get_rid())
@@ -3900,6 +3977,11 @@ func _frame_clear(toe: Transform3D, root: Transform3D, native_obstacles: bool,sa
 	if not same_request.is_empty():
 		same_request.native_samples[world]={"toe":toe,"root":root,"obstacle":last_native_obstacle.duplicate(true)}
 	return obstacles.is_empty()
+
+func _lifting_off(toe: Transform3D) -> bool:
+	# See _request_toss: the gather's first lift straight off its own support.
+	if _lift_off.is_empty() or phase not in ["foot","prepare"] or toe.origin.distance_to(Vector3(_lift_off.origin)) > LIFT_OFF_RADIUS: return false
+	return _native_support_gap(_tool_frame(toe),worker._ground_point,worker.ground_normal) >= float(_lift_off.gap)-.001
 
 func _reuse_return_native_sample(world: Transform3D,cached_sample: Dictionary) -> bool:
 	last_native_obstacle=cached_sample.obstacle.duplicate(true)
@@ -4010,7 +4092,9 @@ func _empty_toe_clear(toe: Transform3D,root: Transform3D) -> bool:
 	if phase in ["back","retrieve"]:
 		# The worn seat sits close behind the body: test the measured body and
 		# plate (as the held-tool transfers do), grown by the empty toe sphere.
-		if BACK_BOUNDS.grow(.07).has_point(local) or PLATE_BOUNDS.grow(.07).has_point(local): return false
+		# Sphere-vs-box distance (the grown box would also refuse its empty
+		# corners, e.g. the low handle end just off the plate's edge).
+		if _box_distance(BACK_BOUNDS,local) < _empty_foot_shape.radius or _box_distance(PLATE_BOUNDS,local) < _empty_foot_shape.radius: return false
 	elif AABB(Vector3(-.405,-.325,-.405),Vector3(.81,.73,.81)).grow(.07).has_point(local): return false
 	var exclusions: Array[RID]=worker.query_exclusions()
 	exclusions.append(worker.equipped_tool.get_rid())
@@ -4028,6 +4112,9 @@ func _empty_toe_clear(toe: Transform3D,root: Transform3D) -> bool:
 		last_native_obstacle={"body":str(collider.get_path()) if collider is Node else str(collider),"rid":str(hit.rid),"shape":hit.shape,
 			"empty_foot":Part.encode_transform(_query.transform),"radius":_empty_foot_shape.radius}
 	return hits.is_empty()
+
+static func _box_distance(box: AABB,point: Vector3) -> float:
+	return point.distance_to(point.clamp(box.position,box.end))
 
 func _tool_frame(toe: Transform3D) -> Transform3D:
 	return Transform3D(toe.basis,toe.origin+toe.basis.y*(.035+float(worker.equipped_tool.definition.size.y)*.45))
