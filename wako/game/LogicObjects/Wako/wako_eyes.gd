@@ -99,6 +99,14 @@ var _blink_value := 1.0
 var _blink_at := 2.0
 var _blink_started := -10.0
 var _double_pending := false
+# A motivated blink (gaze-evoked, landing, completion) fires after a personal
+# 40-150 ms latency, so a shared stimulus never blinks a crowd in sync; a
+# startle blink opens a quiet window (no gaze-evoked/double/motivated blink
+# flutter over the surprise or the notice beat).
+var _blink_pending := false
+var _blink_pending_depth := 1.0
+var _blink_startle := false
+var _blink_quiet_until := 0.0
 # Gaze.
 var _want_point := Vector3.INF
 var _want_node: WeakRef
@@ -110,6 +118,8 @@ var _body_turning := true
 var _dancing := false
 var _want_key := 0
 var _track := Vector3.INF
+# Saccade onset latency for shared stimuli (board events, a heard warning).
+var _sacc_hold_until := 0.0
 var _desired := Vector2.ZERO
 var _vergence := 0.0
 var _sacc_t := -1.0
@@ -264,7 +274,8 @@ func advance(delta: float) -> void:
 	# and a landing/take-off.
 	var fear: float = worker.fear_time
 	var grounded: bool = worker.on_ground
-	if fear>_fear_seen+.3 or grounded!=_ground_seen:
+	var recoil: RefCounted = worker.recoil
+	if fear>_fear_seen+.3 or grounded!=_ground_seen or (recoil and int(recoil.events)!=_last_recoil):
 		_brain_wait = minf(_brain_wait,0.0)
 		_ground_seen = grounded
 	_fear_seen = fear
@@ -314,27 +325,57 @@ func _advance_blink(delta: float) -> void:
 		_dirty = true
 		return
 	if _time<_blink_at: return
-	if _blink_suppressed():
-		_blink_at = _time+.08
-		return
-	# Watching a live danger blinks more often (stress), resting less.
+	# Watching a live danger blinks a little more often (stress), resting less.
 	var personality: RefCounted = worker.personality
 	var alert := float(personality.alert_weight) if personality else 0.0
-	var mean := _blink_mean*(1.0-.35*alert)*(1.0+.8*_rest_sleepy)
+	var mean := _blink_mean*(1.0-.25*alert)*(1.0+.8*_rest_sleepy)
+	var hold := _blink_wait_until()
+	if _blink_startle: hold = _time
+	if hold>_time:
+		# A blink never lands in a strike contact, the notice widen/focus beat
+		# or a startle's quiet window. A motivated blink that missed its moment
+		# is dropped; the spontaneous clock resumes a personal beat after the
+		# hold (blinks never pile up at its end).
+		_blink_pending = false
+		_double_pending = false
+		_blink_at = hold+_rng.randf_range(.25,.8)
+		return
 	_blink_at = _time+clampf(exp(log(mean)-.1+.45*_rng.randfn()),.6,9.0)
+	if _blink_pending:
+		_blink_pending = false
+		_blink_startle = false
+		_double_pending = false
+		_start_blink(_blink_pending_depth,false)
+		return
 	var roll := _rng.randf()
-	_double_pending = roll<.12+.1*alert
+	_double_pending = roll<.12+.05*alert
 	_start_blink(_rng.randf_range(.55,.75) if roll>.87 else 1.0,_rest_sleepy>.5)
 
-func _blink_suppressed() -> bool:
-	# Never blink into a strike contact or the startle beat of a real notice.
-	if worker.action in STROKE_KINDS and worker.action_progress>.44 and worker.action_progress<.62: return true
+## Game time until which no blink may start (now or earlier: none).
+func _blink_wait_until() -> float:
+	var hold := _blink_quiet_until
+	# Never blink into a strike contact or the widen/focus beat of a notice.
+	if worker.action in STROKE_KINDS and worker.action_progress>.44 and worker.action_progress<.62: hold = maxf(hold,_time+.03)
 	var watch: SkeletonModifier3D = worker.threat_watch
-	return is_instance_valid(watch) and float(watch.notice_widen)>.15
+	if is_instance_valid(watch) and (float(watch.notice_widen)>.15 or float(watch.notice_focus)>.05): hold = maxf(hold,_time+.05)
+	return hold
 
 func _motivated_blink(chance: float, depth := 1.0) -> void:
-	if _blink_t>=0.0 or _time-_blink_started<.3 or _rng.randf()>chance or _blink_suppressed(): return
-	_start_blink(depth,false)
+	if _blink_t>=0.0 or _blink_pending or _time-_blink_started<.3 or _blink_wait_until()>_time or _rng.randf()>chance: return
+	_blink_pending = true
+	_blink_pending_depth = depth
+	_blink_at = _time+_rng.randf_range(.04,.15)
+
+## Startle blink (a real hit): fast, then a quiet window over the surprise
+## and the look toward the source.
+func _startle_blink() -> void:
+	if _blink_t<0.0 and _blink_wait_until()<=_time:
+		_blink_pending = true
+		_blink_startle = true
+		_blink_pending_depth = 1.0
+		_blink_at = _time+_rng.randf_range(.02,.05)
+	_double_pending = false
+	_blink_quiet_until = _time+.8
 
 # ---------------------------------------------------------------- gaze
 
@@ -420,6 +461,8 @@ func _advance_gaze(delta: float) -> void:
 	if moving or _body_moving: _gaze_static = 0
 	else: _gaze_static += 1
 	var desired := _uv_toward(_track) if _track.is_finite() else Vector2(-.002,0.0)
+	# Still reacting to a shared stimulus: hold the old fixation briefly.
+	if _time<_sacc_hold_until and _sacc_t<0.0: desired = _desired
 	if _sacc_t>=0.0:
 		_fly(delta,desired)
 	elif desired.distance_to(_desired)>.0035 or gaze.distance_to(desired)>.0045:
@@ -446,6 +489,7 @@ func _advance_gaze(delta: float) -> void:
 	var turn: float = absf(worker.turn_rate)
 	_gaze_stride = stride if turn>.9 or not _ground_seen else stride*2 if turn>.3 or _dancing else stride*3 if _gaze_static<=2 or _body_moving else stride*6
 	_gaze_next = _tick+_gaze_stride
+	if _time<_sacc_hold_until: _gaze_next = mini(_gaze_next,_tick+ceili((_sacc_hold_until-_time)*120.0)+1)
 
 func _fly(delta: float, desired: Vector2) -> void:
 	# A saccade launched in this very call (a refixation hop) starts its
@@ -472,8 +516,11 @@ func _start_saccade(to_uv: Vector2) -> void:
 	_micro = Vector2.ZERO
 	_gaze_static = 0
 	events.saccade += 1
-	# Big gaze shifts often carry a blink (gaze-evoked blink).
-	if degrees>22.0: _motivated_blink(.5)
+	# Big gaze shifts often carry a blink (gaze-evoked blink), less often
+	# while watching a danger (no flutter over every glance).
+	if degrees>22.0:
+		var personality: RefCounted = worker.personality
+		_motivated_blink(.5-.3*(float(personality.alert_weight) if personality else 0.0))
 
 ## hops: 0 none, 1 face/body/feet refixations, 2 quick darts over a hostile.
 func _look_at(point: Vector3, key: int, follow: Node3D = null, offset := Vector3.ZERO, hops := -1) -> void:
@@ -493,8 +540,15 @@ func _look_at(point: Vector3, key: int, follow: Node3D = null, offset := Vector3
 	else:
 		_track = point
 	_want_hops = hops if hops>=0 else 1 if follow and (_want_face or follow==Global.Player) else 0
-	if _track.is_finite() and not _down: _start_saccade(_uv_toward(_track))
+	if _track.is_finite() and not _down:
+		if _time<_sacc_hold_until: _gaze_next = mini(_gaze_next,_tick+ceili((_sacc_hold_until-_time)*120.0)+1)
+		else: _start_saccade(_uv_toward(_track))
 	_gaze_static = 0
+
+## A shared stimulus (a board event, a heard warning) is looked at after a
+## personal 40-150 ms reaction time, so a crowd never jumps in one frame.
+func _react_later() -> void:
+	_sacc_hold_until = _time+_rng.randf_range(.04,.15)
 
 # ---------------------------------------------------------------- brain
 
@@ -518,6 +572,9 @@ func _brain(elapsed: float) -> void:
 		_choose_elapsed += elapsed
 	_compose()
 	_brain_interval = LOD_INTERVALS[_lod] if _lod>0 or not _busy else FAST_INTERVAL if _fast else BUSY_INTERVAL
+	# Glance/look-back timers keep their length on a far, on-screen face.
+	var personality: RefCounted = worker.personality
+	if personality and is_instance_valid(personality.live_threat): _brain_interval = minf(_brain_interval,.25)
 
 func _update_lod() -> void:
 	var camera: Camera3D = worker.get_viewport().get_camera_3d() if worker.is_inside_tree() else null
@@ -565,7 +622,7 @@ func _poll_events(elapsed: float) -> void:
 	if not grounded: _air_time += elapsed
 	elif not _was_grounded:
 		if _air_time>.22:
-			pulse(&"squeeze",clampf(_air_time*1.3,.35,.9))
+			pulse(&"squeeze",_squeeze_amount(clampf(_air_time*1.3,.35,.9)))
 			_motivated_blink(.75)
 			Attention.post(worker,&"landing",worker.global_position,.45,1.2,worker)
 			if _air_time>.5 and worker.cargo_mass>0.0: pulse(&"pride",.7,.25)
@@ -582,7 +639,7 @@ func _poll_events(elapsed: float) -> void:
 		if leap=="prepare":
 			pulse(&"notice",1.0)
 			Attention.post(worker,&"flip",worker.global_position,.65,2.6,worker)
-		elif leap=="contact": pulse(&"squeeze",.5)
+		elif leap=="contact": pulse(&"squeeze",_squeeze_amount(1.0))
 		_last_leap = leap
 	# Back-tool toss and its caught return.
 	var back_node: RefCounted = worker.back_tool
@@ -649,15 +706,23 @@ func _poll_events(elapsed: float) -> void:
 
 func _roll_stroke() -> void:
 	# Each hammer stroke squeezes a little differently: mostly a pinched
-	# "> <", sometimes only a tight squint.
-	_stroke_squeeze = _rng.randf_range(.6,1.0) if _rng.randf()<.7 else _rng.randf_range(.18,.34)
+	# "> <", sometimes only a tight squint; never the in-between closing
+	# band where the seam is still opening into the crease.
+	_stroke_squeeze = _rng.randf_range(.76,1.0) if _rng.randf()<.7 else _rng.randf_range(.18,.34)
+
+## Pulse amount whose peak squeeze (preset .9 x expressiveness) is a clear
+## squint (<= .4) or a clear "> <" crease (>= .74), never the band between.
+func _squeeze_amount(amount: float) -> float:
+	var peak := .9*amount*_expressive
+	if peak<=.4 or peak>=.74: return amount
+	return (.38 if peak<.57 else .76)/(.9*_expressive)
 
 func _on_hit(directed: bool) -> void:
 	# Surprise first, then the eyes find where it came from, then a little
 	# annoyance while recovering. No danger preset without a live enemy.
 	events.hit += 1
 	pulse(&"surprise",.9)
-	_motivated_blink(.7,1.0)
+	_startle_blink()
 	# The impulse lands in this physics step: remember the velocity before it
 	# and read the push on the next gaze choices (a directed stumble already
 	# carries its contact point).
@@ -707,6 +772,7 @@ func _choose_gaze(elapsed: float) -> void:
 		if is_instance_valid(core) and (not working or worker.fear_time>0.0 or is_instance_valid(watch) and float(watch._notice_age)<.9):
 			var caller: Node3D = personality.heard_caller.get_ref() if personality.heard_caller else null
 			if is_instance_valid(caller) and float(personality.heard_age)<.32 and caller!=worker:
+				if _want_key!=caller.get_instance_id(): _react_later()
 				_look_at(Vector3.INF,caller.get_instance_id(),caller)
 				return
 			if worker.fear_time>0.0 and worker.gait_speed>1.0 and worker.has_target:
@@ -807,9 +873,12 @@ func _choose_gaze(elapsed: float) -> void:
 		return
 	if attention and attention.point.is_finite():
 		var follow: Node3D = attention.node.get_ref() if attention.node else null
+		var shared: bool = attention.kind!=&"player" and attention.kind!=&"scan"
 		if is_instance_valid(follow) and follow!=worker:
+			if shared and _want_key!=follow.get_instance_id(): _react_later()
 			_look_at(Vector3.INF,follow.get_instance_id(),follow,Vector3.UP*.6 if follow==Global.Player else Vector3.ZERO)
 		else:
+			if shared and _want_key!=1000003+int(attention.serial): _react_later()
 			_look_at(attention.point,1000003+int(attention.serial))
 		return
 	_look_at(Vector3.INF,1)
@@ -916,7 +985,10 @@ func _compose() -> void:
 					uc += .38*draw+.15*strike
 					lr += .36*draw+.3*strike
 					tilt += .35*draw+.15*strike
-					squeeze += _stroke_squeeze*strike
+					# The squeeze itself snaps shut and open around the contact
+					# (~70-80 ms each way), so the seam->crease band is crossed
+					# in one or two uploads.
+					squeeze += _stroke_squeeze*smoothstep(.50,.535,progress)*(1.0-smoothstep(.62,.66,progress))
 					mcurve -= .35*draw+.5*strike
 					mwidth += .3*draw+.55*strike
 					mopen += .1*strike
@@ -934,9 +1006,9 @@ func _compose() -> void:
 		elif not worker.needs.is_empty():
 			tilt -= .3; mcurve -= .3
 		# Load: a heavy head cargo shows in the lids and a tight mouth.
-		var load := clampf(worker.cargo_mass/30.0,0.0,1.0)
-		if load>0.0:
-			uc += .12*load; lr += .1*load; tilt += .15*load; mwidth += .15*load; mcurve -= .15*load
+		var cargo_load := clampf(worker.cargo_mass/30.0,0.0,1.0)
+		if cargo_load>0.0:
+			uc += .12*cargo_load; lr += .1*cargo_load; tilt += .15*cargo_load; mwidth += .15*cargo_load; mcurve -= .15*cargo_load
 		var play: RefCounted = worker.idle_play
 		# Airborne play/stunts: eyes wide, little "wee" mouth.
 		if _air_time>.12:
@@ -984,7 +1056,9 @@ func _compose() -> void:
 			elif _partner_ref and _partner_ref.get_ref(): social = maxf(social,.2)
 		smile += social
 		mcurve += .6*social
-		if personality: mopen += .22*social*float(personality.greeting_weight)
+		# The hello opens the mouth on its accent, then eases shut into the
+		# smile (a held open mouth with no voice reads as posed).
+		if personality: mopen += .22*social*float(personality.greeting_weight)*(1.0-smoothstep(.3,.55,float(personality.greeting_age)))
 		dil += .3*social
 		# Resting (sit API or a future idle "sit*" state): relaxed lids,
 		# sleepy after a while unless something interesting is watched.
@@ -1095,6 +1169,7 @@ func _settle(delta: float) -> void:
 		if value==target: continue
 		var rate := fast
 		if channel==ALARM: rate = 1.0-exp(-(18.0 if target>value else 5.0)*delta)
+		elif channel==SQUEEZE: rate = 1.0-exp(-60.0*delta)
 		elif channel==MOPEN: rate = 1.0-exp(-(32.0 if target>value else 15.0)*delta)
 		value = lerpf(value,target,rate)
 		if absf(value-target)<.0015: value = target

@@ -493,10 +493,10 @@ func _on_work_contact(kind: String) -> void:
 	if not _work_call_room(): return
 	_work_voice_remaining = _voice_rng.randf_range(4.0,7.0) if kind=="operate" else _voice_rng.randf_range(2.0,4.0)
 	if _voice_rng.randf()> (.35 if kind=="operate" else .76): return
-	var voice_kind := "inspect" if kind in ["inspect","tool_change"] else "repair" if kind in ["repair","maintenance","operate"] else "effort" if kind=="unbend" else "assemble"
-	var volume := -21.0 if voice_kind=="inspect" else -20.0 if voice_kind=="repair" else -19.0
+	var call_kind := "inspect" if kind in ["inspect","tool_change"] else "repair" if kind in ["repair","maintenance","operate"] else "effort" if kind=="unbend" else "assemble"
+	var volume := -21.0 if call_kind=="inspect" else -20.0 if call_kind=="repair" else -19.0
 	if kind=="operate": volume = -23.0
-	if not _play_voice(voice_kind,volume): return
+	if not _play_voice(call_kind,volume): return
 	_remember_work_call()
 	_work_voice_action = kind
 	_work_voice_job = worker.current_job_id
@@ -775,7 +775,10 @@ func _smile_allowed(player: Node3D) -> bool:
 
 func _threat_turn(delta: float, core: Node3D) -> void:
 	# Watching a live enemy while standing (beyond the flee radius, or from
-	# cover): the eyes lead and the cube follows toward it.
+	# cover): the eyes lead and the cube follows toward it, but only into a
+	# 3/4 stance. Within ~60 deg the eyes alone watch it; beyond that the
+	# cube turns just enough to leave ~45 deg to the eyes, so the worried
+	# face stays readable from most of the yard (never a full back turn).
 	_threat_turn_wait = maxf(0.0,_threat_turn_wait-delta)
 	if not core or _threat_turn_wait>0.0 or not worker.is_available() or not worker.on_ground or worker.paused: return
 	if not worker.current_job_id.is_empty() or worker.action not in ["","danger"] or is_instance_valid(worker.station) or worker.carrying: return
@@ -784,9 +787,12 @@ func _threat_turn(delta: float, core: Node3D) -> void:
 	var watch: SkeletonModifier3D = worker.threat_watch
 	if is_instance_valid(watch) and float(watch._notice_age)<.4: return
 	var to: Vector3 = (core.global_position-worker.global_position).slide(Vector3.UP)
-	if to.length_squared()<.04 or absf(wrapf(atan2(-to.x,-to.z)-worker._heading,-PI,PI))<.3: return
+	if to.length_squared()<.04: return
+	var off := wrapf(atan2(-to.x,-to.z)-worker._heading,-PI,PI)
+	if absf(off)<1.05: return
 	_threat_turn_wait = .9
-	worker.face_point(core.global_position)
+	var facing: float = worker._heading+off-signf(off)*.8
+	worker.face_point(worker.global_position+Vector3(-sin(facing),0.0,-cos(facing))*3.0)
 
 func _follow_attention(delta: float, idle: bool) -> void:
 	# A quiet planted Wako turns its body toward a strong point of interest

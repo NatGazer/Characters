@@ -34,9 +34,43 @@ const PRESETS := [
 	["squeeze 55%", {"eye_lids": Vector4(.21, .36, .2, 0), "eye_iris": Vector4(0, 0, 0, .55), "mouth_shape": Vector4(.1, -.5, .55, 0)}],
 	["squeeze 75%", {"eye_lids": Vector4(.21, .36, .2, 0), "eye_iris": Vector4(0, 0, 0, .75), "mouth_shape": Vector4(.1, -.5, .55, 0)}],
 ]
+# --set=review: combined presets the engine really reaches (critic findings).
+const REVIEW := [
+	["worried + look side max", {"face_alarm": 1.0, "eye_lids": Vector4(.2, .14, 0, 0), "eye_iris": Vector4(.33, 0, 0, 0), "gaze_uv_offset": Vector2(-.005, .03)}],
+	["worried + look other side", {"face_alarm": 1.0, "eye_lids": Vector4(.2, .14, 0, 0), "eye_iris": Vector4(.33, 0, 0, 0), "gaze_uv_offset": Vector2(-.005, -.03)}],
+	["alarm only fwd", {"face_alarm": 1.0, "eye_lids": Vector4(.08, 0, 0, 0), "eye_iris": Vector4(.33, 0, 0, 0)}],
+	["notice focus beat + side", {"face_alarm": .96, "face_startle": .6, "eye_lids": Vector4(.12, .14, -.35, 0), "eye_iris": Vector4(.24, 0, .21, 0), "mouth_shape": Vector4(.2, -.36, -.41, 0), "gaze_uv_offset": Vector2(-.0044, .0227)}],
+	["worried tilt -1 + side", {"eye_lids": Vector4(.15, .1, -1.0, 0), "eye_iris": Vector4(.6, 0, 0, 0), "mouth_shape": Vector4(0, -.75, -.1, 0), "gaze_uv_offset": Vector2(0, -.03)}],
+	["squeeze .30", {"eye_lids": Vector4(.21, .36, .2, 0), "eye_iris": Vector4(0, 0, 0, .30), "mouth_shape": Vector4(.1, -.5, .55, 0)}],
+	["squeeze .40", {"eye_lids": Vector4(.21, .36, .2, 0), "eye_iris": Vector4(0, 0, 0, .40), "mouth_shape": Vector4(.1, -.5, .55, 0)}],
+	["squeeze .46", {"eye_lids": Vector4(.21, .36, .2, 0), "eye_iris": Vector4(0, 0, 0, .46), "mouth_shape": Vector4(.1, -.5, .55, 0)}],
+	["squeeze .52", {"eye_lids": Vector4(.21, .36, .2, 0), "eye_iris": Vector4(0, 0, 0, .52), "mouth_shape": Vector4(.1, -.5, .55, 0)}],
+	["squeeze .58", {"eye_lids": Vector4(.21, .36, .2, 0), "eye_iris": Vector4(0, 0, 0, .58), "mouth_shape": Vector4(.1, -.5, .55, 0)}],
+	["squeeze .65", {"eye_lids": Vector4(.21, .36, .2, 0), "eye_iris": Vector4(0, 0, 0, .65), "mouth_shape": Vector4(.1, -.5, .55, 0)}],
+	["squeeze .75", {"eye_lids": Vector4(.21, .36, .2, 0), "eye_iris": Vector4(0, 0, 0, .75), "mouth_shape": Vector4(.1, -.5, .55, 0)}],
+	["squeeze .90", {"eye_lids": Vector4(.21, .36, .2, 0), "eye_iris": Vector4(0, 0, 0, .9), "mouth_shape": Vector4(.1, -.5, .55, 0)}],
+	["smile .30", {"eye_smile": .3, "eye_iris": Vector4(.2, 0, 0, 0), "mouth_shape": Vector4(0, .3, .05, 0)}],
+	["smile .50", {"eye_smile": .5, "eye_iris": Vector4(.3, 0, 0, 0), "mouth_shape": Vector4(0, .5, .1, 0)}],
+	["smile .70", {"eye_smile": .7, "eye_iris": Vector4(.35, 0, 0, 0), "mouth_shape": Vector4(0, .7, .2, 0)}],
+	["smile + look side", {"eye_smile": 1.0, "eye_iris": Vector4(.4, 0, 0, 0), "mouth_shape": Vector4(.2, .9, .3, 0), "gaze_uv_offset": Vector2(0, .025)}],
+	["focus squint + look down", {"eye_lids": Vector4(.46, .36, .35, 0), "mouth_shape": Vector4(0, -.35, .3, 0), "gaze_uv_offset": Vector2(-.022, .016)}],
+	["effort draw", {"eye_lids": Vector4(.44, .36, .35, 0), "mouth_shape": Vector4(0, -.35, .3, 0), "gaze_uv_offset": Vector2(-.012, 0)}],
+	["surprise + look up-side", {"eye_lids": Vector4(-.35, 0, 0, 0), "eye_iris": Vector4(-.25, 0, 1, 0), "mouth_shape": Vector4(.65, -.5, -.8, 0), "gaze_uv_offset": Vector2(.015, .022)}],
+	["O mouth", {"eye_lids": Vector4(0, 0, 0, 0), "eye_iris": Vector4(.5, 0, .3, 0), "mouth_shape": Vector4(.7, 0, -1, 0)}],
+	["uh-oh o (oops)", {"eye_lids": Vector4(-.1, 0, 0, 0), "eye_iris": Vector4(0, 0, .4, 0), "mouth_shape": Vector4(.45, -.35, -.6, 0)}],
+	["talk open .6 warn", {"face_alarm": .6, "eye_lids": Vector4(.1, 0, 0, 0), "mouth_shape": Vector4(.6, -.6, -.4, 0)}],
+	["neutral", {"eye_lids": Vector4(.06, 0, 0, 0)}],
+	["determined + side", {"eye_lids": Vector4(.3, .2, .6, 0), "mouth_shape": Vector4(0, -.3, .2, 0), "gaze_uv_offset": Vector2(0, -.028)}],
+	["sleepy + look down", {"eye_lids": Vector4(.55, .12, -.15, 0), "eye_iris": Vector4(.3, 0, 0, 0), "mouth_shape": Vector4(.06, .2, -.2, 0), "gaze_uv_offset": Vector2(-.02, 0)}],
+	["blink 50 + side", {"eye_lids": Vector4(.06, 0, 0, 0), "eye_openness": .5, "gaze_uv_offset": Vector2(0, .028)}],
+	["gun aim wink .45", {"eye_lids": Vector4(.26, 0, .35, .45), "mouth_shape": Vector4(0, -.2, 0, .4), "gaze_uv_offset": Vector2(0, -.01)}],
+	["annoyed", {"eye_lids": Vector4(.28, .18, .5, 0), "mouth_shape": Vector4(0, -.35, .25, .35)}],
+	["joy grin", {"eye_smile": 1.0, "eye_iris": Vector4(.45, 0, 0, 0), "mouth_shape": Vector4(.38, .9, .3, 0)}],
+]
 const DEFAULTS := {"eye_openness": 1.0, "gaze_uv_offset": Vector2.ZERO, "eye_smile": 0.0, "face_alarm": 0.0, "face_startle": 0.0, "eye_lids": Vector4.ZERO, "eye_iris": Vector4.ZERO, "mouth_shape": Vector4.ZERO}
 var wako: RigidBody3D
 var only := -1
+var presets: Array = PRESETS
 
 func setup() -> void:
 	wako = spawn_wako(Vector3(0, .86, 0), "closeup")
@@ -51,14 +85,15 @@ func setup() -> void:
 		if arg.begins_with("--pitch="): pitch = deg_to_rad(float(arg.trim_prefix("--pitch=")))
 		if arg.begins_with("--dist="): dist = float(arg.trim_prefix("--dist="))
 		if arg.begins_with("--only="): only = int(arg.trim_prefix("--only="))
+		if arg == "--set=review": presets = REVIEW
 	cam_target = Vector3(0, 1.15, -.2)
 	cam_offset = Vector3(sin(yaw) * cos(pitch), sin(pitch), -cos(yaw) * cos(pitch)) * dist
 
 func _process(delta: float) -> void:
 	super(delta)
-	var index := only if only >= 0 else mini(int(maxi(frame - 1, 0) * .5), PRESETS.size() - 1)
+	var index := only if only >= 0 else mini(int(maxi(frame - 1, 0) * .5), presets.size() - 1)
 	var mesh: MeshInstance3D = wako._skin_mesh
 	for key: String in DEFAULTS:
-		mesh.set_instance_shader_parameter(key, PRESETS[index][1].get(key, DEFAULTS[key]))
+		mesh.set_instance_shader_parameter(key, presets[index][1].get(key, DEFAULTS[key]))
 	mesh.set_instance_shader_parameter(&"eye_reactivity", 0.0)
-	caption("%d %s" % [index, PRESETS[index][0]])
+	caption("%d %s" % [index, presets[index][0]])

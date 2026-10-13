@@ -9,7 +9,10 @@ var _next := 0.0
 var driver: Node
 
 func setup() -> void:
-	wako = spawn_wako(Vector3(0, .86, 0), "face_probe")
+	wako = Props.timed_wako(WAKO)
+	wako.worker_id = "face_probe"
+	wako.position = Vector3(0, .86, 0)
+	add_child(wako)
 	driver = Props.drive_faces(self, [wako])
 	cam_target = Vector3(0, 1.1, -.2)
 	cam_offset = Vector3(.35, .12, -1.45)

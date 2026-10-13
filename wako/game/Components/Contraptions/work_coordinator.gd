@@ -2293,8 +2293,8 @@ func _begin_staging(entry: Dictionary) -> void:
 # Gaze hint only (helper attention_point/attention_node): stock while fetching
 # or flipping it onto the head, the tool while fetching/fitting it, otherwise
 # the target. The node lets the eyes pursue a moving part instead of jumping
-# between stale points. work_target and every reach/admission contract stay
-# untouched.
+# between stale points, so a member is only written when its focus changes.
+# work_target and every reach/admission contract stay untouched.
 func _publish_attention(entry: Dictionary) -> void:
 	var job: Dictionary = entry.job
 	var phase := str(entry.get("phase", ""))
@@ -2305,7 +2305,7 @@ func _publish_attention(entry: Dictionary) -> void:
 	var node: Node3D = focus if is_instance_valid(focus) and focus is Node3D else null
 	var point: Vector3 = node.global_position if node else Vector3.INF
 	for member: Variant in entry.crew:
-		if is_instance_valid(member) and "attention_point" in member:
+		if is_instance_valid(member) and "attention_point" in member and member.attention_node!=node:
 			member.attention_point = point
 			member.attention_node = node
 

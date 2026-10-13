@@ -62,24 +62,35 @@ float ink_band(float delta, float half_width, float aa) {
 	return clamp(smoothstep(-aa, aa, delta + half_width) - smoothstep(-aa, aa, delta - half_width), 0.0, 1.0);
 }
 
+// Polynomial smooth maximum (rounded intersection corners).
+float smooth_max(float a, float b, float k) {
+	float h = max(k - abs(a - b), 0.0) / k;
+	return max(a, b) + h * h * k * 0.25;
+}
+
 // Open lid shapes in iris radii (x up from the socket centre) at lateral
 // position yn (-1...1): (upper, lower, closed seam).
 vec3 lid_shape(float yn, float side, float uc, float lr, float tilt, float smile_shape, float wink, float squeeze, float lift) {
 	float y2 = yn * yn;
 	float inward = side * yn;
+	float slant = abs(tilt);
 	// Upper lid: an arc that hugs the disc at rest (no flat cap) and stays
-	// convex as it lowers, its corners .4-.5R below its middle.
-	float upper = 1.0 - 1.5 * uc - mix(0.5, 0.42, smoothstep(0.0, 0.7, uc)) * y2 + 0.75 * lift;
-	upper -= 0.5 * abs(tilt) * smoothstep(-0.7, 1.0, tilt >= 0.0 ? inward : -inward);
+	// convex as it lowers, its corners .4-.5R below its middle. Worry and
+	// determination lean the whole lid (a straight slant across the disc on
+	// a flatter arc), never a pinched corner that meets the rim at an
+	// acute angle.
+	float upper = 1.0 - 1.5 * uc - mix(0.5, 0.42, smoothstep(0.0, 0.7, uc)) * (1.0 - 0.6 * slant) * y2 + 0.75 * lift;
+	upper -= slant * (0.16 + 0.36 * clamp(tilt >= 0.0 ? inward : -inward, -1.0, 1.0));
 	// Lower lid: rests under the disc; the cheek lifts it as a gentle
 	// upward arc, so partial openings are lenses rather than bars.
 	float lower = -1.04 + 0.6 * lr + mix(0.5, 0.2, lr) * y2 + 0.35 * lift;
-	// The original happy crescent: an arched raised lower lid.
+	// The original happy crescent: an arched raised lower lid. Partial
+	// smiles push a wide, flatter arch up from below (the cheek rises most
+	// in the middle), so the lower edge is convex at every smile amount.
 	float happy_seam = (0.017 * (1.0 - y2) - 0.004 * y2) / IRIS_R;
 	float happy_upper = (0.061 * (1.0 - y2) + 0.047 * y2) / IRIS_R;
-	float happy_lower = (0.024 * (1.0 - y2) - 0.008 * y2) / IRIS_R;
 	upper = mix(upper, min(upper, happy_upper), smile_shape);
-	lower = mix(lower, max(lower, happy_lower), smile_shape);
+	lower = smooth_max(lower, mix(-1.15, 0.436, smile_shape) - mix(0.25, 0.58, smile_shape) * y2, 0.18);
 	// Closed seam: a gentle low curve (the upper lid travels furthest); a
 	// smile or wink closes into the happy arch, a squeeze into a raised arch.
 	float seam = -0.55 + 0.16 * y2 + 0.25 * lr + 0.4 * lift;
@@ -138,6 +149,7 @@ void fragment() {
 	float eye_open = 0.0;
 	float lid_ink = 0.0;
 	float catch_gain = 0.0;
+	float catch_x = 0.019;
 	if (eye_dist < SOCKET_FADE) {
 		float side = first_eye ? 1.0 : -1.0;
 		float smile = clamp(eye_smile, 0.0, 1.0) * (1.0 - alarm);
@@ -197,9 +209,24 @@ void fragment() {
 		float upper_aa = aa_width(vec2(1.0, -slope.x), uv_dx, uv_dy);
 		float lower_aa = aa_width(vec2(1.0, -slope.y), uv_dx, uv_dy);
 		float seam_aa = aa_width(vec2(1.0, -seam_slope), uv_dx, uv_dy);
+		// Each lid meets the disc rim through a rounded corner (a smooth
+		// intersection of their distances, k ~.12R, .3R for a smiling cheek),
+		// so a slanted or arched lid never leaves a pointed wedge on the rim.
+		// The rim distance sits just outside the painted soft edge, so a lid
+		// that does not cross the disc changes nothing.
+		float norm_upper = sqrt(1.0 + slope.x * slope.x);
+		float norm_lower = sqrt(1.0 + slope.y * slope.y);
+		float d_rim = (disc_r - IRIS_R) * pop - 0.0015;
+		float rim_aa = disc_aa * pop;
+		float k_upper = 0.12 * IRIS_R;
+		float k_lower = (0.12 + 0.18 * smile_shape) * IRIS_R;
+		float d_upper = smooth_max(delta.x / norm_upper, d_rim, k_upper);
+		float d_lower = smooth_max(-delta.y / norm_lower, d_rim, k_lower);
+		float aa_upper = mix(rim_aa, upper_aa / norm_upper, clamp(0.5 + 0.5 * (delta.x / norm_upper - d_rim) / k_upper, 0.0, 1.0));
+		float aa_lower = mix(rim_aa, lower_aa / norm_lower, clamp(0.5 + 0.5 * (-delta.y / norm_lower - d_rim) / k_lower, 0.0, 1.0));
 		// Both edges of the finite opening resolve together at every angle: a
 		// broad footprint never leaves an opaque iris streak outside it.
-		eye_open = clamp(smoothstep(-lower_aa, lower_aa, delta.y) - smoothstep(-upper_aa, upper_aa, delta.x), 0.0, 1.0);
+		eye_open = clamp(1.0 - smoothstep(-aa_lower, aa_lower, d_lower) - smoothstep(-aa_upper, aa_upper, d_upper), 0.0, 1.0);
 		eye_open *= smoothstep(0.0, 0.06, openness);
 		// The whole socket shows the resampled disc on white skin, so the
 		// original painted rim never ghosts beside a shifted or popped iris;
@@ -213,19 +240,28 @@ void fragment() {
 		float lid_lines = max(lash * 0.6, lower_line * 0.35) * eye_region * smoothstep(0.3, 0.6, openness)
 			* (1.0 - smoothstep(0.0, 0.3, smile));
 		// A soft curved seam makes a closed blink readable (never a strip of
-		// pupil); a squeeze pinches it into a "> <" crease.
+		// pupil); a squeeze pinches it into a "> <" crease. The closed ink is
+		// ONE stroke at every squeeze: both arms start on the seam and open
+		// like scissors about the nose-side tip, so a seam and a crease are
+		// never drawn over each other.
 		float lateral = 1.0 - smoothstep(0.034, 0.047, abs(eye_uv.y - disc_shift.y));
-		float seam_line = ink_band(delta.z, 0.0021 + 0.0006 * squeeze, seam_aa) * lateral * eye_region;
-		// Crease: two strokes from the outer corners to a point toward the nose.
-		float across = side * eye_uv.y;
-		float reach = clamp(0.028 - across, 0.0, 0.072);
-		float crease_x = eye_uv.x + 0.002;
-		float crease = across > 0.028 ? length(vec2(crease_x, across - 0.028))
-			: abs(abs(crease_x) - 0.33 * reach) * 0.95;
-		float crease_aa = 0.25 * (length(uv_dx) + length(uv_dy)) + 0.0002;
-		float chevron = (1.0 - smoothstep(0.0029 - crease_aa, 0.0029 + crease_aa, crease))
-			* (1.0 - smoothstep(0.038, 0.045, -across)) * local_weight;
-		float closed_ink = max(seam_line * (1.0 - smoothstep(0.45, 0.6, squeeze)), chevron * smoothstep(0.45, 0.6, squeeze)) * (1.0 - smoothstep(0.06, 0.24, openness));
+		float pinch = smoothstep(0.44, 0.68, squeeze);
+		float across = side * (eye_uv.y - disc_shift.y * (1.0 - pinch));
+		float flank = across < 0.028 ? 0.33 * pinch : 0.0;
+		float arm = 0.33 * pinch * clamp(0.028 - across, 0.0, 0.072);
+		float closed_x = mix(shape.z * IRIS_R, -0.002, pinch);
+		float closed_slope = (1.0 - pinch) * seam_slope;
+		float upper_arm_slope = closed_slope - side * flank;
+		float lower_arm_slope = closed_slope + side * flank;
+		float closed_half = mix(0.0021 + 0.0006 * squeeze, 0.0029, pinch);
+		float upper_arm = ink_band(eye_uv.x - closed_x - arm, closed_half * sqrt(1.0 + upper_arm_slope * upper_arm_slope),
+			aa_width(vec2(1.0, -upper_arm_slope), uv_dx, uv_dy));
+		float lower_arm = ink_band(eye_uv.x - closed_x + arm, closed_half * sqrt(1.0 + lower_arm_slope * lower_arm_slope),
+			aa_width(vec2(1.0, -lower_arm_slope), uv_dx, uv_dy));
+		float closed_reach = (1.0 - smoothstep(mix(0.034, 0.0285, pinch), mix(0.047, 0.0315, pinch), across))
+			* (1.0 - smoothstep(mix(0.034, 0.038, pinch), mix(0.047, 0.045, pinch), -across));
+		float closed_ink = max(upper_arm, lower_arm) * closed_reach * mix(eye_region, local_weight, pinch)
+			* (1.0 - smoothstep(0.06, 0.24, openness));
 		float happy_lid = 0.0;
 		if (smile > 0.0) {
 			// Restrained lower-lid ink: both edges resolved together so it
@@ -233,6 +269,11 @@ void fragment() {
 			happy_lid = ink_band(delta.y, 0.0008, lower_aa) * eye_region * smile_shape * smoothstep(0.24, 0.45, openness) * lateral;
 		}
 		lid_ink = max(max(lid_lines, closed_ink * 0.92), happy_lid * 0.65);
+		// The main catchlight stays fixed in the socket but just inside the
+		// expression's opening (a squint, a draw or a happy crescent keeps
+		// its sparkle); blinks and winks simply cover it.
+		vec3 catch_lids = lid_shape(clamp((-0.017 - disc_shift.y) / IRIS_R, -1.45, 1.45), side, uc, lr, tilt, smile_shape, wink, squeeze, lift);
+		catch_x = min(max(0.019, catch_lids.y * IRIS_R + 0.0075), catch_lids.x * IRIS_R - 0.0075);
 		// Worry and wide pupils read as wetter, brighter eyes.
 		catch_gain = 0.62 + 0.22 * alarm + 0.2 * clamp(dil, 0.0, 1.0);
 	}
@@ -249,17 +290,32 @@ void fragment() {
 		float width = clamp(mouth_shape.z - 0.65 * startle * alarm, -1.0, 1.0);
 		float skew = clamp(mouth_shape.w, -1.0, 1.0);
 		float round_shape = clamp(-width, 0.0, 1.0);
-		float half_width = 0.035 * (1.0 + 0.30 * width);
-		float bend = (curve >= 0.0 ? 1.0 + 0.45 * curve : 1.0 + 1.75 * curve) * (1.0 - 0.85 * round_shape * open);
+		// A round "O" narrows as it opens, with mirrored lips (no flat top).
+		float half_width = 0.035 * (1.0 + 0.30 * width) * (1.0 - 0.3 * round_shape * clamp(open * 1.4, 0.0, 1.0));
+		// An opening "O" loses the smile/frown bend of its centre line (a bent
+		// centre would flatten its top into a cup).
+		float bend = (curve >= 0.0 ? 1.0 + 0.45 * curve : 1.0 + 1.75 * curve) * (1.0 - round_shape * smoothstep(0.0, 0.3, open));
 		float s = mouth_uv.y / half_width;
 		float sc = clamp(s, -1.0, 1.0);
 		float s2 = sc * sc;
 		float centre = -0.0044 + bend * (0.0073 * s2 + 0.0104 * s2 * s2 - 0.0071) + 0.006 * skew * sc;
 		float slope = (bend * (0.0146 * sc + 0.0416 * s2 * sc) + 0.006 * skew) / half_width;
 		float lip = sqrt(max(1.0 - s2, 0.0));
-		float upper_lip = centre + open * mix(0.004, 0.016, round_shape) * lip;
-		float lower_lip = centre - open * mix(0.017, 0.020, round_shape) * lip;
-		float inside = max(lower_lip - mouth_uv.x, mouth_uv.x - upper_lip);
+		float upper_amp = open * mix(0.004, 0.0185, smoothstep(0.0, 0.6, round_shape));
+		float lower_amp = open * mix(0.017, 0.0190, round_shape);
+		float upper_lip = centre + upper_amp * lip;
+		float lower_lip = centre - lower_amp * lip;
+		// Perpendicular distance to each lip along its own slope, so an "O" or
+		// a wide-open mouth keeps an even outline on its steep sides.
+		float lip_slope = -sc / (max(lip, 0.3) * half_width);
+		float upper_slope = slope + upper_amp * lip_slope;
+		float lower_slope = slope - lower_amp * lip_slope;
+		float upper_norm = sqrt(1.0 + upper_slope * upper_slope);
+		float lower_norm = sqrt(1.0 + lower_slope * lower_slope);
+		float above = (mouth_uv.x - upper_lip) / upper_norm;
+		float below = (lower_lip - mouth_uv.x) / lower_norm;
+		float inside = max(above, below);
+		vec2 inside_grad = above >= below ? vec2(1.0, -upper_slope) / upper_norm : vec2(1.0, -lower_slope) / lower_norm;
 		float stroke = 0.0036;
 		// The stroke body holds while the foot of the perpendicular stays on
 		// the arc; beyond it a round cap ends the stroke (no spike above the
@@ -270,14 +326,23 @@ void fragment() {
 		float end_centre = -0.0044 + bend * 0.0106 + 0.006 * skew * end_side;
 		vec2 cap = vec2(mouth_uv.x - end_centre, mouth_uv.y - end_side * half_width);
 		bool body = abs(foot) <= half_width && abs(s) <= 1.0;
-		float d = body ? inside / slope_norm - stroke : length(cap) - stroke;
-		vec2 d_grad = body ? vec2(1.0, -slope) / slope_norm : cap / max(length(cap), 0.000001);
+		float d_arc = body ? inside : length(cap);
+		vec2 arc_grad = body ? inside_grad : cap / max(length(cap), 0.000001);
+		// An open round mouth is a true ellipse ring (no flat sides or
+		// end-cap "ears"), taken along the bent centre line so a shout or an
+		// "uh-oh" keeps its frown; its distance blends in as the "O" opens.
+		vec2 o_radius = vec2(max(0.5 * (upper_amp + lower_amp), 0.0015), half_width);
+		vec2 o_point = vec2(mouth_uv.x - centre - 0.5 * (upper_amp - lower_amp), mouth_uv.y);
+		vec2 o_normal = o_point / (o_radius * o_radius);
+		float o_k0 = length(o_point / o_radius);
+		float d_o = o_k0 * (o_k0 - 1.0) / max(length(o_normal), 0.000001);
+		float o_weight = smoothstep(0.0, 0.5, round_shape) * smoothstep(0.05, 0.25, open);
+		float d_open = mix(d_arc, d_o, o_weight);
+		vec2 d_grad = normalize(mix(arc_grad, o_normal / max(length(o_normal), 0.000001), o_weight) + vec2(0.000001, 0.0));
 		float mouth_aa = aa_width(d_grad, uv_dx, uv_dy) * 1.5;
-		mouth_ink = (1.0 - smoothstep(-mouth_aa, mouth_aa, d)) * mouth_region;
-		float inner_aa = aa_width(vec2(1.0, -slope), uv_dx, uv_dy) * 1.5;
-		mouth_inner = (1.0 - smoothstep(-inner_aa, inner_aa, inside + 0.0009)) * (1.0 - step(1.0, abs(s)))
-			* smoothstep(0.03, 0.16, open);
-		tongue = mouth_inner * smoothstep(0.30, 0.65, open) * (1.0 - round_shape)
+		mouth_ink = (1.0 - smoothstep(-mouth_aa, mouth_aa, d_open - stroke)) * mouth_region;
+		mouth_inner = (1.0 - smoothstep(-mouth_aa, mouth_aa, d_open + 0.0009)) * smoothstep(0.03, 0.16, open);
+		tongue = mouth_inner * smoothstep(0.30, 0.65, open) * (1.0 - smoothstep(0.15, 0.55, round_shape))
 			* (1.0 - smoothstep(lower_lip + 0.0035, lower_lip + 0.009 * open + 0.004, mouth_uv.x));
 	}
 	float eye_mask = eye_region * eye_open;
@@ -302,7 +367,7 @@ void fragment() {
 	vec3 cornea = normalize(vec3(cornea_tilt, sqrt(max(0.1, 1.0 - dot(cornea_tilt, cornea_tilt)))));
 	// Wet catchlights are fixed in the socket (same side for both eyes): the
 	// pupil visibly travels under them and they never swim with the gaze.
-	float catch_main = 1.0 - smoothstep(0.0040, 0.0066, length((eye_uv - vec2(0.019, -0.017)) * vec2(1.0, 0.85)));
+	float catch_main = 1.0 - smoothstep(0.0040, 0.0066, length((eye_uv - vec2(catch_x, -0.017)) * vec2(1.0, 0.85)));
 	float catch_small = (1.0 - smoothstep(0.0014, 0.0028, length(eye_uv - vec2(-0.017, 0.014)))) * 0.6;
 	ALBEDO = mix(ALBEDO, vec3(0.86, 0.92, 0.98), clamp(max(catch_main, catch_small) * eye_mask * catch_gain, 0.0, 0.95));
 	// Fine, fixed snowy facets perturb the real PBR normal. Resolve them into

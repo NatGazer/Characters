@@ -21,6 +21,19 @@ func setup() -> void:
 	Props.bind_atlas(wako)
 	cam_target = Vector3(0, 1.1, -.2)
 	cam_offset = Vector3(.32, .1, -1.55)
+	# Optional orbit camera (--yaw=deg --pitch=deg --dist=m) to judge every beat
+	# from 3/4, low and high viewpoints.
+	var yaw := 0.0
+	var pitch := 0.0
+	var dist := 1.6
+	var orbit := false
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--yaw="): yaw = deg_to_rad(float(arg.trim_prefix("--yaw="))); orbit = true
+		if arg.begins_with("--pitch="): pitch = deg_to_rad(float(arg.trim_prefix("--pitch="))); orbit = true
+		if arg.begins_with("--dist="): dist = float(arg.trim_prefix("--dist=")); orbit = true
+	if orbit:
+		cam_target = Vector3(0, 1.12, -.2)
+		cam_offset = Vector3(sin(yaw) * cos(pitch), sin(pitch), -cos(yaw) * cos(pitch)) * dist
 	player = Props.make_player(self, Vector3(-2.0, .5, -2.8))
 	fastener = Node3D.new()
 	fastener.name = "Fastener"

@@ -19,7 +19,7 @@ func setup() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 77
 	for i in COUNT:
-		var w: RigidBody3D = WAKO.instantiate()
+		var w: RigidBody3D = Props.timed_wako(WAKO)
 		w.worker_id = "perf_%02d" % i
 		w.position = Vector3((i % 4 - 1.5) * 1.4, .86, floorf(i / 4.0) * 1.7)
 		w.configure(service)

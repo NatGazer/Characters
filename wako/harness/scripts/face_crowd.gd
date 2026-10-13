@@ -41,7 +41,7 @@ func setup() -> void:
 		var col := i % 4
 		var row := floori(i / 4.0)
 		var pos := Vector3((col - 1.5) * 1.3 + _rng.randf_range(-.15, .15), .86, row * 1.6 + _rng.randf_range(-.2, .2))
-		var w: RigidBody3D = WAKO.instantiate()
+		var w: RigidBody3D = Props.timed_wako(WAKO)
 		w.worker_id = "crowd_%02d" % i
 		w.position = pos
 		w.configure(service)

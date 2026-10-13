@@ -169,8 +169,6 @@ var attention_point := Vector3.INF
 ## The same hint as a node when it moves (a part in flight, a fetched tool):
 ## the eyes pursue it instead of re-aiming at a stale point.
 var attention_node: Node3D
-## Harness profiling only: something else advances the face each tick.
-var face_external := false
 var _work_axis := Vector3.ZERO
 var _work_axis_target := 0
 var _work_axis_tool := 0
@@ -1439,7 +1437,7 @@ func _update_expression(delta: float) -> void:
 	# the face brain runs at 6/4/2 Hz by camera distance and visibility (12-20
 	# Hz while a near face acts, talks, strikes or is alarmed), and only changed
 	# instance uniforms are uploaded. The engine mirrors its gaze into _eye_gaze.
-	if eyes and _skin_mesh and not face_external: eyes.advance(delta)
+	if eyes and _skin_mesh: eyes.advance(delta)
 
 ## Short event face from a real trigger (surprise, joy, pride, worry,
 ## annoyed, relief, curious, notice, squeeze, flinch, satisfied).

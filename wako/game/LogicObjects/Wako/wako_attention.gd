@@ -167,6 +167,9 @@ func scan(player: Node3D, can_see: Callable) -> void:
 		if age>float(entry.ttl) or age<0.0 or int(entry.owner)==me: continue
 		var at: Vector3 = entry.pos
 		var follow: Node3D = entry.node.get_ref() if entry.node else null
+		# An event posted with an actor/part that has since been freed is no
+		# longer a real current target (no staring at its stale position).
+		if entry.node and not is_instance_valid(follow): continue
 		if is_instance_valid(follow):
 			var face: Variant = follow.get("_visual_head_point")
 			at = face if face is Vector3 and face.is_finite() else follow.global_position

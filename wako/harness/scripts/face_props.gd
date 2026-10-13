@@ -172,22 +172,26 @@ static func painted_eye_midpoint(wako: Node) -> Vector3:
 			break
 	return sum / found if found == 2 else Vector3.INF
 
-## Harness-only face profiler: takes over the helpers' face tick (the helper
-## skips it while face_external is set) and advances each face engine right
-## after its helper's own physics, timing every call.
-## Usage: Props.drive_faces(self, wakos).
+## Harness-only face profiler: helpers spawned with timed_wako() time their
+## own production face tick (_update_expression) in place; the driver only
+## collects those counters each physics tick.
+## Usage: var w := Props.timed_wako(WAKO) ... Props.drive_faces(self, wakos).
+const TIMED_HELPER := preload("res://harness/scripts/face_timed_helper.gd")
+
+static func timed_wako(scene: PackedScene) -> RigidBody3D:
+	var w: RigidBody3D = scene.instantiate()
+	w.set_script(TIMED_HELPER)
+	return w
+
 class FaceDriver extends Node:
 	var faces := {}
 	var usec := {}
 	var ticks := {}
-	func _physics_process(delta: float) -> void:
+	func _physics_process(_delta: float) -> void:
 		for w: Node in faces:
 			if not is_instance_valid(w): continue
-			var e: RefCounted = faces[w]
-			var t0 := Time.get_ticks_usec()
-			e.advance(delta)
-			usec[w] = int(usec.get(w, 0)) + Time.get_ticks_usec() - t0
-			ticks[w] = int(ticks.get(w, 0)) + 1
+			usec[w] = int(w.get("face_usec"))
+			ticks[w] = int(w.get("face_ticks"))
 	func per_tick(w: Node) -> float:
 		return float(usec.get(w, 0)) / maxf(float(ticks.get(w, 0)), 1.0)
 
@@ -195,7 +199,7 @@ static func drive_faces(stage: Node, wakos: Array) -> FaceDriver:
 	var driver := FaceDriver.new()
 	driver.name = "FaceDriver"
 	for w: Node in wakos:
+		assert(w.get("face_usec") != null, "spawn profiled Wako with Props.timed_wako()")
 		driver.faces[w] = w.get("eyes")
-		w.set("face_external", true)
 	stage.add_child(driver)
 	return driver
