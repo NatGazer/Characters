@@ -850,12 +850,17 @@ func _move_with_forces(delta: float, keep_evaluated_parent: bool = false) -> voi
 	var previous_heading := _heading
 	var ordinary_terrain_turn: bool = on_ground and _pose and _pose.evaluated_valid and _pose._walking_ik \
 		and not carrying and not (head_leap and head_leap.active()) and not (back_tool and back_tool.busy())
-	if action.is_empty() and (ordinary_terrain_turn or _grounded_heading_handoff or tool_foot_occupied() or (carrying and head_leap and head_leap.contacted and head_leap.part==_cargo_source)):
+	# A solo carry on gait legs turns at the gait's step-paced rate too: the
+	# exponential catch-up spun a reversing carrier ~1000 deg/s over planted
+	# feet (and its head load with it). Coordinated carriers keep theirs.
+	var gait_carry_turn: bool = on_ground and carrying and not is_instance_valid(carry_partner) and _pose and _pose.evaluated_valid and _pose._walking_ik \
+		and not (head_leap and head_leap.active()) and not (back_tool and back_tool.busy())
+	if action.is_empty() and (ordinary_terrain_turn or gait_carry_turn or _grounded_heading_handoff or tool_foot_occupied() or (carrying and head_leap and head_leap.contacted and head_leap.part==_cargo_source)):
 		# Planted terrain IK and the departing cube share the evaluated rotation budget.
 		# Integrate the existing filtered turn velocity before moving the rig,
 		# rather than publishing a large heading step then filtering its report.
 		var turn_limit: float=_loaded_head_turn_limit()
-		if ordinary_terrain_turn: turn_limit=minf(turn_limit,_pose.stopped_turn_limit())
+		if ordinary_terrain_turn or gait_carry_turn: turn_limit=minf(turn_limit,_pose.stopped_turn_limit())
 		var wanted_turn := clampf(wrapf(_idle_heading-_heading,-PI,PI)*6.0,-turn_limit,turn_limit)
 		turn_rate = lerpf(turn_rate,wanted_turn,1.0-exp(-10.0*delta))
 		turn_rate=clampf(turn_rate,-turn_limit,turn_limit)

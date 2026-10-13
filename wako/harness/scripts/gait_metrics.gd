@@ -69,6 +69,13 @@ var _air_counted := false
 var _stuck := [0, 0]
 var _k_hist: Array = [[], []]               # last 5 [angle, grounded, stance_tick]
 var _swing_flex := [0.0, 0.0]
+# Round-3 checks: hip-vs-foot torsion (braided turns), hip yaw per 30 fps
+# frame, lateral sole order along the hip axis, swing arrival (hover above
+# the landing height, sole speed at contact), stop pitch corner per frame.
+var _rest_foot_inv: Array[Basis] = [Basis.IDENTITY, Basis.IDENTITY]
+var _yaw_hist: Array = []                   # last 5 hip yaws (rad)
+var _pitch_hist: Array = []                 # last 9 pitches (deg)
+var _sole_hist: Array = [[], []]            # last 13 soles per side
 
 class EvalTimer extends SkeletonModifier3D:
 	var probe: Node
@@ -94,6 +101,8 @@ func attach(target: RigidBody3D) -> void:
 			var ankle: Transform3D = _sk.get_bone_global_rest(pose._chains[side][2])
 			_ball_rest_h[side] = _sk.get_bone_global_rest(toe).origin.y - (ankle.origin.y - float(pose._ankle_height[side]))
 	_collect_sole_verts()
+	for side in 2:
+		_rest_foot_inv[side] = _sk.get_bone_global_rest(int(pose._chains[side][2])).basis.orthonormalized().inverse()
 	var g: Variant = pose.get("gait")
 	if debug and g != null and "debug_log" in g:
 		g.debug_log = true
@@ -216,7 +225,8 @@ func _bucket() -> Dictionary:
 			"leg_gap": INF, "ankle_gap": INF, "track": [], "apex": [], "toe_pen": -INF, "toe_pen_g": -INF,
 			"root_step": 0.0, "root_turn": 0.0, "handoffs": 0, "knee_step_shown": 0.0, "root_step_shown": 0.0, "root_turn_shown": 0.0,
 			"last_n": -2, "pronk": 0, "taps": 0, "air_slow": 0, "both_up_duty": 0, "both_up_ev": 0, "stuck_max": 0, "knee4_g": 0.0, "knee4_land": 0.0,
-			"flex_g": [], "flex_td": [], "flex_swing": [], "shin_back": [], "behind5": 0, "ahead5": 0, "rel_n": 0, "ball_pen": 0.0, "heel_pen": 0.0}
+			"flex_g": [], "flex_td": [], "flex_swing": [], "shin_back": [], "behind5": 0, "ahead5": 0, "rel_n": 0, "ball_pen": 0.0, "heel_pen": 0.0,
+			"tor_g": 0.0, "tor_s": 0.0, "tor40": 0, "yaw_frame": 0.0, "sole_sep": INF, "hover": [], "vh_td": [], "vy_td": [], "pitch_d2f": 0.0, "g_off": 0.0, "g_off_n": 0}
 	return _stats[key]
 
 func _support_point(side: int, any := false) -> Array:
@@ -371,6 +381,27 @@ func _sample(delta: float) -> void:
 	(s.pitch as Array).append(rad_to_deg(asin(clampf(root_up.dot(heading_fwd), -1.0, 1.0))))
 	(s.roll as Array).append(rad_to_deg(asin(clampf(root_up.dot(right), -1.0, 1.0))))
 	(s.twist as Array).append(rad_to_deg(heading_fwd.signed_angle_to(root_face, Vector3.UP)))
+	# Hip frame from the published hips (side 0 = left): torsion of each foot
+	# against it, the hips' own yaw per 30 fps frame, lateral sole order.
+	var hip_right: Vector3 = (pose.evaluated_hips[1] - pose.evaluated_hips[0]).slide(Vector3.UP).normalized()
+	var hip_fwd := Vector3.UP.cross(hip_right)
+	var hip_yaw := atan2(-hip_fwd.x, -hip_fwd.z)
+	_yaw_hist.append(hip_yaw)
+	if _yaw_hist.size() > 5: _yaw_hist.pop_front()
+	if _yaw_hist.size() == 5: s.yaw_frame = maxf(s.yaw_frame, rad_to_deg(absf(wrapf(float(_yaw_hist[4]) - float(_yaw_hist[0]), -PI, PI))))
+	_pitch_hist.append((s.pitch as Array)[-1])
+	if _pitch_hist.size() > 9: _pitch_hist.pop_front()
+	if _pitch_hist.size() == 9: s.pitch_d2f = maxf(s.pitch_d2f, absf(float(_pitch_hist[8]) - 2.0 * float(_pitch_hist[4]) + float(_pitch_hist[0])))
+	s.sole_sep = minf(s.sole_sep, (pose.evaluated_soles[1] - pose.evaluated_soles[0]).dot(hip_right))
+	for side in 2:
+		var foot_fwd: Vector3 = ((pose.evaluated_ankles[side] as Basis).orthonormalized() * _rest_foot_inv[side] * Vector3.FORWARD).slide(Vector3.UP)
+		if foot_fwd.length() < .2: continue
+		var tor := rad_to_deg(foot_fwd.angle_to(hip_fwd))
+		if pose.evaluated_grounded[side]:
+			s.tor_g = maxf(s.tor_g, tor)
+			if tor > 40.0: s.tor40 += 1
+			if debug and tor > 40.0: print("TORSION c=%.3f %s side=%d tor=%.1f" % [clock, label, side, tor])
+		else: s.tor_s = maxf(s.tor_s, tor)
 	_hist.append([clock, rh])
 	if _hist.size() > 200: _hist.pop_front()
 	var both_air := true
@@ -444,6 +475,24 @@ func _sample(delta: float) -> void:
 			var behind_plan: float = -(sole - gait.debug_planned[side]).slide(Vector3.UP).dot(travel)
 			s.plan_lag = maxf(s.plan_lag, behind_plan)
 		var ahead := (sole - hip).slide(Vector3.UP).dot(travel)
+		var sh: Array = _sole_hist[side]
+		sh.append(sole)
+		if sh.size() > 13: sh.pop_front()
+		if g and not _grounded[side] and sh.size() == 13:
+			# Swing arrival: ticks hovering within 2.5 cm above the landing
+			# height before contact, sole speed over the last 3 ticks.
+			var hover := 0
+			for k in range(11, -1, -1):
+				if (sh[k] as Vector3).y - sole.y < .025: hover += 1
+				else: break
+			(s.hover as Array).append(hover)
+			var d3: Vector3 = sole - (sh[9] as Vector3)
+			(s.vh_td as Array).append(d3.slide(Vector3.UP).length() * 40.0)
+			(s.vy_td as Array).append(-d3.y * 40.0)
+		if g and gap_sole > -1.0 and gap_sole < 1.0:
+			var g_up := minf(gap_sole, gap_ball if gap_ball > -.03 else gap_sole)
+			s.g_off = maxf(s.g_off, g_up)
+			if g_up > .02: s.g_off_n += 1
 		if g and not _grounded[side]:
 			# Landing: horizontal sole ahead of the hip along travel.
 			if speed > .3:
@@ -727,11 +776,14 @@ func print_report() -> void:
 		# Timings: median (robust to preemption on a shared CPU) / mean / max.
 		line += " stuck_max=%d pronk=%d taps=%d air_slow=%d both_up_duty=%d/%dev knee4_g=%.1fdeg knee4_land=%.1fdeg ball_pen=%.1fmm heel_pen=%.1fmm" % [s.stuck_max, s.pronk, s.taps, s.air_slow, s.both_up_duty, s.both_up_ev, s.knee4_g, s.knee4_land, float(s.ball_pen) * 1000.0, float(s.heel_pen) * 1000.0]
 		if not (s.flex_g as Array).is_empty():
-			line += " flex_g_p5/p50/p95=%.0f/%.0f/%.0f flex_td=%.0f flex_swing=%.0f shin_back_p10/p50=%.0f/%.0f behind5/ahead5=%.0f/%.0f%%" % [_pct(s.flex_g, .05), _pct(s.flex_g, .5), _pct(s.flex_g, .95), _mean(s.flex_td), _mean(s.flex_swing), _pct(s.shin_back, .1), _pct(s.shin_back, .5), 100.0 * s.behind5 / maxf(s.rel_n, 1), 100.0 * s.ahead5 / maxf(s.rel_n, 1)]
+			line += " flex_g_p5/p50/p95=%.0f/%.0f/%.0f flex_td=%.0f flex_swing=%.0f(max %.0f) shin_back_p10/p50=%.0f/%.0f behind5/ahead5=%.0f/%.0f%%" % [_pct(s.flex_g, .05), _pct(s.flex_g, .5), _pct(s.flex_g, .95), _mean(s.flex_td), _mean(s.flex_swing), _maxv(s.flex_swing), _pct(s.shin_back, .1), _pct(s.shin_back, .5), 100.0 * s.behind5 / maxf(s.rel_n, 1), 100.0 * s.ahead5 / maxf(s.rel_n, 1)]
+		line += " torsion_g/s=%.1f/%.1fdeg tor40=%d yaw_frame=%.1fdeg sole_sep_min=%.3f g_off=%.1fmm(%d)" % [s.tor_g, s.tor_s, s.tor40, s.yaw_frame, s.sole_sep, float(s.g_off) * 1000.0, s.g_off_n]
+		if not (s.hover as Array).is_empty(): line += " hover=%.1f(max %.0f) vh_td=%.2f(max %.2f) vy_td=%.2f" % [_mean(s.hover), _maxv(s.hover), _mean(s.vh_td), _maxv(s.vh_td), _mean(s.vy_td)]
 		if int(s.perf_n) > 0: line += " perf_us=%d/%.0f/%d" % [_median(s.perf_samples), float(s.perf_sum) / s.perf_n, s.perf_max]
 		if int(s.plan_n) > 0: line += " plan_us=%d/%.0f/%d" % [_median(s.plan_samples), float(s.plan_sum) / s.plan_n, s.plan_max]
 		print(line)
 		var act := "ACTING %-16s bob_p2p=%.1fcm pitch_p2p=%.1fdeg roll_p2p=%.1fdeg twist_p2p=%.1fdeg pitch_range=%.1f..%.1fdeg root_vacc_max=%.0fm/s2" % [key, _p2p(s.rh) * 100.0, _p2p(s.pitch), _p2p(s.roll), _p2p(s.twist), _minv(s.pitch), _maxv(s.pitch), _vacc(s.ry)]
+		act += " pitch_d2f=%.1fdeg" % s.pitch_d2f
 		if key.begins_with("stop") and (s.pitch as Array).size() > 8:
 			# Braking lean-back, then how far the cube pitches past upright.
 			var pa: Array = s.pitch
@@ -762,4 +814,6 @@ func print_report() -> void:
 		if float(s.ball_pen) > .008: fails.append("ball_pen=%.1fmm" % (float(s.ball_pen) * 1000.0))
 		if float(s.knee4_land) > 25.0: fails.append("knee4_land=%.0f" % s.knee4_land)
 		if float(s.knee_step_stance) > 8.0: fails.append("knee_step_stance=%.1f" % s.knee_step_stance)
+		if float(s.tor_g) > 45.0: fails.append("torsion=%.0f" % s.tor_g)
+		if int(s.g_off_n) > 0: fails.append("g_off=%.0fmm" % (float(s.g_off) * 1000.0))
 		print("GATE %-16s %s" % [key, "ok" if fails.is_empty() else "FAIL " + " ".join(fails)])

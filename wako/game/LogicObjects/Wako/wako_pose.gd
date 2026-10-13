@@ -46,6 +46,7 @@ var evaluation_serial := 0
 var _gait_rotations: Dictionary = {}
 var _gait_release_rotations: Dictionary = {}
 var _gait_release_age := INF
+var _brake_handoff_age := -1.0  # s: an action begun mid-run waits for the gait's braking steps
 var _head_gait_continuation := false
 var _head_gait_rotations: Dictionary = {}
 var _head_gait_settle_time := 0.0
@@ -427,6 +428,23 @@ func _process_modification_with_delta(delta: float) -> void:
 	# Head and foot actions retain their separate captured-pose handoffs.
 	var was_walking_ik := _walking_ik
 	_walking_ik = worker.action.is_empty() and (head_prepare or (not _head_gait_continuation and _work_release.is_empty() and worker._animation.current_animation in ["wk_idle","wk_walkcycle","work/carry","work/run"]))
+	# An action begun while the body still slides from a run (native braking
+	# takes ~.5 m from 3.4 m/s) would drag its planted clip feet along the
+	# ground: the gait keeps the legs for its braking steps (at most .5 s;
+	# never for foot work, head, back-tool or tool owners, whose own entry
+	# solves start from the published legs) and then hands over through the
+	# usual release blend.
+	var braking: bool = was_walking_ik and not _walking_ik and gait.active and worker.on_ground and not worker.action.is_empty() \
+		and not manipulation and not worker.feet_work_active() and not worker.tool_foot_occupied() and not head_prepare \
+		and not _head_ground_continuation and not _head_work_continuation and not _head_gait_continuation and _work_release.is_empty() \
+		and not (worker.head_leap and worker.head_leap.active()) and not (worker.back_tool and (worker.back_tool.busy() or worker.back_tool.pose_owned()))
+	if braking:
+		var slide: float = (worker.linear_velocity-worker.ground_velocity).slide(worker.ground_normal).length()
+		braking = slide > .8 if _brake_handoff_age < 0.0 else _brake_handoff_age < .5 and (slide > .25 or gait.state[0] != Gait.PLANTED or gait.state[1] != Gait.PLANTED)
+	if braking:
+		_brake_handoff_age = maxf(_brake_handoff_age,0.0)+delta
+		_walking_ik = true
+	else: _brake_handoff_age = -1.0
 	if was_walking_ik and not _walking_ik and evaluated_valid:
 		# The gait can hand its legs over mid-stride (an action begins on
 		# arrival or interrupts): remember its last joints for a short blend.
@@ -1444,8 +1462,11 @@ func _settle_allowed() -> bool:
 func stopped_turn_limit() -> float:
 	# Helper heading cap while standing. Settle steps follow the heading, so
 	# the cube turns briskly and only slows as a planted leg nears its reach.
-	if not gait or not gait.active or gait.moving or not _settle_allowed(): return 6.0
-	var limit := 4.2
+	if not gait or not gait.active or not _settle_allowed(): return 6.0
+	# The hips never twist far past a planted foot (braided shins): the turn
+	# waits for the next step, which lands turned into the new heading.
+	if gait.moving: return gait.turn_limit(6.0)
+	var limit: float = gait.turn_limit(3.4)
 	for side in 2:
 		if gait.state[side] != Gait.PLANTED or not evaluated_grounded[side]: continue
 		var ankle: Vector3 = evaluated_soles[side]-evaluated_ankles[side]*Vector3(0,_ankle_height[side],0)
@@ -1651,8 +1672,8 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 		var contact_offset: Vector3 = sole-ankle_offset-hip
 		# A contact the shown knee is still far from (the swing's knee rate limit
 		# held it back while the body dropped) keeps reaching instead of popping.
-		var knee_pop: bool = is_finite(gait.knee_prev[side]) and absf(gait.knee_flex(side,contact_offset.length())-gait.knee_prev[side])>deg_to_rad(10.0)
-		if (contact_offset.length()>worker._leg_lengths[side]-.014 or knee_pop) and gait.defer_contact(side,contact_offset,knee_pop):
+		var knee_gap: float = absf(gait.knee_flex(side,contact_offset.length())-gait.knee_prev[side]) if is_finite(gait.knee_prev[side]) else 0.0
+		if (contact_offset.length()>worker._leg_lengths[side]-.014 or knee_gap>deg_to_rad(10.0)) and gait.defer_contact(side,contact_offset,knee_gap):
 			planted = false
 			hit = {}
 	if not planted:
@@ -1669,6 +1690,18 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 		var horizontal := hip_to_ankle.slide(Vector3.UP)
 		if horizontal.length_squared()<reach*reach:
 			sole.y += maxf(-sqrt(reach*reach-horizontal.length_squared())-hip_to_ankle.y,0.0)
+		if t_swing>.5 and gait.landing[side].y<gait._swing_start(side).y-.05:
+			# Stepping down: late in the swing the leg reaches forward and down
+			# for the lower tread (knee <= ~75 deg) instead of holding the heel
+			# folded up high and stabbing down, wherever the ground under the
+			# reaching sole is clear (past the edge).
+			var cap: float = lerpf(PI,deg_to_rad(75.0),smoothstep(.5,.75,t_swing))
+			var reach_to: Vector3 = sole-ankle_offset-hip
+			var reach_span: float = reach_to.length()
+			if reach_span>.001 and gait.knee_flex(side,reach_span)>cap:
+				var stretched: Vector3 = hip+reach_to/reach_span*gait.knee_span(side,cap)+ankle_offset
+				var under_stretch: Dictionary = gait._ground(stretched)
+				if under_stretch.is_empty() or stretched.y>under_stretch.position.y+.012: sole = stretched
 		# An airborne foot straightens its knee at most ~9 deg a tick (the
 		# planned arc can ask for more as the leg nears extension: a whip). A
 		# contact the limited knee has not reached yet keeps reaching (deferred
@@ -1705,6 +1738,11 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 			# Walking feet keep the gait's calm speed ceiling here too, so the
 			# easing above never adds a catch-up jump on top of a fast swing.
 			var shown: Vector3 = evaluated_soles[side]+worker.ground_velocity*delta
+			# A foot-held tool's sole is shown with its clearance lift/shift on
+			# top: limit from the sole the gait asked for, or that bounded lift
+			# would ratchet the swing up a little more every tick.
+			if worker.tool_foot_occupied() and side==worker.tool_foot_side() and gait.shown_sole[side].is_finite():
+				shown = gait.shown_sole[side]+worker.ground_velocity*delta
 			sole = shown+(sole-shown).limit_length(maxf(5.8*delta,.001))
 	elif gait.stance_age[side] < .001:
 		# A contact made this tick is planted only where this hip can really
@@ -1750,12 +1788,23 @@ func _terrain_walk_leg(sk: Skeleton3D, side: int, local_inv: Transform3D, _walki
 	var held_shift: Vector3 = _held_shift if tool_foot else Vector3.ZERO
 	var normal: Vector3 = hit.normal if not hit.is_empty() else Vector3.UP
 	var requested: Vector3 = sole+normal*held_lift+held_shift
+	if tool_foot and evaluated_valid:
+		# The retained tool's own owners may have held this foot elsewhere
+		# (a whole-tool return); resuming from there keeps the tool foot's
+		# finite toe budget instead of snapping the knee in one tick.
+		var shown_prev: Vector3 = evaluated_soles[side]+worker.ground_velocity*delta
+		requested = shown_prev+(requested-shown_prev).limit_length(maxf(5.4*delta,.001))
 	_solve(sk,chain[0],chain[1],chain[2],local_inv*requested-basis*Vector3(0,_ankle_height[side],0),1.0,basis)
 	_gait_rotations[chain[0]] = sk.get_bone_pose_rotation(chain[0])
 	_gait_rotations[chain[1]] = sk.get_bone_pose_rotation(chain[1])
-	gait.knee_prev[side] = gait.knee_flex(side,(requested-ankle_offset-hip).length())
+	# The knee the gait's own sole asks for: a foot-held tool's bounded
+	# clearance lift/shift on top is not part of the swing/contact pose the
+	# rate limits and the contact deferral compare against.
+	gait.knee_prev[side] = gait.knee_flex(side,(sole-ankle_offset-hip).length())
+	if gait.debug_log and OS.get_environment("TRACE_T0") != "": print("TWL side=%d planted=%s t=%.2f st=%d knee_prev=%.1f req_knee=%.1f held=%.3f shift=%.3f sole_y=%.3f root_fix=%.4f" % [side, planted, gait.t[side], gait.state[side], rad_to_deg(gait.knee_prev[side]), rad_to_deg(gait.knee_flex(side,(requested-ankle_offset-hip).length())), held_lift, held_shift.length(), sole.y, gait.root_fix])
 	evaluated_grounded[side] = planted and _target_valid[side] and held_lift<.01
 	gait.requested[side] = requested
+	gait.shown_sole[side] = sole
 	_gait_sides[side] = true
 	if _toes[side] < 0: return
 	if tool_foot:
@@ -2224,7 +2273,9 @@ func _weight_transfer(sk: Skeleton3D, walking: bool, speed: float, delta: float)
 		root = _supported_solo_root(sk,root,delta,back_stowed)
 	elif back_stowed and free_expression:
 		root = _clear_back_motion_root(sk,root,delta)
-	if gait_acting: gait.update_drop(sk,root,delta)
+	if gait_acting:
+		gait.update_drop(sk,root,delta)
+		root = gait.constrain_root(sk,root,delta)
 	sk.set_bone_global_pose(0, root)
 
 func _supported_solo_root(sk: Skeleton3D, wanted: Transform3D, delta: float, back_stowed: bool) -> Transform3D:

@@ -43,6 +43,16 @@ const FOOT_HALF_LENGTH := .09   # skinned sole extent ahead/behind the sole poin
 const FOOT_HALF_WIDTH := .075
 const MIN_STANCE := .05         # s: a plant stands at least this long (no touch-and-go taps)
 const COAST_TIME := .45         # s: after the travel request ends the gait keeps stepping at most this long
+const FRESH_KNEE_RATE := 3.0    # deg/tick a fresh plant's knee loads (~12 deg per 30 fps frame)
+const STANCE_KNEE_RATE := 7.0   # deg/tick any stance knee may fold or straighten
+const ROOT_FIX := .06           # m: largest same-tick root correction (constrain_root)
+const FOLD_MAX := 1.4           # rad (80 deg): deepest stance knee the root constraint allows
+const FOLD_LIFT := 1.55         # rad (~89 deg): a trailing plant folded this far steps off
+const TWIST_FREE := .5          # rad (~29 deg): hips may turn this far past a planted foot freely
+const TWIST_MAX := .7           # rad (~40 deg): ... and the heading waits beyond this
+const PIVOT_RATE := 5.0         # rad/s: an over-twisted plant swivels on its ball at most this fast
+const TURN_LEAD := .35          # rad: a footfall lands turned this far into the coming heading
+const KICK_TIME := .075         # s: the stop's follow-through push
 
 var pose: SkeletonModifier3D
 var worker: RigidBody3D
@@ -105,6 +115,7 @@ var _planar: Array[bool] = [true, true]
 var _descend_t: Array[float] = [.22, .22]   # step down: swing time the descent starts
 var _contact_delay: Array[int] = [0, 0]
 var _defer_excess: Array[float] = [0.0, 0.0]
+var _defer_knee: Array[float] = [0.0, 0.0]
 var _caught_up: Array[bool] = [false, false]   # one catch-up re-step per swing
 var _waiting: Array[bool] = [false, false]     # a lift held until the partner lands
 var _reach_pull: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]   # standing reach correction of a swing's footfall
@@ -121,6 +132,7 @@ var stance_age: Array[float] = [0.0, 0.0]
 var landing_count: Array[int] = [0, 0]          # helper plays a footstep per new landing
 var landing_strength: Array[float] = [0.0, 0.0]
 var requested: Array[Vector3] = [Vector3.INF, Vector3.INF]
+var shown_sole: Array[Vector3] = [Vector3.INF, Vector3.INF]   # pose: last solved sole before a held tool's lift
 var debug_planned: Array[Vector3] = [Vector3.INF, Vector3.INF]
 
 # --- foot roll (rest-derived, so a re-authored toe direction just works) ---
@@ -129,6 +141,7 @@ var _toe_axis: Array[Vector3] = []              # toe curl axis, ankle-local
 var _toe_dir: Array[Vector3] = []               # horizontal ankle->toe joint, skeleton rest
 var _ball_off: Array[Vector3] = []              # toe joint relative to the sole point, skeleton rest
 var _peel: Array[float] = [0.0, 0.0]            # planted heel-up angle about the toe joint
+var _peel_cap: Array[float] = [PEEL_CAP, PEEL_CAP]   # keeps the rolled sole within the grounded tolerance
 var _peel0: Array[float] = [0.0, 0.0]           # heel-up angle at lift-off (swing continues it)
 var _roll_off: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]   # rolled sole - planted point
 # Handoff from another owner's last published foot: fades out, never pops.
@@ -149,6 +162,8 @@ var body_y := 0.0               # sprung crouch (speed dip, launch gather, rever
 var _by_v := 0.0
 var body_bob := 0.0             # phase-locked stance bob (never sprung: no lag)
 var _walk_amp := 0.0
+var _bob_rate := 0.0
+var _bob_rate_v := 0.0
 var _run_amp := 0.0
 var _bob_run := 0.0
 var body_lean := 0.0
@@ -191,7 +206,12 @@ var _rest_side := 1.0
 var _lean_s := 0.0              # rest weight-shift spring
 var _lean_sv := 0.0
 var _follow_t := 0.0            # stop follow-through: livelier lean spring
+var _kick_t := -1.0             # stop follow-through push (spread over KICK_TIME)
+var _kick_amp := 0.0
 var _turn_t := -1.0             # turn-in-place anticipation
+var root_fix := 0.0             # this tick's same-tick root correction (constrain_root)
+var _soft_fix := 0.0
+var _last_fix := 0.0
 var absorb := 0.0               # visual suspension: cancels capsule bumps the planted legs would take in a tick
 var _absorb_v := 0.0
 var _body_y := INF
@@ -259,6 +279,11 @@ func setup(owner_pose: SkeletonModifier3D, sk: Skeleton3D) -> void:
 		var flat := Vector3(ball.x, 0.0, ball.z)
 		_toe_dir.append(flat.normalized() if flat.length() > .01 else Vector3.BACK)
 		_ball_off.append(ball)
+		# A heel rolled about the toe joint moves the published sole: past
+		# ~1.8 cm from its plant it would no longer count as grounded (the
+		# toe pad is still down), so the roll stops there and the root
+		# constraint keeps the rest of the reach.
+		_peel_cap[side] = minf(PEEL_CAP, 2.0 * asin(clampf(.0175 / (2.0 * maxf(ball.length(), .02)), 0.0, 1.0)))
 
 # ------------------------------------------------------------------ helpers
 func knee_flex(side: int, d: float) -> float:
@@ -298,10 +323,14 @@ static func _glide_inverse(s: float) -> float:
 	return (lo + hi) * .5
 
 static func bump(x: float, early := .8) -> float:
-	# Early peak (~42%, ~34% running): brisk toe-off and heel tuck, then a
-	# long, gradual reach down to contact (no knee whip just before landing).
+	# Early peak (~42%, ~37% running): brisk toe-off and heel tuck, then a
+	# long, gradual reach down to contact (no knee whip just before landing)
+	# that still meets the ground moving (~1 m/s down), never hovering just
+	# above it: sin^1.5 rising, plain sin (finite slope at 0) falling.
 	x = clampf(x, 0.0, 1.0)
-	return pow(sin(PI * pow(x, early)), 1.5)
+	var u := pow(x, early)
+	var s := sin(PI * u)
+	return pow(s, 1.5) if u < .5 else s
 
 func _bump(tt: float) -> float:
 	# A walk eases its lift in over the first ~12% (the knee turns from
@@ -337,9 +366,10 @@ func _stride(v: float) -> float:
 	# A walk takes longer, confident steps (~2.9 steps/s at 1 m/s, not a
 	# mincing scurry); from a jog on the run's own quick cadence takes over.
 	l *= lerpf(1.2, 1.0, smoothstep(1.0, 1.7, v))
-	# Shorter steps on steep ground keep both soles inside the leg's reach
-	# (the native body height is measured at its centre, not at the feet).
-	l *= lerpf(1.0, .72, smoothstep(.985, .89, up.y))
+	# Shorter, quicker steps on steep ground (~.6x past ~22 deg) keep the
+	# height spread between the uphill and downhill sole small enough for
+	# both legs: long ones folded the uphill knee to ~90 deg under the cube.
+	l *= lerpf(1.0, .6, smoothstep(.985, .925, up.y))
 	# A turning deck turns the planted feet under the hips (the hips follow
 	# the creature's heading, not the deck): shorter stances keep them in
 	# reach instead of running out mid-stride.
@@ -398,6 +428,24 @@ func _heading_at(tau: float) -> float:
 
 func _lead_heading() -> float:
 	return worker._heading + clampf(wrapf(worker._idle_heading - worker._heading, -PI, PI), -.55, .55)
+
+func turn_limit(base: float) -> float:
+	# Heading rate the planted feet allow (pose.stopped_turn_limit): the
+	# visual hips may twist ~29 deg past a planted foot freely, then the turn
+	# eases off (~40 deg) until a step lands turned into the new heading or
+	# the plant has swivelled on its ball, instead of braiding the shins.
+	var error := wrapf(worker._idle_heading - worker._heading, -PI, PI)
+	if absf(error) < .01: return base
+	return lerpf(base, .8, smoothstep(TWIST_FREE, TWIST_MAX, _planted_twist(signf(error))))
+
+func _planted_twist(turn: float) -> float:
+	# Largest twist of the visual hips past a planted foot in the `turn`
+	# direction (rad, + = the hips are ahead of the foot).
+	var hips: float = worker._heading + body_yaw
+	var worst := 0.0
+	for side in 2:
+		if state[side] == PLANTED: worst = maxf(worst, wrapf(hips - _planted_yaw(side), -PI, PI) * turn)
+	return worst
 
 func _along_ground() -> Vector3:
 	# Horizontal travel climbing or descending with the ground plane: a slope
@@ -495,9 +543,9 @@ func validate_landing(side: int, hip: Vector3) -> void:
 	var ankle: Vector3 = landing[side] + Vector3.UP * float(pose._ankle_height[side])
 	# A walk lands reaching forward on a nearly straight leg (~22 deg of
 	# knee flex, the shin close to vertical) that then loads into the
-	# double-support flex; a run lands on a softer knee (~30 deg) under the
-	# body, never a locked knee (that whips).
-	var reach: float = float(worker._leg_lengths[side]) - lerpf(.014, .026, run_weight)
+	# double-support flex; a jog or run lands pre-flexed (~31 deg) under the
+	# body, so less of the loading is left for the first stance frames.
+	var reach: float = float(worker._leg_lengths[side]) - lerpf(.014, .028, smoothstep(1.2, 2.4, speed))
 	var offset := ankle - hip_contact
 	if offset.length() <= reach or absf(offset.y) >= reach:
 		if not _frozen[side]: _reach_pull[side] = _reach_pull[side].move_toward(Vector3.ZERO, .006)
@@ -517,12 +565,13 @@ func validate_landing(side: int, hip: Vector3) -> void:
 	_frozen_local[side] = (hit.collider as Node3D).to_local(hit.position)
 	landing[side] = hit.position
 
-func defer_contact(side: int, offset: Vector3, knee_pop := false) -> bool:
+func defer_contact(side: int, offset: Vector3, knee_gap := 0.0) -> bool:
 	# The pose found this tick's footfall beyond the real hip's reach
-	# (`offset` = contact ankle - hip). Waiting helps while the deficit closes
-	# (the crouch or the body is still coming toward it) and costs nothing for
-	# a few ticks; a footfall the body keeps moving AWAY from (rotating deck,
-	# a reversal on a slope) is re-stepped toward the hip instead of left
+	# (`offset` = contact ankle - hip), or the shown knee still `knee_gap` rad
+	# from the contact pose. Waiting helps while the deficit closes (the
+	# crouch or the body is still coming toward it) and costs nothing for a
+	# few ticks; a footfall the body keeps moving AWAY from (rotating deck, a
+	# reversal on a slope) is re-stepped toward the hip instead of left
 	# hanging behind it, and only a last few millimetres are slid (pose).
 	if state[side] != PLANTED: return false
 	var reach: float = float(worker._leg_lengths[side]) - .014
@@ -531,15 +580,23 @@ func defer_contact(side: int, offset: Vector3, knee_pop := false) -> bool:
 	var direction := velocity / speed if speed > .2 else facing(worker._heading)
 	var behind := -flat.dot(direction)
 	var kind: int = _contact_kind[side]
-	# A few millimetres are planted as they are (the leg still reaches),
-	# unless the shown knee is still far from the contact pose (a swing held
-	# back by the knee rate limit while the body fell): it keeps reaching.
-	if excess < .004 and not (knee_pop and _contact_delay[side] < 8): return false
+	# Without flight a partner on its last centimetre of leg cannot wait for
+	# this foot: it lands now (the pose slides the last millimetres and the
+	# root constraint lowers the cube), never leaving both feet up.
+	var partner_short := not _may_fly() and state[1 - side] == PLANTED and _reach_left(1 - side) < .01
+	# A knee the swing's rate limit held back keeps reaching only while it
+	# really closes on the contact pose (>= 2 deg a tick) over a footfall the
+	# body is not leaving behind; whatever is left at contact is eased by the
+	# fresh-plant knee limit in constrain_root(), never popped.
+	var pop: bool = knee_gap > deg_to_rad(10.0) and _contact_delay[side] < 4 and behind < .04 and not partner_short \
+		and (_contact_delay[side] == 0 or knee_gap < _defer_knee[side] - deg_to_rad(2.0))
+	# A few millimetres are planted as they are (the leg still reaches).
+	if excess < .004 and not pop: return false
 	var first := _contact_delay[side] == 0
 	# Closing at >= 1.5 mm a tick (the crouch or the body coming toward it);
 	# a slower close would hover the foot for many ticks.
 	var closing := first or excess < _defer_excess[side] - .0015
-	var wait: bool = (closing and _contact_delay[side] < 8 and behind < .12) or (_contact_delay[side] < 2 and excess < .03) or (knee_pop and _contact_delay[side] < 8)
+	var wait: bool = pop or (not partner_short and ((closing and _contact_delay[side] < 8 and behind < .12) or (_contact_delay[side] < 2 and excess < .03)))
 	if wait:
 		var body := _support_alive(side)
 		state[side] = kind
@@ -550,13 +607,14 @@ func defer_contact(side: int, offset: Vector3, knee_pop := false) -> bool:
 		_frozen_local[side] = local_point[side]
 		_contact_delay[side] += 1
 		_defer_excess[side] = excess
+		_defer_knee[side] = knee_gap
 		landing_count[side] -= 1
 		out_planted[side] = false
 		# A drop landing keeps falling with the cube instead of a timed curve.
 		_drop[side] = _drop_planted[side]
-		if debug_log: print("GAIT defer side=%d excess=%.3f behind=%.3f delay=%d" % [side, excess, behind, _contact_delay[side]])
+		if debug_log: print("GAIT defer side=%d excess=%.3f behind=%.3f knee=%.1f delay=%d" % [side, excess, behind, rad_to_deg(knee_gap), _contact_delay[side]])
 		return true
-	if moving and not hold and not _caught_up[side] and excess > .006 and not _drop_planted[side]:
+	if moving and not hold and not _caught_up[side] and excess > .006 and not _drop_planted[side] and not partner_short:
 		# Catch-up: the foot stays airborne a few more ticks and re-targets a
 		# reachable footfall from the predicted hip (the old curve's offset
 		# fades out, so it never jumps).
@@ -778,6 +836,9 @@ func release(delta: float, hard := false) -> void:
 		absorb = 0.0
 		_absorb_v = 0.0
 		_body_y = INF
+		_kick_t = -1.0
+		_bob_rate = 0.0
+		_bob_rate_v = 0.0
 		_rest_w = 0.0
 		_rest_wv = 0.0
 		_lean_s = 0.0
@@ -960,7 +1021,9 @@ func _events(delta: float) -> void:
 				_waiting[side] = false
 				if p < d: armed[side] = true
 				if not moving or hold: continue
-				var other_planted := state[1 - side] == PLANTED
+				# A foot-held tool's plant lifted by its clearance block is not
+				# standing on anything: the other foot keeps its own support.
+				var other_planted := state[1 - side] == PLANTED and not (_is_tool_foot(1 - side) and float(pose._held_lift) > .01)
 				var tool_foot: bool = _is_tool_foot(side)
 				if not other_planted and not _may_fly() and _reach_left(side, _landing_in(1 - side)) < -.004:
 					# Running out of leg before the airborne partner lands (a walk
@@ -980,15 +1043,17 @@ func _events(delta: float) -> void:
 				# sole) and steep ground always keep one foot down. A foot that is
 				# due while its partner is still airborne waits (the crouch covers
 				# its reach) and the partner's contact is brought forward.
-				# Only a plant the crouch can no longer keep within the leg leaves
-				# anyway (a reversal): a short float beats a sliding sole.
-				if not other_planted and (not _may_fly() or tool_foot) and (tool_foot or not _beyond_reach(side)):
+				# The root constraint lowers the cube a few centimetres the same
+				# tick to keep a waiting plant reached; only a plant beyond even
+				# that leaves anyway (a hard reversal): a short float beats a
+				# sliding sole.
+				if not other_planted and (not _may_fly() or tool_foot) and (tool_foot or _reach_left(side) > -.03):
 					_waiting[side] = true
 					_hurry(1 - side)
 					continue
 				# No one-tick taps: a fresh plant stands at least MIN_STANCE
 				# unless it is already beyond the leg.
-				if stance_age[side] < MIN_STANCE and not _beyond_reach(side): continue
+				if stance_age[side] < MIN_STANCE and _reach_left(side) > -.03: continue
 				if debug_log and not other_planted: print("GAIT lift_unsupported side=%d due=%s reach_left=%.3f may_fly=%s partner_state=%d partner_t=%.2f" % [side, due, _reach_left(side), _may_fly(), state[1 - side], t[1 - side]])
 				# Running out of leg late in a stance is simply an early push-off:
 				# an ordinary swing from where the clock is (no re-phase).
@@ -1041,8 +1106,10 @@ func _events(delta: float) -> void:
 		else: quiet = speed < .25
 
 func _may_fly() -> bool:
-	# Running flight needs a run duty, free feet and ground that is not steep.
-	return duty < .49 and not worker.tool_foot_occupied() and not carry and up.y > .966
+	# Running flight needs a run duty, free feet and ground that is not steep,
+	# here or where the airborne feet are landing (no bound onto a ramp).
+	return duty < .49 and not worker.tool_foot_occupied() and not carry and up.y > .966 \
+		and (state[0] == PLANTED or landing_normal[0].y > .966) and (state[1] == PLANTED or landing_normal[1].y > .966)
 
 func _hurry(side: int) -> void:
 	# The partner is due to lift: land this airborne foot sooner (at most
@@ -1087,9 +1154,9 @@ func _roll_weight() -> float:
 
 func _base_lift(side: int) -> float:
 	if _is_tool_foot(side): return .075
-	# A visible knee drive: ~10 cm clearance walking, a high heel tuck running.
-	# A run tucks the heel to ~85 deg of knee fold, not a whipping 95.
-	var l := lerpf(.125, .15, smoothstep(1.2, 3.2, speed))
+	# A visible knee drive: ~10 cm clearance walking; a run keeps the same
+	# lift, so its heel tucks to ~85-90 deg of knee fold, not a flicking 105.
+	var l := lerpf(.125, .12, smoothstep(1.2, 3.2, speed))
 	return l * .6 if carry else l
 
 func _peel_max() -> float:
@@ -1108,7 +1175,7 @@ func _push_peel(side: int, point: Vector3, frame: Basis, basis: Basis, normal: V
 	var joint := point + frame * _ball_off[side]
 	var axis := _roll_axis(side, frame, normal)
 	var lo := 0.0
-	var hi := PEEL_CAP
+	var hi: float = _peel_cap[side]
 	if hip.distance_to(joint + Basis(axis, hi) * (ankle0 - joint)) > cap: return hi
 	for i in 6:
 		var mid := (lo + hi) * .5
@@ -1142,6 +1209,9 @@ func _overreached(side: int) -> bool:
 	# Only a plant the body is moving AWAY from runs out of leg: a fresh
 	# footfall ahead of the hip (a walk lands near the reach budget) is not.
 	if hip.distance_to(ankle) > reach - .002 and ((sole - hip).dot(direction) < 0.0 or speed < .2): return true
+	# A trailing plant the body is sinking past (stepping down off a tread, a
+	# steep descent) leaves before its knee folds flat under the cube.
+	if is_finite(knee_prev[side]) and knee_prev[side] > FOLD_LIFT and (sole - hip).dot(direction) < 0.0: return true
 	# A foot-held mallet points forward-up: behind the hip it swings under the
 	# cube, so that foot keeps its stance in front and leaves early.
 	if _is_tool_foot(side): return -(sole - hip).dot(direction) > .04
@@ -1183,7 +1253,9 @@ func _landing_target(side: int, t_rem: float) -> void:
 			var gap := (point - (anchor if k < 2 else near)).slide(Vector3.UP).dot(right) * outward
 			if gap < FOOT_GAP: point += right * outward * minf(FOOT_GAP - gap, .14)
 		_lt_point = point
-		_lt_heading = heading
+		# The foot lands turned into the coming heading (a step turn): the
+		# hips then turn over it from toed-in to ~29 deg past, not 70.
+		_lt_heading = heading + clampf(wrapf(worker._idle_heading - heading, -PI, PI), -TURN_LEAD, TURN_LEAD)
 		return
 	# Stopping or settling: land where the hip will come to rest, facing the
 	# requested heading (with a bounded lead so turning in place can continue).
@@ -1517,12 +1589,25 @@ func _planted_output(side: int, delta: float) -> void:
 			local_point[side] = body.to_local(point)
 	point += hit.normal * maxf(-hit.normal.dot(point - hit.position), 0.0)
 	var yaw := _planted_yaw(side)
+	if not hold and stance_age[side] > .03 and (moving or settle_allowed):
+		# Pivot on the ball: a plant the hips have turned more than TWIST_FREE
+		# past (a sharp turn, a reversal, turning in place) swivels about its
+		# toe joint toward them; the toe pad stays put (no slip, no braid).
+		var twist := wrapf(worker._heading + body_yaw - yaw, -PI, PI)
+		var excess := absf(twist) - TWIST_FREE
+		if excess > 0.0:
+			var turn := signf(twist) * minf(excess, PIVOT_RATE * delta)
+			var ball := point + _foot_frame(yaw, hit.normal) * _ball_off[side]
+			point = ball + Basis(hit.normal, turn) * (point - ball)
+			yaw += turn
+			local_point[side] = body.to_local(point) if body else point
+			local_forward[side] = body.global_basis.inverse() * facing(yaw) if body else facing(yaw)
 	foot_yaw[side] = yaw
 	# Heel-to-toe roll: late in a moving stance the heel peels up about the
 	# toe joint (the toe pad stays flat and fixed on the ground), which is the
 	# push-off. A stop lets the heel back down quickly, never in one tick.
 	var u := clampf(_local_phase(side) / maxf(duty, .05), 0.0, 1.0) if moving and not hold else 0.0
-	var wanted := _peel_max() * smoothstep(.5, 1.0, u) * _roll_weight() if not _is_tool_foot(side) else 0.0
+	var wanted := minf(_peel_max(), _peel_cap[side]) * smoothstep(.5, 1.0, u) * _roll_weight() if not _is_tool_foot(side) else 0.0
 	var frame := _foot_frame(yaw, hit.normal)
 	var basis := (frame * _rest_foot[side]).orthonormalized()
 	var rate := PEEL_RATE
@@ -1878,8 +1963,13 @@ func _update_body(delta: float) -> void:
 	# Walk and run waves keep their own phase and are cross-faded by
 	# amplitude (shifting one wave's phase with speed would sweep the bob).
 	var bounce := 0.0 if carry else smoothstep(1.1, 1.9, v)
-	_walk_amp = (1.0 - bounce) * gait_on * calm
-	_run_amp = bounce * calm
+	# The bob fades with the stepping itself (a sprung phase rate), so a
+	# stop never leaves a frozen half-bob drifting out with the speed.
+	var stepping := spring(_bob_rate, _bob_rate_v, smoothstep(0.0, 1.5, phase_rate), 14.0, delta)
+	_bob_rate = clampf(stepping.x, 0.0, 1.0)
+	_bob_rate_v = stepping.y
+	_walk_amp = (1.0 - bounce) * gait_on * calm * _bob_rate
+	_run_amp = bounce * calm * _bob_rate
 	_bob_run = act_run
 	body_bob = _bob_at(_act_phase)
 	var walk_wave := cos(TAU * fposmod(2.0 * _act_phase - (duty - .5), 1.0))
@@ -1899,9 +1989,16 @@ func _update_body(delta: float) -> void:
 		# The skid is over and the cube swings back upright: it carries on
 		# past upright, nose-down (~8 deg), rocks back once and settles over
 		# two damped swings (~2.4 Hz): a "whoa!" stop, not a statue.
-		_lean_v += 3.0 * (.5 if carry else (.2 if tool else 1.0)) * steady
+		# Spread over ~75 ms (a push, not a one-tick kick: no pitch corner).
+		_kick_amp = 3.0 * (.5 if carry else (.2 if tool else 1.0)) * steady
+		_kick_t = 0.0
 		_brake_time = 0.0
 		_follow_t = .9
+	if _kick_t >= 0.0:
+		var k0 := smoothstep(0.0, 1.0, _kick_t / KICK_TIME)
+		_kick_t += delta
+		_lean_v += _kick_amp * (smoothstep(0.0, 1.0, minf(_kick_t / KICK_TIME, 1.0)) - k0)
+		if _kick_t >= KICK_TIME: _kick_t = -1.0
 	_follow_t = maxf(_follow_t - delta, 0.0)
 	# Climbs lean into the hill, descents sit back a little.
 	if moving:
@@ -1916,10 +2013,13 @@ func _update_body(delta: float) -> void:
 	# walking, smaller and quicker running, quiet when loaded.
 	var sway := gait_on * steady * (.45 if carry else 1.0) * (.4 if tool else 1.0)
 	var sway_wave := cos(TAU * (_act_phase - duty * .5))
-	_shift_osc = -lerpf(.037, .02, act_run) * sway * sway_wave
-	_roll_amp = lerpf(.06, .035, act_run) * sway
+	# The waddle is a walk's charm; from a jog on the cube rides steadier
+	# (a rocking 7 deg at 2 m/s read as wobbly from behind).
+	var waddle := 0.0 if carry else smoothstep(1.4, 2.6, v)
+	_shift_osc = -lerpf(.037, .018, waddle) * sway * sway_wave
+	_roll_amp = lerpf(.06, .02, waddle) * sway
 	_roll_osc = _roll_amp * sway_wave
-	body_twist = lerpf(.06, .045, act_run) * sway * sway_wave
+	body_twist = lerpf(.06, .03, waddle) * sway * sway_wave
 	var s := spring(_shift_s, _shift_v, .03 * support_sign * launch, 26.0, delta)
 	_shift_s = s.x
 	_shift_v = s.y
@@ -1931,13 +2031,16 @@ func _update_body(delta: float) -> void:
 	var r := spring(_roll_s, _roll_v, roll_target, 16.0, delta)
 	_roll_s = r.x
 	_roll_v = r.y
-	# The cube's eyes lead a turn toward the requested heading (<= 8 deg
-	# travelling, ~12 standing); a lightly underdamped spring, so the cube
+	# The cube's eyes lead a turn toward the requested heading (<= 8 deg);
+	# a lightly underdamped spring, so the cube
 	# overshoots the new heading a few degrees and settles. A turn begun
 	# from a stand first winds up the other way for a moment (anticipation).
 	var heading_error := wrapf(worker._idle_heading - worker._heading, -PI, PI)
-	var lead := lerpf(.21, .14, smoothstep(.2, 1.0, v))
+	var lead := .14
 	var yaw_target := clampf(heading_error * .35, -lead, lead) * (.5 if carry else 1.0)
+	# The eye lead never adds twist past a planted foot beyond what the
+	# heading itself may turn (turn_limit): the cube turns with its steps.
+	yaw_target *= 1.0 - smoothstep(TWIST_FREE - .15, TWIST_MAX - .1, _planted_twist(signf(heading_error)))
 	if v < .25 and absf(heading_error) > .35 and _turn_t < 0.0 and not carry:
 		_turn_t = 0.0
 		_yaw_v -= signf(heading_error) * 1.1
@@ -1953,6 +2056,9 @@ func _update_body(delta: float) -> void:
 		if state[side] == SETTLE:
 			var tt := t[side]
 			hop = minf(hop, -.022 * pow(sin(PI * clampf(tt / .4, 0.0, 1.0)), 2.0) + .012 * pow(sin(PI * clampf((tt - .3) / .7, 0.0, 1.0)), 2.0))
+	# Still braking, the settle steps are part of the stop, not hops of their
+	# own (four root bumps in half a second read as jitter).
+	hop *= 1.0 - smoothstep(.25, .7, v)
 	# The turn's wind-up dips the cube ~1.5 cm for ~70 ms.
 	if _turn_t >= 0.0 and _turn_t < .08: hop = minf(hop, -.015)
 	var sd := spring(settle_dip, _settle_v, hop, 30.0, delta)
@@ -1963,8 +2069,8 @@ func _update_body(delta: float) -> void:
 
 func _update_rest(delta: float) -> void:
 	# Standing still is never a statue: a slow breath (~.42 Hz: the root
-	# rises ~6 mm and the top tips back ~.8 deg on the inhale) and every
-	# 2-4 s a weight shift onto one foot (~1.5 deg roll, ~1.2 cm over it).
+	# rises ~4 mm and the top tips back ~.7 deg on the inhale) and every
+	# 2-4 s a weight shift onto one foot (~1.1 deg roll, ~1.2 cm over it).
 	# Deterministic (no RNG), so tests and replays see the same motion.
 	var standing := active and quiet and not moving and state[0] == PLANTED and state[1] == PLANTED and not hold and settle_allowed
 	var w := spring(_rest_w, _rest_wv, 1.0 if standing else 0.0, 4.0 if standing else 10.0, delta)
@@ -1982,9 +2088,9 @@ func _update_rest(delta: float) -> void:
 	var ls := spring(_lean_s, _lean_sv, _rest_side * (1.0 if standing else 0.0), 3.2, delta)
 	_lean_s = ls.x
 	_lean_sv = ls.y
-	rest_y = .006 * inhale * _rest_w
-	rest_pitch = -.014 * inhale * _rest_w
-	rest_roll = .026 * _lean_s * _rest_w
+	rest_y = .004 * inhale * _rest_w
+	rest_pitch = -.012 * inhale * _rest_w
+	rest_roll = .02 * _lean_s * _rest_w
 	rest_shift = -.012 * _lean_s * _rest_w
 
 func _update_absorb(delta: float) -> void:
@@ -2054,6 +2160,59 @@ func acting_root(sk: Skeleton3D, authored: Transform3D) -> Transform3D:
 	root.origin += Vector3(body_shift * w + rest_shift, (body_y + body_bob + roll_lift) * w + settle_dip + squash - body_drop + absorb + rest_y, 0.0)
 	var tilt := Basis(Vector3.UP, body_yaw * w) * Basis(Vector3.RIGHT, -(body_lean + body_nod) * w - rest_pitch) * Basis(Vector3.BACK, body_roll * w + rest_roll)
 	root.basis = (tilt * root.basis).orthonormalized()
+	return root
+
+func constrain_root(sk: Skeleton3D, root: Transform3D, delta: float) -> Transform3D:
+	# Same-tick vertical correction of the visual root (the crouch springs
+	# only learn a need over the next ticks). Hard: every planted leg stays
+	# within its reach, so no planted sole is ever shown short of its plant.
+	# Soft: a stance knee folds or straightens at most FRESH_KNEE_RATE deg a
+	# tick over its first stance ticks (a landing loads over a few frames,
+	# never buckles in one) and STANCE_KNEE_RATE after; a contact the shown
+	# knee had not reached yet is eased the same way. Reach wins conflicts.
+	root_fix = 0.0
+	if not active or not pose.evaluated_valid:
+		_soft_fix = 0.0
+		_last_fix = 0.0
+		return root
+	var rest_inv := sk.get_bone_rest(0).affine_inverse()
+	var hard_hi := ROOT_FIX
+	var lo := -ROOT_FIX
+	var hi := ROOT_FIX
+	var ticks := delta * 120.0
+	var fresh := INF
+	for side in 2:
+		if state[side] != PLANTED or not is_finite(knee_prev[side]): continue
+		fresh = minf(fresh, stance_age[side])
+		var hip: Vector3 = sk.global_transform * (root * (rest_inv * sk.get_bone_global_rest(pose._chains[side][0]).origin))
+		var ankle: Vector3 = out_sole[side] - out_basis[side] * Vector3(0, float(pose._ankle_height[side]), 0)
+		var rel := hip - ankle
+		var h2 := rel.x * rel.x + rel.z * rel.z
+		var reach: float = float(worker._leg_lengths[side]) - .012
+		var keep := sqrt(reach * reach - h2) - rel.y if h2 < reach * reach else -ROOT_FIX
+		# A contact made this tick beyond a slide's worth of reach is the
+		# pose's to defer or re-step, not the cube's to drop onto.
+		if stance_age[side] > 0.0 or keep > -.015: hard_hi = minf(hard_hi, keep)
+		var rate := deg_to_rad(lerpf(FRESH_KNEE_RATE, STANCE_KNEE_RATE, smoothstep(.05, .1, stance_age[side]))) * ticks
+		# A stance knee never folds past FOLD_MAX while the other leg still
+		# has reach to spare (stairs, steep slopes: the cube rides up on the
+		# reach budget instead of squatting over the higher foot).
+		var shortest := knee_span(side, minf(minf(knee_prev[side] + rate, PI - .05), maxf(FOLD_MAX, knee_prev[side] - rate)))
+		var longest := knee_span(side, maxf(knee_prev[side] - rate, 0.0))
+		if shortest * shortest > h2: lo = maxf(lo, sqrt(shortest * shortest - h2) - rel.y)
+		if longest * longest > h2: hi = minf(hi, sqrt(longest * longest - h2) - rel.y)
+	# The knee-rate part eases (<= 8 mm a tick, so it never pops the other
+	# leg; 12 mm on a contact tick, where a dip reads as weight arriving):
+	# a fast descent's landing still loads over several frames.
+	var soft := clampf(0.0, lo, hi) if lo <= hi else (lo + hi) * .5
+	_soft_fix = move_toward(_soft_fix, clampf(soft, -ROOT_FIX, ROOT_FIX), (.012 if fresh < .02 else .008) * ticks)
+	# Even the reach part moves at most 2 cm a tick (a deeper sudden need is
+	# a capsule pop the absorb and crouch springs take over within ticks).
+	var r := clampf(maxf(minf(_soft_fix, hard_hi), _last_fix - .02 * ticks), -ROOT_FIX, ROOT_FIX)
+	_last_fix = r
+	if absf(r) < .00005: return root
+	root_fix = r
+	root.origin += sk.global_basis.inverse() * Vector3(0.0, r, 0.0)
 	return root
 
 func update_drop(sk: Skeleton3D, root: Transform3D, delta: float) -> void:

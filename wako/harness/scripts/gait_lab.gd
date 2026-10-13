@@ -12,7 +12,12 @@ extends "res://harness/scripts/stage.gd"
 ## Round-2 critic repros: c_slope_run, c_hit_run, c_speed_wobble, c_jitter,
 ## c_tip, c_wall, c_run_action, c_deck_rot_run, c_ledge_stop, c_push_stand,
 ## c_carry_terrain, s25, s25d, tstops (speed=1.0|2.1|3.4).
+## Round-3 critic repros (k_*): k_follow34, k_rev_deck, k_deck_stopgo,
+## k_step16_diag, k_stop_edge, k_drop_nav, k_ledge_reverse, k_creep_circle,
+## k_creep_slope, k_carry_slope, k_speed_ramp, k_inspect_feet.
+## probe=1 attaches harness/scripts/gait_probe.gd (contract checks).
 const Metrics := preload("res://harness/scripts/gait_metrics.gd")
+const Probe := preload("res://harness/scripts/gait_probe.gd")
 const Part := preload("res://Components/Contraptions/contraption_part.gd")
 var wako: RigidBody3D
 var metrics: Node
@@ -20,6 +25,7 @@ var args := {}
 var deck: RigidBody3D
 var cargo: RigidBody3D
 var _deck_target := Vector3.INF
+var probe: Node
 
 func _init() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -92,12 +98,40 @@ func setup() -> void:
 		"interrupt":
 			start = Vector3(0, 1.6, 22)
 			add_box(Vector3(0, .3, 19), Vector3(3, .6, 8), Color(0.62, 0.6, 0.55))
+		"k_step16_diag", "k_stop_edge":
+			_build_steps()
+			start = Vector3(-2.5, 1.2, 21) if scenario == "k_step16_diag" else Vector3(0, 1.2, 9)
+			if scenario == "k_step16_diag":
+				# A wider plateau so a diagonal approach stays on it.
+				add_box(Vector3(0, .08, 15), Vector3(14, .16, 18), Color(0.62, 0.6, 0.55))
+		"k_rev_deck", "k_deck_stopgo":
+			start = Vector3(0, 1.45, 0)
+			_build_platform()
+		"k_drop_nav":
+			start = Vector3(0, 2.6, 22)
+		"k_ledge_reverse":
+			start = Vector3(0, 1.6, 22)
+			add_box(Vector3(0, .3, 20), Vector3(3, .6, 8), Color(0.62, 0.6, 0.55))
+		"k_creep_slope", "k_carry_slope":
+			_build_slopes()
+			start = Vector3(0, 1.0, 4) if scenario == "k_carry_slope" else Vector3(-1.0, 6.0 * tan(deg_to_rad(15.0)) * .5 + 1.0, -3.0)
 	wako = spawn_wako(start, "gait_lab")
 	cam_follow = wako
 	metrics = Metrics.new()
 	add_child(metrics)
 	if args.get("tint", "0") == "1": _tint_feet.call_deferred()
+	if args.get("probe", "0") == "1": _attach_probe.call_deferred()
 	_run.call_deferred(scenario)
+
+func _attach_probe() -> void:
+	probe = Probe.new()
+	add_child(probe)
+	probe.metrics_ref = metrics
+	probe.attach(wako)
+
+func _go_follow(dir: Vector3) -> void:
+	# The official 3.4 m/s path: companion follow mode (walk_speed stays 2.1).
+	wako.navigate_to(wako.global_position + dir.normalized() * 80.0 - Vector3(0, wako.ride_height, 0))
 
 func _tint_feet() -> void:
 	# Small coloured markers on the ankles: left orange, right blue.
@@ -675,6 +709,189 @@ func _run(scenario: String) -> void:
 			_goto(Vector3.BACK, 2.1)
 			await _phase("down25_15", 2.6)
 			await _stop("stop_end")
+		"k_follow34":
+			wako.walk_speed = 2.1
+			wako.companion_mode = "follow"
+			wako.companion_speed = 3.4
+			_go_follow(Vector3.FORWARD)
+			metrics.mark_motion_start()
+			await _phase("f_start", .8)
+			await _phase("f_run", 1.8)
+			_go_follow(Vector3.BACK)
+			await _phase("f_reverse", 2.4)
+			# Ping-pong reversals every .7 s at full speed.
+			for i in 4:
+				_go_follow(Vector3.FORWARD if i % 2 == 0 else Vector3.BACK)
+				await _phase("f_pingpong", .7)
+			# 180 by a target directly behind, then a sharp 135.
+			_go_follow(Vector3.FORWARD)
+			await _phase("f_run2", 1.4)
+			_go_follow(Vector3(1, 0, 1))
+			await _phase("f_turn135", 1.6)
+			await _stop("f_stop")
+			await _phase("f_rest", 1.0)
+			metrics.neutral_snapshot()
+		"k_rev_deck":
+			deck.linear_velocity = Vector3(.6, 0, 0)
+			deck.angular_velocity = Vector3(0, .7, 0)
+			await _phase("deck_idle", 1.0)
+			wako.walk_speed = 3.4
+			_deck_target = Vector3(0, 0, -3.0)
+			await _phase("deck_run", .9)
+			_deck_target = Vector3(0, 0, 2.8)
+			await _phase("deck_reverse", 1.4)
+			_deck_target = Vector3(2.6, 0, 0)
+			await _phase("deck_turn90", 1.0)
+			_deck_target = Vector3.INF
+			await _stop("deck_stop")
+			await _phase("deck_stand", 2.0)
+			metrics.neutral_snapshot()
+		"k_deck_stopgo":
+			deck.linear_velocity = Vector3(.5, 0, .3)
+			deck.angular_velocity = Vector3(0, -.8, 0)
+			await _phase("deck_idle", 1.0)
+			wako.walk_speed = 3.4
+			for i in 5:
+				_deck_target = Vector3(-2.5, 0, -2.5) if i % 2 == 0 else Vector3(2.5, 0, 2.5)
+				await _phase("deck_go", .5)
+				_deck_target = Vector3.INF
+				wako.stop_navigation()
+				await _phase("deck_brake", .3)
+			await _stop("deck_stop")
+			metrics.neutral_snapshot()
+		"k_step16_diag":
+			# Diagonal run off a 16 cm step at 3.4, then a stop right past the edge.
+			wako.walk_speed = 3.4
+			wako.navigate_to(Vector3(8.5, 0, 1.0))
+			metrics.mark_motion_start()
+			await _until("diag_top", func() -> bool: return wako.global_position.z <= 7.4, 1500)
+			await _until("diag_down16", func() -> bool: return wako.global_position.z <= 5.7, 600)
+			wako.stop_navigation()
+			await _phase("stop_past_edge", 1.6)
+			metrics.neutral_snapshot()
+			# Walk back up the 16 cm step at 1.0 and stop straddling it.
+			wako.walk_speed = 1.0
+			wako.navigate_to(wako.global_position + Vector3(0, -wako.ride_height, 6))
+			await _until("walk_up16", func() -> bool: return wako.global_position.z >= 6.05, 900)
+			wako.stop_navigation()
+			await _phase("stop_straddle_up", 1.6)
+			metrics.neutral_snapshot()
+		"k_stop_edge":
+			# Walk 1.0 off plateau A (16 cm, edge z=6) and stop with the hip over the edge.
+			wako.walk_speed = 1.0
+			wako.navigate_to(Vector3(0, 0, -8))
+			await _until("walk_to_edge", func() -> bool: return wako.global_position.z <= 6.0, 900)
+			wako.stop_navigation()
+			await _phase("stop_on_edge", 1.6)
+			metrics.neutral_snapshot()
+			wako.walk_speed = 3.4
+			wako.navigate_to(Vector3(0, 0, -8))
+			metrics.mark_motion_start()
+			await _phase("go_down_run", .9)
+			await _until("run_to_upstep", func() -> bool: return wako.global_position.z <= .3, 600)
+			wako.stop_navigation()
+			await _phase("stop_at_riser", 1.6)
+			metrics.neutral_snapshot()
+		"k_drop_nav":
+			# Travel requested while still falling, then a sidestep start.
+			wako.walk_speed = 3.4
+			_goto(Vector3.FORWARD, 3.4)
+			metrics.mark_motion_start()
+			await _until("fall_nav", func() -> bool: return wako.on_ground, 600)
+			await _phase("land_run", 1.2)
+			await _stop("stop1")
+			_goto(Vector3.LEFT, 1.0)
+			metrics.mark_motion_start()
+			await _phase("side_walk", 1.4)
+			await _stop("stop2")
+		"k_ledge_reverse":
+			_goto(Vector3.FORWARD, 3.4)
+			await _until("ledge_run", func() -> bool: return wako.global_position.z <= 16.2, 900)
+			await _until("ledge_air", func() -> bool: return not wako.on_ground, 120)
+			_goto(Vector3.BACK, 3.4)
+			await _until("air_reverse", func() -> bool: return wako.on_ground, 240)
+			await _phase("land_reverse", 1.0)
+			await _stop("stop")
+		"k_creep_circle":
+			# 0.2 m/s around a 1.2 m circle (target kept 2 m ahead on the tangent).
+			wako.walk_speed = .2
+			var centre := wako.global_position + Vector3(1.2, 0, 0)
+			metrics.mark_motion_start()
+			metrics.label = "creep_circle"
+			caption("creep_circle")
+			for i in 960:
+				var rel := wako.global_position - centre
+				rel.y = 0
+				var a := atan2(rel.z, rel.x) + .5
+				var aim := centre + Vector3(cos(a), 0, sin(a)) * 1.2
+				var dir := (aim - wako.global_position).slide(Vector3.UP).normalized()
+				if i % 6 == 0: wako.navigate_to(wako.global_position + dir * 2.0 - Vector3(0, wako.ride_height, 0))
+				await get_tree().physics_frame
+			await _stop("stop_circle")
+			for sp: float in [.2, .35, .2]:
+				_goto(Vector3.FORWARD, sp)
+				await _phase("creep_%.2f" % sp, 2.0)
+			await _stop("stop")
+		"k_creep_slope":
+			# Creep across the 15 deg slope, then straight down it at 0.2.
+			_goto(Vector3.RIGHT, .2)
+			metrics.mark_motion_start()
+			await _phase("creep_across15", 4.0)
+			await _stop("stop_across")
+			_goto(Vector3.BACK, .2)
+			await _phase("creep_down15", 3.5)
+			await _stop("stop_down")
+		"k_carry_slope":
+			cargo = Part.new()
+			cargo.setup("battery", "gait-head-load", true)
+			add_child(cargo)
+			cargo.set_carried(wako.head_anchor, Vector3(0, float(cargo.definition.size.y) * .5 + .03, 0))
+			wako.set_cargo(cargo.mass)
+			await _phase("carry_idle", .8)
+			_goto(Vector3.FORWARD, 2.2)
+			await _until("carry_climb", func() -> bool: return wako.global_position.z <= -10.0, 1800)
+			await _stop("carry_stop25")
+			_goto(Vector3.BACK, 2.2)
+			await _phase("carry_descend", 3.0)
+			await _stop("carry_stop")
+			print("CARGO carrier_ok=%s" % [cargo.get("carrier") == wako.head_anchor])
+		"k_speed_ramp":
+			wako.walk_speed = .2
+			wako.navigate_to(wako.global_position + Vector3(0, -wako.ride_height, -80))
+			metrics.mark_motion_start()
+			metrics.label = "ramp_up"
+			for i in 960:
+				wako.walk_speed = lerpf(.2, 3.4, i / 959.0)
+				await get_tree().physics_frame
+			metrics.label = "ramp_down"
+			for i in 960:
+				wako.walk_speed = lerpf(3.4, .2, i / 959.0)
+				await get_tree().physics_frame
+			await _stop("stop")
+		"k_inspect_feet":
+			# Work target right beside the left foot, then a place begun from a run.
+			var t1 := Node3D.new()
+			add_child(t1)
+			var right: Vector3 = wako._model.global_basis.x
+			t1.global_position = wako.global_position - right * .32 + (-wako._model.global_basis.z) * .12 + Vector3(0, -wako.ride_height + .03, 0)
+			wako.work_target = t1
+			wako.begin_action("inspect")
+			await _until("inspect_side", func() -> bool: return wako.action.is_empty(), 900)
+			wako.work_target = null
+			await _phase("after_side", .6)
+			_goto(Vector3.FORWARD, 3.4)
+			await _phase("run", 1.2)
+			var t2 := Node3D.new()
+			add_child(t2)
+			t2.global_position = wako.global_position + (-wako._model.global_basis.z) * .3 + Vector3(0, -wako.ride_height + .03, 0)
+			wako.work_target = t2
+			wako.begin_action("place")
+			await _until("place_from_run", func() -> bool: return wako.action.is_empty(), 900)
+			wako.work_target = null
+			await _phase("after_place", .6)
+			_goto(Vector3.FORWARD, 1.0)
+			await _phase("walk_again", 1.2)
+			await _stop("stop")
 		"showcase":
 			await _go(Vector3.FORWARD, 1.0, "walk 1.0 m/s", "walk 1.0 m/s ", 1.6)
 			await _go(Vector3.FORWARD, 2.1, "jog 2.1 m/s", "jog 2.1 m/s ", 1.2)
@@ -689,4 +906,5 @@ func _run(scenario: String) -> void:
 			wako.face_point(wako.global_position + Vector3(0, 0, 4))
 			await _phase("turn in place", 1.6)
 	metrics.print_report()
+	if probe: probe.report()
 	if args.get("quit", "1") == "1": get_tree().quit()
