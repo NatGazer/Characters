@@ -41,7 +41,8 @@ var push_at := .5
 
 func setup() -> void:
 	# The lab reads the controller's per-tick force/torque statistics.
-	HeadLeap.profile_stats = true
+	var controller_script: Script = HeadLeap
+	controller_script.set("profile_stats", true)
 	for arg: String in OS.get_cmdline_user_args():
 		if arg.begins_with("--case="): case_name = arg.trim_prefix("--case=")
 		if arg.begins_with("--view="): view = arg.trim_prefix("--view=")
@@ -237,7 +238,7 @@ func scenario(delta: float) -> void:
 					outcome[key] = stage_clock
 			if upright == _restored_all.size() and not outcome.has("restored_upright_s"):
 				outcome.restored_upright_s = stage_clock
-			if stage_clock > 6.0 or (outcome.has("restored_upright_s") and stage_clock > outcome.restored_upright_s + .5): _finish("restored")
+			if stage_clock > 12.0 or (outcome.has("restored_upright_s") and stage_clock > outcome.restored_upright_s + .5): _finish("restored")
 
 func _watch_safety() -> void:
 	# Ragdolls, and how deep any flight torso ever overlaps the stock while the

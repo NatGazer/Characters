@@ -57,7 +57,7 @@ const MINIMUM_SPIN := 2.8
 const RETURN_RISE_RAMP := .04
 const RETURN_DRIFT := .30
 const RETURN_DRIFT_SECONDS := .32
-const RETURN_DRIFT_BRAKE := .6
+const RETURN_DRIFT_BRAKE := .5
 # The assisted rise may not be floatier than this effective gravity; a shared
 # heavy load is lifted by a longer, stronger kick.
 const RETURN_RISE_MAX_ASSIST := .55*GRAVITY
@@ -172,6 +172,7 @@ var _stunt_capacity := 1.0
 var _stunt_clearance_rows := 0
 var _holder_clearance := HolderClearance.new()
 var _holder_inverse := Transform3D.IDENTITY
+var _holder_root_ref := Transform3D.IDENTITY
 var _holder_capture_usec := 0
 # Centre-of-mass plan: one piecewise-polynomial track per world axis and one for
 # the half-turn angle about _rotation_axis. A track segment is
@@ -1703,7 +1704,7 @@ func _arc_clear(with_cargo: bool, from_time := 0.0) -> bool:
 				if not space.intersect_shape(source_query,1).is_empty(): arc_failure="original stock intersects retained tool before contact at %.3fs" % time; return false
 		if _holder_bounds.size.length_squared()>.000001:
 			query.shape=holder_shape
-			query.transform=body*Transform3D(Basis.IDENTITY,_holder_bounds.get_center())
+			query.transform=body*_holder_frame(time)*Transform3D(Basis.IDENTITY,_holder_bounds.get_center())
 			if not space.intersect_shape(query,1).is_empty(): arc_failure="original back holder obstruction at %.3fs" % time; return false
 			if not with_cargo:
 				source_query.shape=holder_shape
@@ -2056,7 +2057,7 @@ func _crew_clear(time: float, with_cargo: bool, gun_head_boxes: Array[Dictionary
 	var own_cube := own_body*_root_at(time)
 	var cube_size := Vector3(.76,_head_height*2.0,.76)
 	var cargo := _planned_group_head(time)*_cargo_local*Transform3D(Basis.IDENTITY,_stock_bounds.get_center()) if with_cargo else Transform3D.IDENTITY
-	var holder:=own_body*Transform3D(Basis.IDENTITY,_holder_bounds.get_center())
+	var holder:=own_body*_holder_frame(time)*Transform3D(Basis.IDENTITY,_holder_bounds.get_center())
 	if with_cargo and _boxes_overlap(cargo,_stock_bounds.size,holder,_holder_bounds.size): arc_failure="shared stock crosses permanent back holder at %.3fs" % time; return false
 	var has_tool:=is_instance_valid(worker.equipped_tool)
 	var tool:=own_body*_tool_local*Transform3D(Basis.IDENTITY,_tool_bounds.get_center()) if has_tool else Transform3D.IDENTITY
@@ -2067,7 +2068,7 @@ func _crew_clear(time: float, with_cargo: bool, gun_head_boxes: Array[Dictionary
 		for link in 2:
 			var a: Vector3 = own_body*own_legs[side*3+link]
 			var b: Vector3 = own_body*own_legs[side*3+link+1]
-			if _own_holder_intersects(own_legs[side*3+link],own_legs[side*3+link+1]): arc_failure="tucked leg crosses original back holder at %.3fs" % time; return false
+			if _own_holder_intersects(own_legs[side*3+link],own_legs[side*3+link+1],_holder_frame(time)): arc_failure="tucked leg crosses original back holder at %.3fs" % time; return false
 			if has_tool and _segment_box(a,b,tool,_tool_bounds.size,.085): arc_failure="tucked leg crosses original retained tool at %.3fs" % time; return false
 			if link==1 and _segment_box(a,b,own_cube,cube_size,.085): arc_failure="tucked lower leg crosses own head at %.3fs" % time; _observe_stunt_clearance(time,side,own_legs); return false
 	if with_cargo:
@@ -2090,7 +2091,7 @@ func _crew_clear(time: float, with_cargo: bool, gun_head_boxes: Array[Dictionary
 		var other_cube: Transform3D=other_body*other._root_at(time)
 		if _boxes_overlap(own_cube,cube_size,other_cube,cube_size): arc_failure="cooperative heads/body cross at %.3fs" % time; return false
 		if with_cargo and _boxes_overlap(cargo,_stock_bounds.size,other_cube,cube_size): arc_failure="shared stock crosses partner head at %.3fs" % time; return false
-		var other_holder: Transform3D=other_body*Transform3D(Basis.IDENTITY,other._holder_bounds.get_center())
+		var other_holder: Transform3D=other_body*other._holder_frame(time)*Transform3D(Basis.IDENTITY,other._holder_bounds.get_center())
 		if _boxes_overlap(holder,_holder_bounds.size,other_cube,cube_size) or _boxes_overlap(own_cube,cube_size,other_holder,other._holder_bounds.size): arc_failure="permanent back holder crosses partner head at %.3fs" % time; return false
 		if _boxes_overlap(holder,_holder_bounds.size,other_holder,other._holder_bounds.size): arc_failure="cooperative back holders cross at %.3fs" % time; return false
 		if with_cargo and _boxes_overlap(cargo,_stock_bounds.size,other_holder,other._holder_bounds.size): arc_failure="shared stock crosses partner back holder at %.3fs" % time; return false
@@ -2386,7 +2387,7 @@ func _stunt_self_clear(points: Array[Vector3]) -> bool:
 		for link in 2:
 			var a: Vector3 = points[side*3+link]
 			var b: Vector3 = points[side*3+link+1]
-			if _own_holder_intersects(a,b): return false
+			if _own_holder_intersects(a,b,_root_local*_holder_root_ref.affine_inverse()): return false
 			if has_tool and _segment_box(a,b,tool,_tool_bounds.size,.085): return false
 			if link==1 and _segment_box(a,b,_root_local,head_size,.085): return false
 	return true
@@ -2883,11 +2884,20 @@ func _capture_holder_bounds() -> void:
 	var started_usec := Time.get_ticks_usec()
 	var holder_frame: Transform3D=inverse*worker.back_tool.holder.global_transform
 	_holder_inverse=holder_frame.affine_inverse()
+	# The holder rides on the cube (the back tool syncs it to the root bone):
+	# remember which cube frame these body-local bounds were captured under.
+	_holder_root_ref = worker._pose.evaluated_worker.affine_inverse()*worker._pose.evaluated_root if worker._pose.evaluated_valid else _rest_root_local
 	_holder_clearance.capture(worker.back_tool.holder)
 	# Holder space must be rigid so the original 85mm radius is unchanged.
 	if not holder_frame.basis.is_equal_approx(holder_frame.basis.orthonormalized()): _holder_clearance.valid=false
 	_holder_capture_usec=maxi(_holder_capture_usec,Time.get_ticks_usec()-started_usec)
 
 
-func _own_holder_intersects(a: Vector3,b: Vector3) -> bool:
-	return _holder_clearance.intersects(_holder_inverse*a,_holder_inverse*b)
+func _holder_frame(time: float) -> Transform3D:
+	# Body-local placement of the captured holder when the cube is at its
+	# planned root: the holder follows the cube's lean, rise and blend.
+	return _root_at(time)*_holder_root_ref.affine_inverse()
+
+func _own_holder_intersects(a: Vector3,b: Vector3,frame := Transform3D.IDENTITY) -> bool:
+	var to_holder := _holder_inverse*frame.affine_inverse()
+	return _holder_clearance.intersects(to_holder*a,to_holder*b)
