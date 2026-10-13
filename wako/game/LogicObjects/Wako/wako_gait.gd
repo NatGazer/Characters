@@ -108,6 +108,9 @@ var _waiting: Array[bool] = [false, false]     # a lift held until the partner l
 var _reach_pull: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]   # standing reach correction of a swing's footfall
 var _fp_for: Array[Vector3] = [Vector3.INF, Vector3.INF]     # footprint check cache (landing probed)
 var _fp_shift: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]
+var _fp_worst := 0.0
+var _fp_away := Vector3.ZERO
+var _fp_radius := 0.0
 var _contact_kind: Array[int] = [SWING, SWING]
 var _frozen_support: Array = [null, null]
 var _frozen_local: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]
@@ -557,6 +560,7 @@ func defer_contact(side: int, offset: Vector3, knee_pop := false) -> bool:
 
 func replant(side: int, hit: Dictionary, point: Vector3) -> void:
 	# Pose moved a fresh contact to where the leg can actually reach it.
+	if debug_log: print("GAIT replant side=%d from=%s to=%s" % [side, str(out_sole[side]), str(point)])
 	_plant(side, hit, point, foot_yaw[side])
 	out_sole[side] = point
 	out_hit[side] = hit
@@ -1153,34 +1157,28 @@ func _footprint_fix(side: int, hit: Dictionary, yaw: float) -> Dictionary:
 	# The skinned foot spans ~.09 m ahead/behind the sole point and ~.08 m to
 	# each side: a footfall whose toe or heel would rest inside a higher riser
 	# or block (stair edges, the block field) moves off that edge, by the
-	# smaller of stepping back from it or fully onto the higher surface.
-	# Cached per landing (re-probed only once it moves > 1 cm): 4 rays, plus
-	# 4 more when an edge is found.
+	# smaller of stepping back from it or fully onto the higher surface, and
+	# the moved footprint is checked again (a block field can have an edge on
+	# either side). Cached per landing: a call at the cached centre or at its
+	# corrected spot returns the same answer (no ping-pong between the two).
 	if hit.is_empty(): return hit
 	var c: Vector3 = hit.position
-	if _fp_for[side].is_finite() and _fp_for[side].distance_to(c) < .02:
-		if _fp_shift[side].length_squared() < 1e-8: return hit
-		var again := _ground(c + _fp_shift[side])
-		return again if not again.is_empty() else hit
+	if _fp_for[side].is_finite():
+		if _fp_for[side].distance_to(c) < .02:
+			if _fp_shift[side].length_squared() < 1e-8: return hit
+			var again := _ground(_fp_for[side] + _fp_shift[side])
+			return again if not again.is_empty() else hit
+		if _fp_shift[side].length_squared() > 1e-8 and (_fp_for[side] + _fp_shift[side]).distance_to(c) < .02: return hit
 	_fp_for[side] = c
 	_fp_shift[side] = Vector3.ZERO
-	var n: Vector3 = hit.normal
 	var forward := facing(yaw)
 	var right := Vector3(-forward.z, 0.0, forward.x)
-	var worst := .008
-	var away := Vector3.ZERO
-	var radius := 0.0
-	for i in 4:
-		var u := forward if i == 0 else (-forward if i == 1 else (right if i == 2 else -right))
-		var r := FOOT_HALF_LENGTH if i < 2 else FOOT_HALF_WIDTH
-		var probe := _ground(c + u * r)
-		if probe.is_empty(): continue
-		var protrusion: float = probe.position.y - (c.y - (n.x * u.x + n.z * u.z) * r / maxf(n.y, .5))
-		if protrusion > worst:
-			worst = protrusion
-			away = u
-			radius = r
-	if radius <= 0.0: return hit
+	_fp_probe(c, hit.normal, forward, right)
+	if _fp_radius <= 0.0: return hit
+	var away := _fp_away
+	var radius := _fp_radius
+	var worst := _fp_worst
+	var n: Vector3 = hit.normal
 	# Locate the edge between the (low) centre and the (high) probe.
 	var lo := 0.0
 	var hi := radius
@@ -1190,14 +1188,42 @@ func _footprint_fix(side: int, hit: Dictionary, yaw: float) -> Dictionary:
 		if not probe.is_empty() and probe.position.y - (c.y - (n.x * away.x + n.z * away.z) * mid / maxf(n.y, .5)) > .008: hi = mid
 		else: lo = mid
 	var edge := (lo + hi) * .5
-	var back := radius + .012 - edge
-	var onto := edge + radius + .012
-	var shift := -away * back if back <= onto + .03 else away * onto
-	var moved := _ground(c + shift)
-	if moved.is_empty(): return hit
-	_fp_shift[side] = shift
-	if debug_log: print("GAIT footprint side=%d protrusion=%.3f edge=%.3f shift=%s" % [side, worst, edge, str(shift)])
-	return moved
+	var back := -away * (radius + .012 - edge)
+	var onto := away * (edge + radius + .012)
+	var best := hit
+	var best_shift := Vector3.ZERO
+	var best_worst := worst
+	for k in 2:
+		var shift := back if (k == 0) == (back.length() <= onto.length() + .03) else onto
+		var moved := _ground(c + shift)
+		if moved.is_empty(): continue
+		_fp_probe(moved.position, moved.normal, forward, right)
+		var remaining := _fp_worst if _fp_radius > 0.0 else 0.0
+		if remaining < best_worst - .002:
+			best = moved
+			best_shift = shift
+			best_worst = remaining
+		if remaining <= .008: break
+	_fp_shift[side] = best_shift
+	if debug_log and best_shift != Vector3.ZERO: print("GAIT footprint side=%d protrusion=%.3f edge=%.3f shift=%s left=%.3f" % [side, worst, edge, str(best_shift), best_worst])
+	return best
+
+func _fp_probe(c: Vector3, n: Vector3, forward: Vector3, right: Vector3) -> void:
+	# Worst protrusion of the ground above the sole plane at the four foot
+	# extremities (results in _fp_worst/_fp_away/_fp_radius; 4 rays).
+	_fp_worst = .008
+	_fp_away = Vector3.ZERO
+	_fp_radius = 0.0
+	for i in 4:
+		var u := forward if i == 0 else (-forward if i == 1 else (right if i == 2 else -right))
+		var r := FOOT_HALF_LENGTH if i < 2 else FOOT_HALF_WIDTH
+		var probe := _ground(c + u * r)
+		if probe.is_empty(): continue
+		var protrusion: float = probe.position.y - (c.y - (n.x * u.x + n.z * u.z) * r / maxf(n.y, .5))
+		if protrusion > _fp_worst:
+			_fp_worst = protrusion
+			_fp_away = u
+			_fp_radius = r
 
 func _sample_corridor(side: int, from: Vector3, to: Vector3) -> void:
 	# Look-ahead: ground at 1/3 and 2/3 of the horizontal corridor (cached
