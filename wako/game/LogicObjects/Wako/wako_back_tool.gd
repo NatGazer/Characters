@@ -44,6 +44,7 @@ const FOLLOW_THROUGH := .17 # Empty toe carries on past release, ramping out (a 
 const APEX_MAIN := [1.94,2.0,2.06]
 const APEX_LOW := [1.55,1.45]
 const PLAN_OPS_PER_TICK := 140
+const PLAN_TICKS_MAX := 90 # .75 s of bounded thinking before the plain route takes over.
 const ADVANCE_MAX := .30
 const ADVANCE_MIN := .10
 const ADVANCE_LIMIT := .40 # Planned advance plus closed-loop correction.
@@ -240,6 +241,7 @@ var _step_plan: Dictionary = {}
 var _return_search: Dictionary = {}
 var _launch_refused: Array[String] = []
 var _launch_refused_at := Vector3.ZERO
+var _quiet_refusal := false
 var _legacy_search: Dictionary = {}
 var _retrieval_cand := 0
 var _plan_unit_cost: Dictionary = {}
@@ -1071,7 +1073,7 @@ func _fitting_segment_clear(from: Transform3D,to: Transform3D,binding: Transform
 			if from.origin.is_equal_approx(to.origin) and from.basis.is_equal_approx(to.basis):
 				var lease: Dictionary=worker.coordinator.active_jobs.get(worker.current_job_id,{}) if worker.coordinator else {}
 				var source: Variant=lease.get("job",{}).get("part")
-				print("CONTRAPTION_BACK_TOOL current_return_refused ",JSON.stringify({"tool":worker.equipped_tool.part_id,"tool_rid":str(worker.equipped_tool.get_rid()),"source":source.part_id if is_instance_valid(source) else "none","source_rid":str(source.get_rid()) if is_instance_valid(source) else "none","job":worker.current_job_id,"action":worker.action,"progress":worker.action_progress,"serial":worker._pose.evaluation_serial,"toe":Part.encode_transform(sample),"hip":Part.encode_vector(hip),"root":Part.encode_transform(root),"reachable":reachable,"clear":frame_clear,"native_obstacle":last_native_obstacle.duplicate(true) if reachable else {},"posture":_posture_debug_at(_tool_frame(sample),root),"support_gap":_native_support_gap(_tool_frame(sample),worker._ground_point,worker.ground_normal)}))
+				if not _quiet_refusal: print("CONTRAPTION_BACK_TOOL current_return_refused ",JSON.stringify({"tool":worker.equipped_tool.part_id,"tool_rid":str(worker.equipped_tool.get_rid()),"source":source.part_id if is_instance_valid(source) else "none","source_rid":str(source.get_rid()) if is_instance_valid(source) else "none","job":worker.current_job_id,"action":worker.action,"progress":worker.action_progress,"serial":worker._pose.evaluation_serial,"toe":Part.encode_transform(sample),"hip":Part.encode_vector(hip),"root":Part.encode_transform(root),"reachable":reachable,"clear":frame_clear,"native_obstacle":last_native_obstacle.duplicate(true) if reachable else {},"posture":_posture_debug_at(_tool_frame(sample),root),"support_gap":_native_support_gap(_tool_frame(sample),worker._ground_point,worker.ground_normal)}))
 			clear=false
 			break
 	_toe_in_ankle=old_binding
@@ -1104,9 +1106,21 @@ func retain_original_foot(pose: SkeletonModifier3D,sk: Skeleton3D,side: int) -> 
 	var binding: Transform3D=Transform3D(prior_basis,prior_ankle).affine_inverse()*actual
 	var chain: Array=pose._chains[side]
 	var hip: Vector3=sk.global_transform*sk.get_bone_global_pose(chain[0]).origin
-	if not _fitting_segment_clear(actual,actual,binding,hip,side,root):
-		drop("No currently clear finite whole-tool return")
-		return null
+	var saved_lift_off: Dictionary = _lift_off
+	_quiet_refusal = true
+	var current_clear := _fitting_segment_clear(actual,actual,binding,hip,side,root)
+	_quiet_refusal = false
+	if not current_clear:
+		# The exact current pose may rest a head corner on the ground it stands
+		# on (the ordinary pickaxe carry does). Keep it under the gather's own
+		# lift-off allowance - otherwise clear, only that support touched, no
+		# deeper than the carry itself allows - instead of shedding the tool.
+		var resting := _own_support_allowance(actual)
+		if not resting.is_empty(): _lift_off = resting
+		if resting.is_empty() or not _fitting_segment_clear(actual,actual,binding,hip,side,root):
+			_lift_off = saved_lift_off
+			drop("No currently clear finite whole-tool return")
+			return null
 	var ankle_basis: Basis=actual.basis*binding.basis.inverse()
 	var ankle: Vector3=actual.origin-ankle_basis*binding.origin
 	var old_axis: Vector3=(prior_ankle-rebase*pose.evaluated_hips[side]).normalized()
@@ -1133,6 +1147,7 @@ func retain_original_foot(pose: SkeletonModifier3D,sk: Skeleton3D,side: int) -> 
 	sk.set_bone_global_pose(pose._toes[side],toe)
 	var evaluated: Transform3D=sk.global_transform*sk.get_bone_global_pose(pose._toes[side])
 	var evaluated_clear: bool = evaluated.origin.distance_to(actual.origin)<=.002 and _frame_clear(evaluated,root,true)
+	_lift_off = saved_lift_off
 	if not evaluated_clear:
 		for index in incoming_bones.size(): sk.set_bone_global_pose(incoming_bones[index],incoming_poses[index])
 		drop("The actual whole-tool return lost finite clearance")
@@ -1590,6 +1605,7 @@ func _plan_stunt() -> Dictionary:
 	var preferred := _seat_flip
 	var key := [tool.get_instance_id(),_foot_side,preferred]
 	if _plan_search.is_empty() or _plan_search.key != key or Engine.get_physics_frames()-int(_plan_search.tick) > 2:
+		if plan_debug and not _plan_search.is_empty(): print("CONTRAPTION_BACK_TOOL plan_reset key=",key," was=",_plan_search.key," idle=",Engine.get_physics_frames()-int(_plan_search.tick)," cand=",_plan_search.cand)
 		var d_reach := _advance_reach(forward) if not stunt_advance_disabled else 0.0
 		var advances: Array[float] = []
 		# With the support foot's own catch-up step during the flight, the
@@ -1602,7 +1618,7 @@ func _plan_stunt() -> Dictionary:
 		if d_reach >= .12 and minf(.20,d_reach) > .125: advances.append(.12)
 		advances.append(0.0)
 		_plan_search = {"key":key,"cand":0,"apex":0,"spin":0,"adv":0,"stage":"pose","advances":advances,
-			"d_reach":d_reach,"gather":{},"route":0,"steps":0,"ticks":0,"ops":0,"skip_apex":-1}
+			"d_reach":d_reach,"gather":{},"route":0,"steps":0,"ticks":0,"ops":0,"skip_apex":-1,"headroom":_plan_headroom(tool)}
 	_plan_search.tick = Engine.get_physics_frames()
 	_plan_search.ticks = int(_plan_search.ticks)+1
 	var budget_start := _plan_ops()
@@ -1618,6 +1634,13 @@ func _plan_stunt() -> Dictionary:
 				if int(candidates[index].tier) == tier: slots.append([flip_value,index])
 	var advances: Array = _plan_search.advances
 	var hip: Vector3 = worker.evaluated_hip(_foot_side)
+	if int(_plan_search.ticks) > PLAN_TICKS_MAX:
+		# A bounded think: no stunt found in time hands over to the plain route.
+		var spent_cap := int(_plan_search.ops)+_plan_ops()-budget_start
+		_plan_search.clear()
+		_seat_flip = preferred
+		_commit_seat(tool)
+		return {"exhausted":true,"search_ops":spent_cap}
 	while int(_plan_search.cand) < slots.size():
 		if _plan_search.has("unit_stage"):
 			# The unit that just ran: remember its kind's worst cost.
@@ -1682,8 +1705,15 @@ func _plan_stunt() -> Dictionary:
 					_plan_search.spin = si+1
 					_plan_search.adv = 0
 					continue
-				_plan_search.adv = di+1
 				var apex: float = float(apexes[ai])
+				if apex+float(_plan_search.headroom.y) > float(_plan_search.headroom.x):
+					# The spinning tool's reach above its COM would meet the ceiling.
+					_plan_note(ci,"headroom",apex,0.0)
+					_plan_search.apex = ai+1
+					_plan_search.spin = 0
+					_plan_search.adv = 0
+					continue
+				_plan_search.adv = di+1
 				if _launch_refused.has(_plan_key(flip,ci,apex,int(spins[si]))):
 					# Its actual release already failed the launch-time arc re-check.
 					_plan_search.spin = si+1
@@ -1741,6 +1771,7 @@ func _plan_stunt() -> Dictionary:
 			"gather":
 				# Resumable: gather routes are preflighted in sample chunks that
 				# fit the remaining budget (one route may span several ticks).
+				_plan_search.reached_gather = true
 				var plan: Dictionary = _plan_search.plan
 				var cached: Variant = _plan_search.gather.get(gather_key)
 				# First pass: short gathers only (a brisk raise into the cock); the
@@ -1779,8 +1810,9 @@ func _plan_stunt() -> Dictionary:
 				return plan
 	_seat_flip = preferred
 	_commit_seat(tool)
-	if not bool(_plan_search.get("long_gather",false)):
-		# Second pass with the outboard gather detours (next tick).
+	if not bool(_plan_search.get("long_gather",false)) and bool(_plan_search.get("reached_gather",false)):
+		# Second pass with the outboard gather detours (next tick) - only when
+		# some plan cleared everything but its short gather.
 		_plan_search.long_gather = true
 		_plan_search.cand = 0
 		_plan_search.gather = {}
@@ -1791,6 +1823,22 @@ func _plan_stunt() -> Dictionary:
 	var spent := int(_plan_search.ops)+_plan_ops()-budget_start
 	_plan_search.clear()
 	return {"exhausted":true,"search_ops":spent}
+
+func _plan_headroom(tool: RigidBody3D) -> Vector2:
+	# (ceiling height above the support, spinning tool's reach above its COM
+	# plus 5 cm air): one ray straight up over the cube; no ceiling = 10 m.
+	var up: Vector3 = worker.ground_normal if worker.ground_normal.length_squared() > .5 else Vector3.UP
+	var from: Vector3 = _root.origin+up*.40
+	var query := PhysicsRayQueryParameters3D.create(from,from+up*4.0)
+	query.exclude = worker.query_exclusions()
+	query.collision_mask = 0x7fffffff & ~SENSOR_LAYER
+	var hit: Dictionary = worker.get_world_3d().direct_space_state.intersect_ray(query)
+	var ceiling: float = up.dot(Vector3(hit.position)-worker._ground_point) if not hit.is_empty() else 10.0
+	_cache_tool(tool)
+	var reach := 0.0
+	for box: AABB in tool.get_meta(&"worker_tool_keepouts",[]):
+		for corner in 8: reach = maxf(reach,(box.get_endpoint(corner)-_tool_com_local).length())
+	return Vector2(ceiling,reach+.05)
 
 static func _plan_key(flip: float,candidate: int,apex: float,spin_option: int) -> String:
 	return "%d:%d:%.2f:%d" % [int(flip),candidate,apex,spin_option]
@@ -4135,6 +4183,16 @@ func _reuse_return_native_sample(world: Transform3D,cached_sample: Dictionary) -
 		_query.motion=Vector3.ZERO
 	if source_budget_enabled: _return_native_sample_reuses+=1
 	return last_native_obstacle.is_empty()
+
+func _own_support_allowance(toe: Transform3D) -> Dictionary:
+	# Lift-off style allowance (see _lifting_off) for the exact current pose on
+	# the support under the Wako: empty when that support is unknown or a
+	# corner is deeper in it than the ordinary carry's own rest (4.5 cm).
+	var support: Dictionary=worker.get_world_3d().direct_space_state.intersect_ray(worker._query)
+	if support.is_empty(): return {}
+	var gap := _native_support_gap(_tool_frame(toe),worker._ground_point,worker.ground_normal)
+	if gap < -.045: return {}
+	return {"rid":support.rid,"origin":toe.origin,"gap":gap}
 
 func _only_observed_support_contact() -> bool:
 	var support: Dictionary=worker.get_world_3d().direct_space_state.intersect_ray(worker._query)
