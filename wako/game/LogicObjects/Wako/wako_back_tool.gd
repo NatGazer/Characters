@@ -923,6 +923,12 @@ func _evaluate_timed(pose: SkeletonModifier3D,sk: Skeleton3D,delta: float) -> vo
 		"gather":
 			wanted = _gather_pose(_stunt,t)
 			cap = GATHER_PEAK_SPEED*1.3*delta+.002
+			# Low over the floor the standing body may sit a few mm lower than
+			# when the curve was planned: keep the tool's corners just clear of
+			# the real support (bounded lift; off the floor this is a no-op).
+			if not _lifting_off(wanted):
+				var clear_of_floor := _supported_return_home(wanted,.03,.004)
+				if clear_of_floor.origin.is_finite(): wanted = clear_of_floor
 		"windup": wanted = _windup_pose(_stunt,t)
 		_: wanted = _kick_pose(_stunt,t)
 	if wanted.origin.distance_to(_toe.origin) > cap+.001:
@@ -1910,15 +1916,25 @@ func _plan_stunt() -> Dictionary:
 				# Each plan's own ready pose is preflighted (its curve differs).
 				gather_key = str(_plan_search.get("plan_key",gather_key))
 				var cached: Variant = _plan_search.gather.get(gather_key)
-				# First pass: short gathers only (a brisk raise into the ready
-				# pose); the outboard detours join only if no candidate has one.
-				var routes := _gather_routes(plan.ready,bool(_plan_search.get("long_gather",false)))
+				# Short gathers first (a brisk raise into the ready pose), then the
+				# outboard detours for this same plan (a long head may need one).
+				var routes := _gather_routes(plan.ready,true)
 				if cached == null:
 					var ri: int = _plan_search.route
 					if ri >= routes.size():
 						_plan_search.gather[gather_key] = []
 						_plan_note(ci,"gather")
-						_plan_next_candidate()
+						# Another apex/advance of the same kick moves its ready pose:
+						# give the candidate a few plans before moving on.
+						_plan_search.gather_fails = int(_plan_search.get("gather_fails",0))+1
+						if int(_plan_search.gather_fails) >= 4: _plan_next_candidate()
+						else:
+							# The next apex (a different kick line), not just another advance.
+							_plan_search.apex = int(_plan_search.apex)+1
+							_plan_search.spin = 0
+							_plan_search.adv = 0
+							_plan_search.stage = "solve"
+							_plan_search.erase("plan")
 						continue
 					var room: int = maxi((PLAN_OPS_PER_TICK-(_plan_ops()-budget_start))/3,4)
 					var keys: Array = [_toe]
@@ -2052,6 +2068,7 @@ func _chunk_route_clear(state: Dictionary,start: Transform3D,route: Array,room: 
 
 func _plan_next_candidate() -> void:
 	_plan_search.cand = int(_plan_search.cand)+1
+	_plan_search.gather_fails = 0
 	_plan_search.apex = 0
 	_plan_search.spin = 0
 	_plan_search.adv = 0
@@ -2080,10 +2097,13 @@ func _stunt_candidates(tool: RigidBody3D) -> Array[Dictionary]:
 	var wide := _keepout_half_width(tool) > .2
 	var output: Array[Dictionary] = []
 	var specs := []
-	var points: Array[Vector3] = [Vector3(.54,-.58,.04),Vector3(.54,-.62,.04),Vector3(.54,-.58,-.04),Vector3(.54,-.58,.12),Vector3(.58,-.58,.04),Vector3(.58,-.54,.04)]
-	if wide: points = [Vector3(.54,-.54,.04),Vector3(.58,-.52,.04),Vector3(.54,-.58,.04),Vector3(.58,-.56,.10),Vector3(.62,-.52,.04),Vector3(.54,-.50,-.04)]
+	# The lowest apex that clears is tried first (a release a little further
+	# outboard and behind crosses the roof edge later, so the flight can stay
+	# lower and shorter).
+	var points: Array[Vector3] = [Vector3(.58,-.56,.10),Vector3(.58,-.58,.04),Vector3(.54,-.58,.04),Vector3(.54,-.62,.04),Vector3(.54,-.58,.12),Vector3(.58,-.54,.04)]
+	if wide: points = [Vector3(.58,-.52,.08),Vector3(.54,-.54,.04),Vector3(.58,-.56,.10),Vector3(.54,-.58,.04),Vector3(.62,-.52,.04),Vector3(.54,-.50,-.04)]
 	var leans: Array = [35.0,45.0,25.0] if wide else [25.0,35.0]
-	var apexes: Array = [2.06,2.12,2.18] if wide else APEX_MAIN
+	var apexes: Array = [1.88,1.94,2.0,2.06,2.12] if wide else [1.82,1.88]+APEX_MAIN
 	for point: Vector3 in points:
 		for lean: float in leans:
 			specs.append([point,lean,apexes,[2],0])
@@ -4259,7 +4279,6 @@ func _posture_debug_at(exact: Transform3D,root: Transform3D) -> Dictionary:
 ## One place owns this for every loose release near the seat.
 func _guard_release(tool: RigidBody3D) -> void:
 	if not is_instance_valid(tool) or not tool.is_inside_tree(): return
-	_contact_watch = {"tool":weakref(tool),"age":0.0}
 	var guarded: RigidBody3D = _release_guard.get("tool",weakref(null)).get_ref() if not _release_guard.is_empty() else null
 	var bodies: Array[PhysicsBody3D] = [worker]
 	if worker.ragdoll and worker.ragdoll.get("rig") and worker.ragdoll.active:
@@ -4461,6 +4480,8 @@ func drop(explanation: String) -> void:
 	tool.set_carried(null)
 	# Released at the seat (or inside a knocked-down ragdoll): never shove us.
 	_guard_release(tool)
+	# A shed tool (not the stunt's own planned flight) meets the real cube.
+	_contact_watch = {"tool":weakref(tool),"age":0.0}
 	if from_air and not _release_guard.is_empty(): _release_guard.solid = true
 	if carried:
 		tool.linear_velocity = velocity
