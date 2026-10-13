@@ -1289,7 +1289,11 @@ func _landing_target(side: int, t_rem: float) -> void:
 		var near: Vector3 = out_sole[other] if state[other] != PLANTED and t[other] < .35 and t_rem < .08 else anchor
 		# The push is bounded: in a hard turn on a rotating deck an unbounded
 		# one threw the footfall far sideways (behind the hip).
+		var headings_agree := absf(wrapf(heading - float(worker._heading), -PI, PI)) < .7
 		for k in 4:
+			# (Mid-reversal the current heading's "across" is the travel axis:
+			# pushing along it would throw the footfall behind the body.)
+			if k % 2 == 1 and not headings_agree: continue
 			var right := Basis(Vector3.UP, heading if k % 2 == 0 else float(worker._heading)) * Vector3.RIGHT
 			var gap := (point - (anchor if k < 2 else near)).slide(Vector3.UP).dot(right) * outward
 			if gap < FOOT_GAP: point += right * outward * minf(FOOT_GAP - gap, .14)
