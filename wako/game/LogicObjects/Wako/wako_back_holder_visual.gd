@@ -6,14 +6,17 @@ extends RefCounted
 const AncientVisual := preload("res://Components/Contraptions/ancient_machine_visual.gd")
 const MAP_SIZE := Vector2i(256,128)
 const SEAT_SIZE := Vector3(.50,.21,.055)
-# Worn-pack hardware (holder/body frame, +Z back). Each socket leaves the
-# plate's lower edge between the thighs, runs back under the seated shaft to
-# the cradle bar behind the tool; nothing hangs in the thighs' swing planes.
-const SOCKET_SIZE := Vector3(.06,.06,.17)
-const SOCKET_X := .08
-const SOCKET_Z := .25+.085
-const CRADLE_BAR_Y := -.24
-const CRADLE_BAR_Z := .25+.17-.0225
+# Worn-pack hardware (holder/body frame, +Z back). Two bronze straps run up
+# the back from the plate toward the roof edge; each rubber tray sits on a
+# short bronze shelf with a tapered gusset bolted to the plate (or strap).
+# Everything stays inside the body silhouette and above its bottom edge.
+const SOCKET_SIZE := Vector3(.05,.045,.10)
+const SHELF_SIZE := Vector3(.075,.02,.10)
+const PAD_SIZE := Vector3(.09,.016,.09)
+const TRAY_SENSOR_SIZE := Vector3(.09,.08,.11) # Deep below its top: a falling step cannot tunnel through.
+const STRAP_SIZE := Vector3(.044,.33,.006)
+const STRAP_X := .215
+const STRAP_Y := .12 # Plate top edge (-.045, tucked under it) up to the roof bevel (.285).
 const MEASURED_BACK := .1992 # Root-rigid skin back face of the current rig.
 static var _seat: ArrayMesh
 static var _socket: ArrayMesh
@@ -138,9 +141,9 @@ static func socket_mesh() -> ArrayMesh:
 	if _socket: return _socket
 	# Clip the closed bevelled bronze stock into a tapered gusset: full depth
 	# where it bears on the plate (local -Z), its underside rising toward the
-	# cradle bar (local +Z) so the bracket reads as a cantilever, not a block.
-	var inward:=Vector3(0,.125,-.03).normalized()
-	var boundary:=inward.dot(Vector3(0,-.03,-.04))
+	# shelf's free end (local +Z) so the bracket reads as a cantilever.
+	var inward:=Vector3(0,SOCKET_SIZE.z*.75,-SOCKET_SIZE.y*.5).normalized()
+	var boundary:=inward.dot(Vector3(0,-SOCKET_SIZE.y*.5,-SOCKET_SIZE.z*.25))
 	var original: ArrayMesh=AncientVisual.beveled_box(SOCKET_SIZE)
 	var vertices:=PackedVector3Array(); var normals:=PackedVector3Array()
 	var cut: Array[Vector3]=[]

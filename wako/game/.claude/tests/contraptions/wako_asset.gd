@@ -4,6 +4,7 @@ extends Node3D
 const Source := preload("res://LogicObjects/Wako/Wako.blend")
 const Worker := preload("res://LogicObjects/Wako/Wako.tscn")
 const HolderVisual := preload("res://LogicObjects/Wako/wako_back_holder_visual.gd")
+const Part := preload("res://Components/Contraptions/contraption_part.gd")
 var failures := 0
 var checks := 0
 
@@ -127,6 +128,38 @@ func _run() -> void:
 		"the back plate is fitted 1 mm off the real skin and the seat sits just behind it")
 	_check(plate_meshes == 11 and plate_sensors == 2 and is_equal_approx(back.holder_mass(), 2.0) and back.holder.visible,
 		"the always-visible holder keeps eleven meshes, two tray sensors and 2 kg")
+	# Tray hardware hangs no lower than 4 cm above the cube's bottom edge
+	# (skin y -.2625) and stays inside the hips' swing lane (|x| <= .32), for
+	# every seat the holder can take (both sides, every offered face, both tools).
+	var hardware_ok := true
+	var lowest := INF
+	var widest := 0.0
+	var seated_faces := 0
+	for kind: String in ["assembly_tool", "salvage_tool"]:
+		var part := Part.new()
+		part.setup(kind, "asset_" + kind, true)
+		add_child(part)
+		await _advance(1)
+		for side: float in [-1.0, 1.0]:
+			for face: float in [-1.0, 1.0]:
+				back._side_sign = side
+				back._seat_flip = face
+				# Only the faces the BackTool will actually seat (it never offers a
+				# face whose underside would drop a tray below the cube).
+				if not back._seat_face_ok(part, side, face): continue
+				seated_faces += 1
+				back._commit_seat(part)
+				for child: Node in back.holder.get_children():
+					if child is MeshInstance3D and child.name != "RootSeat":
+						var mesh_node := child as MeshInstance3D
+						for corner in 8:
+							var q: Vector3 = mesh_node.transform * mesh_node.get_aabb().get_endpoint(corner)
+							lowest = minf(lowest, q.y)
+							widest = maxf(widest, absf(q.x))
+		part.queue_free()
+	hardware_ok = seated_faces >= 4 and lowest >= -.2625 + .04 and widest <= .32
+	print("CONTRAPTION_WAKO_ASSET holder_hardware seats=%d lowest=%.4f above_cube_bottom=%.4f widest=%.4f" % [seated_faces, lowest, lowest + .2625, widest])
+	_check(hardware_ok, "every diagonal seat keeps its tray hardware >= 4 cm above the cube bottom and inside the hip lane")
 	var unchanged := not animation.has_animation_library("work")
 	for name: StringName in clips:
 		unchanged = unchanged and animation.get_animation(name).get_track_count() == source_tracks[name]

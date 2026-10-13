@@ -3,13 +3,21 @@ extends "res://harness/scripts/stage.gd"
 ## Wako holds a real catalogue tool (same Part body as play) on its toe,
 ## stows it on its back, then retrieves it for a foot action. Works against
 ## both the legacy hop and the new upward stunt; new diagnostics are read
-## only when the BackTool exposes them.
+## only when the BackTool exposes them. Round-1 review checks (catch tray
+## split, drop/restore overlap and worker dv, leg-vs-seated-tool clearance,
+## per-tick query cost, knock-down, late interrupt/save) are folded in here.
 ## User args (after `--`):
-##   --tool=assembly_tool|salvage_tool   --side=0|1   --walk
-##   --interrupt=gather|kick|rising|apex|falling|settle|reach|draw|home
+##   --tool=assembly_tool|salvage_tool   --side=0|1
+##   --walk [--walk_dist=6 --walk_speed=2.1]   walk/run with the tool seated
+##   --depart             stow triggered by a far navigation target (production path)
+##   --interrupt=gather|hold|kick|rising|apex|falling|late|settle|reach|contact|draw|home  [--late_h=.12]
+##   --knock=back|retrieve|draw            ragdoll knock-down at that moment
 ##   --ceiling=<y>        static slab above the Wako (blocked arc)
-##   --save=flight|prepare|back|retrieve    save + rebuild + restore at that moment
-##   --cam=side|three|front   --quit (exit when the scenario completes)
+##   --save=flight|flight_late|prepare|back|back_v2|retrieve    save + rebuild + restore
+##   --slope=<deg>
+##   --cam=side|three|front|front3|back  --camoff=x,y,z  --cam_lift=.35 --fixed --fov=50
+##   --noshadow  --win=a-b;c-d (render windows)  --vis=a-b (per-tick VIS trace)
+##   --ticks_out=<path> (per-tick cost rows)  --quit (exit when the scenario completes)
 const Part := preload("res://Components/Contraptions/contraption_part.gd")
 const HolderVisual := preload("res://LogicObjects/Wako/wako_back_holder_visual.gd")
 
@@ -23,6 +31,7 @@ var state := "settle"
 var t_state := 0.0
 var events: Array = []
 var m := {}
+var chk := {}
 var _id := 0
 var _rid := RID()
 var _prev_phase := ""
@@ -31,6 +40,8 @@ var _prev_tool_pos := Vector3.INF
 var _prev_tool_vel := Vector3.ZERO
 var _prev_worker_vel := Vector3.ZERO
 var _prev_worker_pos := Vector3.ZERO
+var _prev_body := Transform3D.IDENTITY
+var _prev_tool_xf := Transform3D.IDENTITY
 var _t := {}
 var _launch_pos := Vector3.ZERO
 var _launch_tool := Vector3.ZERO
@@ -47,6 +58,9 @@ var _identity_ok := true
 var _mass_ok := true
 var _max_jump := 0.0
 var _flight_samples := 0
+var _prev_phase_tick := ""
+var _save_t := -1.0
+var cam_lift := 0.0
 
 func _arg(key: String, fallback: String) -> String:
 	return str(args.get(key, fallback))
@@ -68,8 +82,12 @@ func setup() -> void:
 	match _arg("cam", "three"):
 		"side": cam_offset = Vector3(2.75, .9, -.2)
 		"front": cam_offset = Vector3(.9, .75, -2.4)
-		"back": cam_offset = Vector3(.6, .9, 2.45)
+		"front3": cam_offset = Vector3(-1.9, .6, -2.2)
+		"back": cam_offset = Vector3(.3, .9, 2.5)
 		_: cam_offset = Vector3(2.0, 1.0, 2.05)
+	if args.has("camoff"):
+		var c: PackedStringArray = _arg("camoff", "").split(",")
+		cam_offset = Vector3(float(c[0]), float(c[1]), float(c[2]))
 	cam_lift = float(_arg("cam_lift", ".35"))
 	cam_smooth = 2.5
 	if args.has("ceiling"):
@@ -133,6 +151,7 @@ func scenario(delta: float) -> void:
 	t_state += delta
 	if _done: return
 	var bt := _bt()
+	_late_hooks(bt)
 	_observe(delta, bt)
 	match state:
 		"settle":
@@ -154,12 +173,19 @@ func scenario(delta: float) -> void:
 			if not is_instance_valid(tool): return
 			caption("stow: %s %s" % [bt.phase, _stage_name()])
 			if bt.phase == "foot" and tool.carrier == wako.tool_anchor:
-				if args.has("walk"): wako.navigate_to(wako.global_position + Vector3(0, 0, -4.0))
+				# --depart: the production trigger (a far navigation target) starts
+				# the stow; otherwise the head-launch style request_stow() does.
+				if args.has("depart"):
+					if not wako.has_target: wako.navigate_to(wako.global_position - wako._model.global_basis.z * float(_arg("walk_dist", "6")))
 				else: bt.request_stow()
 			if bt.phase == "back" and tool.carrier == bt.back_anchor and _t.has("catch") and clock - float(_t.catch) > .8 and not m.has("seated"):
 				m.seated = _holder_metrics(bt)
 			if bt.phase == "back" and tool.carrier == bt.back_anchor and _t.has("catch") and clock - float(_t.catch) > 1.2:
-				if args.has("walk"):
+				if args.has("depart"):
+					_go("walk_after")
+				elif args.has("walk"):
+					wako.walk_speed = float(_arg("walk_speed", str(wako.walk_speed)))
+					wako.navigate_to(wako.global_position - wako._model.global_basis.z * float(_arg("walk_dist", "6")))
 					_go("walk_after")
 				else:
 					_go("retrieve")
@@ -167,19 +193,28 @@ func scenario(delta: float) -> void:
 			if not wako.equipped_tool and _t.has("dropped") and clock - float(_t.dropped) > 2.0: _finish("dropped")
 		"walk_after":
 			caption("walking with the tool on its back")
-			if t_state > 2.5:
+			if not wako.has_target or t_state > 8.0:
 				wako.stop_navigation()
-				_go("retrieve")
+				if t_state > 1.0 and wako.linear_velocity.length() < .2: _go("retrieve")
 		"retrieve":
 			caption("retrieve: %s %s" % [bt.phase, _stage_name()])
 			if t_state < .05: return
 			if not _t.has("retrieve_request"):
 				# A real foot action is queued; BackTool retrieves first.
-				if bt.phase == "back":
+				if bt.phase == "back" and not wako.has_target:
 					_t.retrieve_request = clock
 					_event("retrieve_request")
 					wako.work_target = target
 					wako.begin_action("inspect")
+			if _t.has("retrieve_aborted") and not _t.has("retrieve_rerequest") and clock - float(_t.retrieve_aborted) > 1.0 \
+					and bt.phase == "back" and not bt.busy():
+				# An interrupted retrieval leaves the tool seated; the next
+				# ordinary foot action retrieves it normally (no soft-lock).
+				_t.retrieve_rerequest = clock
+				_t.retrieve_request = clock
+				_event("retrieve_rerequest")
+				wako.work_target = target
+				wako.begin_action("inspect")
 			if wako.action == "inspect" and not _t.has("action_begin"):
 				_t.action_begin = clock
 				_event("action_begin")
@@ -189,6 +224,10 @@ func scenario(delta: float) -> void:
 			if not wako.equipped_tool and _t.has("dropped") and clock - float(_t.dropped) > 2.0: _finish("dropped")
 	_interrupts(bt)
 	_saves(bt)
+	bt = _bt()
+	if bt and is_instance_valid(wako):
+		_cost(bt)
+		_watch(delta, bt)
 
 func _go(next: String) -> void:
 	state = next
@@ -203,39 +242,77 @@ func _interrupts(bt: RefCounted) -> void:
 	var vy: float = tool.linear_velocity.y if not tool.freeze else 0.0
 	match label:
 		"gather": hit = phase == "prepare" and (stage == "gather" or (stage.is_empty() and bt._path_index <= 1 and t_state > .25))
+		"hold": hit = phase == "prepare" and stage == "hold"
 		"kick": hit = phase == "prepare" and (stage == "kick" or (stage.is_empty() and bt._path_index >= bt._waypoints.size() - 1))
 		"rising": hit = phase == "flight" and vy > 1.0
 		"apex": hit = phase == "flight" and absf(vy) < .35 and bt._age > .05
 		"falling": hit = phase == "flight" and vy < -1.5
 		"settle": hit = phase == "back" and _t.has("catch") and clock - float(_t.catch) < .2 and clock - float(_t.catch) > .03
 		"reach": hit = phase == "retrieve" and bt._path_index >= 1
-		"draw": hit = phase == "return" and bt._path_index <= 1
-		"home": hit = phase == "return" and bt._path_index >= bt._waypoints.size() - 1
+		"contact": hit = phase == "return" and bt._waypoints.is_empty()
+		"draw": hit = phase == "return" and stage == "draw" and not bt._waypoints.is_empty() and bt._path_index >= 1
+		"home": hit = phase == "return" and stage == "home" and not bt._waypoints.is_empty() and bt._path_index >= bt._waypoints.size() - 1
 	if not hit: return
+	_do_interrupt(bt, phase, stage)
+
+func _do_interrupt(bt: RefCounted, phase: String, stage: String) -> void:
 	_interrupt_done = true
 	_interrupt_t = clock
 	_interrupt_tool_pos = tool.global_position
 	m.interrupt_phase = phase
 	m.interrupt_stage = stage
+	chk.interrupt_overlap_before = _tool_overlap_report()
 	_event("interrupt", {"phase": phase, "stage": stage, "tool": tool.global_position})
 	wako.interrupt("Harness interruption")
 
+func _late_hooks(bt: RefCounted) -> void:
+	if not bt or not is_instance_valid(tool): return
+	# Knock-down while seated / during retrieval.
+	var knock := _arg("knock", "")
+	if not knock.is_empty() and not chk.has("knock"):
+		var go := false
+		if knock == "back": go = bt.phase == "back" and _t.has("catch") and clock - float(_t.catch) > .6 and tool.carrier == bt.back_anchor
+		if knock == "retrieve": go = bt.phase == "retrieve" and bt._path_index >= 1
+		if knock == "draw": go = bt.phase == "return" and bt._path_index <= 1
+		if go:
+			_interrupt_tool_pos = tool.global_position
+			_interrupt_t = clock
+			_event("knock", {"phase": bt.phase, "stage": _stage_name()})
+			chk.knock = {"ok": wako.ragdoll.knock_down(Vector3.ZERO), "phase": bt.phase}
+	# Late-flight interrupt (tool falling into the seat region).
+	if _arg("interrupt", "") == "late" and not _interrupt_done and bt.phase == "flight":
+		var com: Vector3 = tool.global_transform * tool.center_of_mass
+		var seat: Vector3 = bt._body_frame * bt.seat_point()
+		if tool.linear_velocity.y < -1.0 and com.y - seat.y < float(_arg("late_h", ".12")):
+			_do_interrupt(bt, bt.phase, _stage_name())
+	# Late-flight save (tool inside/near the capsule envelope).
+	if _arg("save", "") == "flight_late" and not _save_done and bt.phase == "flight":
+		var com2: Vector3 = tool.global_transform * tool.center_of_mass
+		var seat2: Vector3 = bt._body_frame * bt.seat_point()
+		if tool.linear_velocity.y < -1.0 and com2.y - seat2.y < float(_arg("late_h", ".12")):
+			chk.late_save_overlap_before = _tool_overlap_report()
+			_do_save(bt)
+
 func _saves(bt: RefCounted) -> void:
 	var label := _arg("save", "")
-	if label.is_empty() or _save_done or not is_instance_valid(tool) or not bt: return
+	if label.is_empty() or label == "flight_late" or _save_done or not is_instance_valid(tool) or not bt: return
 	var hit := false
 	match label:
 		"flight": hit = bt.phase == "flight" and bt._age > .15
 		"prepare": hit = bt.phase == "prepare" and t_state > .2
 		"back", "back_v2": hit = bt.phase == "back" and _t.has("catch") and clock - float(_t.catch) > .5
 		"retrieve": hit = bt.phase == "retrieve" and bt._path_index >= 1
-	if not hit: return
+	if hit: _do_save(bt)
+
+func _do_save(bt: RefCounted) -> void:
+	var label := _arg("save", "")
 	_save_done = true
 	var phase: String = bt.phase
 	var saved_worker: Dictionary = JSON.parse_string(JSON.stringify(wako.serialize_state()))
 	var saved_tool: Dictionary = JSON.parse_string(JSON.stringify(tool.serialize()))
 	var tool_pos := tool.global_position
-	var tool_vel := tool.linear_velocity
+	var tool_vel: Vector3 = (tool.global_position - _prev_tool_pos) * 120.0 if _prev_tool_pos.is_finite() else tool.linear_velocity
+	if tool.carrier == null: tool_vel = tool.linear_velocity
 	var saved_motion: Dictionary = saved_worker.get("back_tool", {}).get("motion", {})
 	if label == "back_v2":
 		# Forge an old (v2) save: same seated body at the old rack depth z .58.
@@ -276,19 +353,56 @@ func _saves(bt: RefCounted) -> void:
 	if is_instance_valid(tool.carrier): carrier = "back" if tool.carrier == wako.back_tool.back_anchor else ("foot" if tool.carrier == wako.tool_anchor else str(tool.carrier.name))
 	m.save = {"saved_phase": phase, "restored_phase": restored_phase, "carrier": carrier, "bound": bound,
 		"equipped": wako.equipped_tool == tool, "frozen": tool.freeze, "layer": tool.collision_layer,
-		"pose_error": tool.global_position.distance_to(tool_pos), "velocity_saved": tool_vel,
+		"pose_error": tool.global_position.distance_to(tool_pos), "velocity_observed": tool_vel,
 		"velocity_restored": tool.linear_velocity, "saved_motion": saved_motion,
 		"catch_fabricated": carrier == "back" and phase not in ["back", "retrieve"], "kind_same": tool.kind == tool_kind,
 		"migrated": wako.back_tool.get("migrated_seat") if "migrated_seat" in wako.back_tool else null,
 		"seat_after": wako.back_tool._body_frame.affine_inverse() * tool.global_position,
-		"mass_same": is_equal_approx(tool.mass, float(m.tool_mass)), "health": tool.health}
+		"mass_same": is_equal_approx(tool.mass, float(m.tool_mass)), "health": tool.health,
+		"exception_with_worker": wako in tool.get_collision_exceptions()}
 	_event("restored", m.save)
 	_id = tool.get_instance_id()
 	_rid = tool.get_rid()
 	_save_t = clock
 	_prev_tool_pos = Vector3.INF
+	_restore_watch = 0
 
-var _save_t := -1.0
+## ---- per-tick observation ------------------------------------------------------
+func _leg_points(leg: int) -> Array:
+	# The completed modifier's published leg (Pose's evaluated caches, rebased
+	# to the current native body); raw bone reads outside the modifier would
+	# show the un-solved animation pose.
+	var pz: SkeletonModifier3D = wako._pose
+	if pz and pz.evaluated_valid:
+		var rebase: Transform3D = wako.global_transform * pz.evaluated_worker.affine_inverse()
+		var sole: Vector3 = rebase * pz.evaluated_soles[leg]
+		var ankle_basis: Basis = rebase.basis * pz.evaluated_ankles[leg]
+		var ankle: Vector3 = sole - ankle_basis * Vector3(0, pz._ankle_height[leg], 0)
+		return [rebase * pz.evaluated_hips[leg], rebase * pz.evaluated_knees[leg], ankle, sole]
+	var sk: Skeleton3D = wako._skeleton
+	var chain: Array = pz._chains[leg]
+	var hip: Vector3 = sk.global_transform * sk.get_bone_global_pose(chain[0]).origin
+	var knee: Vector3 = sk.global_transform * sk.get_bone_global_pose(chain[1]).origin
+	var ankle_xf: Transform3D = sk.global_transform * sk.get_bone_global_pose(chain[2])
+	var sole2: Vector3 = ankle_xf * Vector3(0, pz._ankle_height[leg], 0)
+	return [hip, knee, ankle_xf.origin, sole2]
+
+func _leg_angles(bt: RefCounted, leg: int) -> Dictionary:
+	# Body-frame angles (+X right, +Y up, +Z back). Flexion > 0 = forward,
+	# extension < 0; abduction > 0 = away from the body midline.
+	var pts := _leg_points(leg)
+	var inv: Basis = bt._body_frame.basis.inverse()
+	var hip_local: Vector3 = bt._body_frame.affine_inverse() * pts[0]
+	var outward := signf(hip_local.x) if absf(hip_local.x) > .01 else 1.0
+	var out := {}
+	for pair: Array in [["line", pts[3]], ["thigh", pts[1]]]:
+		var v: Vector3 = inv * (Vector3(pair[1]) - Vector3(pts[0]))
+		out[pair[0] + "_from_vertical"] = rad_to_deg(acos(clampf(-v.y / maxf(v.length(), 1e-6), -1.0, 1.0)))
+		out[pair[0] + "_flexion"] = rad_to_deg(atan2(-v.z, -v.y))
+		out[pair[0] + "_abduction"] = rad_to_deg(atan2(outward * v.x, -v.y))
+	var sole_local: Vector3 = bt._body_frame.affine_inverse() * pts[3]
+	out.sole_rel_hip = sole_local - hip_local
+	return out
 
 func _observe(delta: float, bt: RefCounted) -> void:
 	if not is_instance_valid(wako) or not bt: return
@@ -303,6 +417,7 @@ func _observe(delta: float, bt: RefCounted) -> void:
 		_prev_phase = phase
 	if stage != _prev_stage:
 		_event("stage", {"from": _prev_stage, "to": stage})
+		_on_stage(_prev_stage, stage, bt)
 		_prev_stage = stage
 	if is_instance_valid(tool):
 		if tool.get_instance_id() != _id or tool.get_rid() != _rid: _identity_ok = false
@@ -312,11 +427,19 @@ func _observe(delta: float, bt: RefCounted) -> void:
 		var expected_mass: float = 22.0 + bt.holder_mass() + (tool.mass if is_instance_valid(tool.carrier) and owned else 0.0) + wako.cargo_mass
 		if owned and absf(wako.mass - expected_mass) > .001: _mass_ok = false
 		var tp := tool.global_position
+		var com: Vector3 = tool.global_transform * tool.center_of_mass
 		if _prev_tool_pos.is_finite():
 			var step := tp.distance_to(_prev_tool_pos)
-			if phase == "flight" or _prev_phase_tick == "flight":
-				_flight_samples += 1
+			if phase == "flight" or _prev_phase_tick == "flight": _flight_samples += 1
 			if not _impulse_ticks.has(_tick): _max_jump = maxf(_max_jump, step)
+			# Kick / gather toe (tool COM) speed while the tool is on the foot.
+			if phase == "prepare" and tool.carrier == wako.tool_anchor:
+				var speed := step / delta
+				var key := "kick_peak_speed" if stage in ["kick"] else ("hold_peak_speed" if stage == "hold" else "gather_peak_speed")
+				m[key] = maxf(float(m.get(key, 0.0)), speed)
+				if stage == "hold": m.hold_time = float(m.get("hold_time", 0.0)) + delta
+			if phase == "flight":
+				m.flight_turn_deg = float(m.get("flight_turn_deg", 0.0)) + rad_to_deg(_turn(_prev_tool_xf.basis, tool.global_basis))
 		if args.has("trace_interrupt") and _interrupt_t >= 0.0 and clock - _interrupt_t < .1:
 			print("INT t=%.4f pos=%s step=%.4f frozen=%s vel=%s" % [clock, tp, tp.distance_to(_prev_tool_pos) if _prev_tool_pos.is_finite() else -1.0, tool.freeze, tool.linear_velocity])
 		# Interrupt continuity: the released body must not jump.
@@ -324,7 +447,6 @@ func _observe(delta: float, bt: RefCounted) -> void:
 			var predicted := _prev_tool_pos + _prev_tool_vel * delta
 			m.interrupt_max_tool_step = maxf(float(m.get("interrupt_max_tool_step", 0.0)), tp.distance_to(predicted))
 		if phase == "flight":
-			var com: Vector3 = tool.global_transform * tool.center_of_mass
 			m.apex_world = maxf(float(m.get("apex_world", -INF)), com.y)
 			m.apex_above_launch = maxf(float(m.get("apex_above_launch", -INF)), com.y - _launch_tool.y)
 			m.apex_above_ground = maxf(float(m.get("apex_above_ground", -INF)), com.y - _ground_y)
@@ -333,6 +455,7 @@ func _observe(delta: float, bt: RefCounted) -> void:
 			if com.y > roof: m.frames_above_roof = int(m.get("frames_above_roof", 0)) + 1
 		_prev_tool_vel = tool.linear_velocity if not tool.freeze else (tp - _prev_tool_pos) / delta if _prev_tool_pos.is_finite() else Vector3.ZERO
 		_prev_tool_pos = tp
+		_prev_tool_xf = tool.global_transform
 	# Body: advance and drive force (horizontal capsule acceleration).
 	if phase in ["prepare", "flight"] or (phase == "back" and _t.has("catch") and clock - float(_t.catch) < .35 and not wako.has_target):
 		var acc := ((wvel - _prev_worker_vel) / delta).slide(Vector3.UP)
@@ -344,8 +467,10 @@ func _observe(delta: float, bt: RefCounted) -> void:
 			var support: int = 1 - wako.tool_foot_side()
 			var sole: Vector3 = wako.global_transform * p.evaluated_worker.affine_inverse() * p.evaluated_soles[support]
 			if not _support_sole0.is_finite() and p.evaluated_grounded[support]: _support_sole0 = sole
-			elif _support_sole0.is_finite() and p.evaluated_grounded[support]:
+			elif _support_sole0.is_finite() and p.evaluated_grounded[support] and not _t.has("catch"):
 				m.support_sole_slip = maxf(float(m.get("support_sole_slip", 0.0)), sole.distance_to(_support_sole0))
+	_feet_after_launch(bt)
+	_retrieval_watch(delta, bt)
 	if args.has("trace") and is_instance_valid(tool) and phase in ["flight","prepare"] or (args.has("trace") and _t.has("catch") and clock - float(_t.catch) < .3):
 		var local: Vector3 = bt._body_frame.affine_inverse() * tool.global_position
 		var seat: Vector3 = bt.seat_point() if bt.has_method("seat_point") else Vector3(0, -.18, .58)
@@ -353,22 +478,105 @@ func _observe(delta: float, bt: RefCounted) -> void:
 		print("TRACE t=%.3f ph=%s st=%s tool_body=(%.3f,%.3f,%.3f) gap=(%.3f,%.3f,%.3f) wv=(%.2f,%.2f,%.2f) wpos=(%.3f,%.3f) tv=(%.2f,%.2f,%.2f) turn=%.1f" % [clock, phase, stage,
 			local.x, local.y, local.z, rel.x, rel.y, rel.z, wvel.x, wvel.y, wvel.z, wpos.x, wpos.z, tool.linear_velocity.x, tool.linear_velocity.y, tool.linear_velocity.z,
 			rad_to_deg(_turn(tool.global_basis, _seat_basis(bt)))], " adv=", bt._advance.get("last", {}) if "_advance" in bt else {})
-	if args.has("trace_action") and is_instance_valid(tool) and _t.has("action_begin") and clock - float(_t.action_begin) < .5:
-		var tb: Transform3D = bt._body_frame.affine_inverse() * tool.global_transform
-		print("ACTION t=%.3f prog=%.3f tool_x=(%.2f,%.2f,%.2f) tool_y=(%.2f,%.2f,%.2f) pos=(%.3f,%.3f,%.3f) carrier=%s" % [clock, wako.action_progress, tb.basis.x.x, tb.basis.x.y, tb.basis.x.z, tb.basis.y.x, tb.basis.y.y, tb.basis.y.z, tb.origin.x, tb.origin.y, tb.origin.z, tool.carrier.name if is_instance_valid(tool.carrier) else "none"])
+	if args.has("vis") and is_instance_valid(tool):
+		var vr := _arg("vis", "2.0-5.0").split("-")
+		if clock >= float(vr[0]) and clock <= float(vr[1]): _vis(bt, phase, stage)
 	_prev_worker_vel = wvel
 	_prev_worker_pos = wpos
 	_prev_phase_tick = phase
+	_prev_body = bt._body_frame
 	if bt.has_method("stunt_metrics"):
 		var sm: Dictionary = bt.stunt_metrics()
 		if not sm.is_empty(): m.stunt = sm
+	if bt.has_method("gaze_target") and stage in ["gather", "hold", "kick", "flight", "settle", "reach", "draw"]:
+		var g: Variant = bt.gaze_target()
+		var key := "gaze_" + stage
+		if not m.has(key): m[key] = g is Vector3
+		elif not (g is Vector3): m[key] = false
 	m.max_toe_step = bt.max_toe_step
 	m.max_toe_turn = bt.max_toe_turn
 	m.validation_usec_max = maxi(int(m.get("validation_usec_max", 0)), int(bt.validation_usec))
 	if not is_instance_valid(wako.equipped_tool):
 		m.holder_visible_without_tool = bt.holder.visible
 
-var _prev_phase_tick := ""
+func _vis(bt: RefCounted, phase: String, stage: String) -> void:
+	var sk: Skeleton3D = wako._skeleton
+	var rootw: Transform3D = sk.global_transform * sk.get_bone_global_pose(0)
+	var pz: SkeletonModifier3D = wako._pose
+	if pz and pz.evaluated_valid: rootw = wako.global_transform * pz.evaluated_worker.affine_inverse() * pz.evaluated_root
+	var soles := [Vector3.ZERO, Vector3.ZERO]
+	if pz and pz.evaluated_valid:
+		for k in 2: soles[k] = wako.global_transform * pz.evaluated_worker.affine_inverse() * pz.evaluated_soles[k]
+	var bf: Transform3D = bt._body_frame
+	var com: Vector3 = tool.global_transform * tool.center_of_mass
+	var fs: int = wako.tool_foot_side()
+	var gz: Variant = bt.gaze_target() if bt.has_method("gaze_target") else null
+	var wpos := wako.global_position
+	print("VIS t=%.4f ph=%s st=%s cap=(%.3f,%.3f,%.3f) root=(%.3f,%.3f,%.3f) fwd=(%.3f,%.3f,%.3f) kick=(%.3f,%.3f,%.3f) sup=(%.3f,%.3f,%.3f) gk=%s gs=%s tool=(%.3f,%.3f,%.3f) tup=(%.3f,%.3f,%.3f) gaze=%s" % [clock, phase, stage,
+		wpos.x, wpos.y, wpos.z, rootw.origin.x, rootw.origin.y, rootw.origin.z, -bf.basis.z.x, -bf.basis.z.y, -bf.basis.z.z,
+		soles[fs].x, soles[fs].y, soles[fs].z, soles[1-fs].x, soles[1-fs].y, soles[1-fs].z, str(pz.evaluated_grounded[fs]) if pz else "?", str(pz.evaluated_grounded[1-fs]) if pz else "?",
+		com.x, com.y, com.z, tool.global_basis.y.x, tool.global_basis.y.y, tool.global_basis.y.z, str(gz)])
+
+## Kick-foot touchdown and support-foot catch-up step around the catch.
+var _kick_land_seen := false
+var _support_plant := Vector3.INF
+var _support_step_seen := false
+var _kick_airborne := false
+func _feet_after_launch(bt: RefCounted) -> void:
+	var pz: SkeletonModifier3D = wako._pose
+	if not pz or not pz.evaluated_valid or not _t.has("launch"): return
+	var fs: int = int(bt._foot_side)
+	var to_world: Transform3D = wako.global_transform * pz.evaluated_worker.affine_inverse()
+	var kick_sole: Vector3 = to_world * pz.evaluated_soles[fs]
+	var sup_sole: Vector3 = to_world * pz.evaluated_soles[1 - fs]
+	var forward: Vector3 = (-wako._model.global_basis.z).slide(Vector3.UP).normalized()
+	if not _kick_land_seen and clock - float(_t.launch) < 2.0:
+		if not pz.evaluated_grounded[fs]: _kick_airborne = true
+		elif _kick_airborne:
+			_kick_land_seen = true
+			m.kick_foot_land_after_launch = clock - float(_t.launch)
+			m.kick_foot_land_ahead_of_capsule = (kick_sole - wako.global_position).dot(forward)
+			m.kick_foot_land_ahead_of_launch_plant = (kick_sole - _launch_pos).dot(forward)
+	if _t.has("catch") and not _support_step_seen:
+		if not _support_plant.is_finite(): _support_plant = sup_sole
+		elif sup_sole.distance_to(_support_plant) > .02:
+			_support_step_seen = true
+			m.support_step_after_catch = clock - float(_t.catch)
+		if clock - float(_t.catch) < .02:
+			m.support_behind_capsule_at_catch = (sup_sole - wako.global_position).dot(forward)
+			m.kick_foot_ahead_of_capsule_at_catch = (kick_sole - wako.global_position).dot(forward)
+	# Follow-through: kick sole travel past its release point along the kick.
+	if _t.has("launch") and clock - float(_t.launch) < .25 and m.has("release_sole"):
+		var dir: Vector3 = m.get("kick_dir", Vector3.UP)
+		m.follow_through = maxf(float(m.get("follow_through", 0.0)), (kick_sole - Vector3(m.release_sole)).dot(dir))
+
+## Retrieval: leg angles during the reach and the longest near-still interval.
+var _retr_last_toe := Vector3.INF
+var _still := 0.0
+func _retrieval_watch(delta: float, bt: RefCounted) -> void:
+	if not _t.has("retrieve_request") or _t.has("action_begin_seen"): return
+	if bt.phase in ["retrieve", "return"] or (bt.phase == "foot" and not _t.has("action_begin")):
+		var pts := _leg_points(int(bt._foot_side))
+		var toe: Vector3 = pts[3]
+		if _retr_last_toe.is_finite():
+			var speed := toe.distance_to(_retr_last_toe) / delta
+			if speed < .4: _still += delta
+			else: _still = 0.0
+			m.retrieval_longest_still = maxf(float(m.get("retrieval_longest_still", 0.0)), _still)
+		_retr_last_toe = toe
+		if bt.phase == "retrieve":
+			var a := _leg_angles(bt, int(bt._foot_side))
+			for key: String in ["line_abduction", "thigh_abduction", "line_from_vertical"]:
+				m["reach_max_" + key] = maxf(float(m.get("reach_max_" + key, -INF)), float(a[key]))
+			m["reach_min_thigh_flexion"] = minf(float(m.get("reach_min_thigh_flexion", INF)), float(a.thigh_flexion))
+			var sole_h: float = Vector3(pts[3]).y - _ground_y
+			m.reach_max_sole_height = maxf(float(m.get("reach_max_sole_height", 0.0)), sole_h)
+	if _t.has("action_begin"): _t.action_begin_seen = true
+
+func _on_stage(from: String, to: String, bt: RefCounted) -> void:
+	if to == "kick" and is_instance_valid(tool):
+		m.cock_leg = _leg_angles(bt, int(bt._foot_side))
+	if from == "hold" or (from == "gather" and to == "kick"): _t.kick_start = clock
 
 func _on_phase(from: String, to: String, bt: RefCounted) -> void:
 	if to == "prepare" and not _t.has("prepare"): _t.prepare = clock
@@ -379,8 +587,15 @@ func _on_phase(from: String, to: String, bt: RefCounted) -> void:
 		m.launch_speed = tool.linear_velocity.length()
 		m.launch_velocity = tool.linear_velocity
 		m.launch_spin = tool.angular_velocity
+		m.launch_spin_rate = tool.angular_velocity.length()
 		m.launch_impulse = bt.launch_impulse.length()
 		m.launch_tool_height = _launch_tool.y - _ground_y
+		m.release_leg = _leg_angles(bt, int(bt._foot_side))
+		m.release_sole = _leg_points(int(bt._foot_side))[3]
+		m.kick_dir = tool.linear_velocity.normalized()
+		var toe_v: Vector3 = bt._toe_velocity if "_toe_velocity" in bt else Vector3.ZERO
+		m.release_toe_speed = toe_v.length()
+		m.release_toe_ratio = toe_v.length() / maxf(tool.linear_velocity.length(), .001)
 		_impulse_ticks[_tick] = true
 		_impulse_ticks[_tick + 1] = true
 	if from == "flight" and to == "back":
@@ -398,15 +613,29 @@ func _on_phase(from: String, to: String, bt: RefCounted) -> void:
 		m.catch_orientation_error_deg = rad_to_deg(_turn(exact.basis, _seat_basis(bt)))
 		var seat: Vector3 = bt._body_frame * (bt.seat_point() if bt.has_method("seat_point") else Vector3(0, -.18, .58))
 		m.catch_seat_gap = bt._root.basis.inverse() * (exact.origin - seat)
-		# Tool step across the contact tick vs. its free ballistic prediction.
 		if _prev_tool_pos.is_finite():
+			# World step of the tool over the contact tick (includes the body's own
+			# travel) and the body-local step (tool relative to the cradle frame).
 			m.catch_step_world = exact.origin.distance_to(_prev_tool_pos)
+			var local_prev: Vector3 = _prev_body.affine_inverse() * _prev_tool_pos
+			var local_now: Vector3 = bt._body_frame.affine_inverse() * exact.origin
+			m.catch_step_body_local = local_now.distance_to(local_prev)
+			# Deviation of the caught pose from the free ballistic path between the
+			# last free tick and the next (a catch never teleports the body).
+			var v0: Vector3 = _prev_tool_vel
+			var best := INF
+			for i in 21:
+				var tau := float(i) / 20.0 / 120.0
+				var p: Vector3 = _prev_tool_pos + v0 * tau + Vector3.DOWN * 4.9 * tau * tau
+				best = minf(best, p.distance_to(exact.origin))
+			m.catch_offset_from_ballistic_path = best
 	if from == "back" and to == "retrieve": _t.retrieve = clock
 	if from == "retrieve" and to == "return":
 		_t.contact = clock
 		m.retrieve_reach_time = clock - float(_t.get("retrieve_request", _t.retrieve))
-	if from == "retrieve" and to == "back":
+	if from in ["retrieve", "return"] and to == "back":
 		_event("retrieve_aborted_to_back")
+		_t.retrieve_aborted = clock
 	if from == "return" and to == "foot":
 		_t.home = clock
 		m.retrieval_time = clock - float(_t.get("retrieve_request", clock))
@@ -415,10 +644,224 @@ func _on_phase(from: String, to: String, bt: RefCounted) -> void:
 		m.dropped_from = from
 		m.drop_reason = bt.reason
 
+## ---- review checks (catch split, drop/restore, legs, cost) ---------------------
+var _hist: Array = []
+var _catches_seen := 0
+var _post_catch := -1
+var _catch_rec := {}
+var _equipped_prev := false
+var _drop_watch := -1
+var _drop_rec := {}
+var _restore_watch := -1
+var _restore_rec := {}
+var _last_us := 0
+var _ticks: Array = []
+var _tool_prev_v := Vector3.ZERO
+var _tool_prev_p := Vector3.INF
+var _wv_prev := Vector3.ZERO
+
+func _cost(bt: RefCounted) -> void:
+	var now := Time.get_ticks_usec()
+	var frame_us := now - _last_us if _last_us > 0 else 0
+	_last_us = now
+	var posture: int = int(bt.get("ops_posture")) if bt.get("ops_posture") != null else 0
+	var native: int = int(bt.get("ops_native")) if bt.get("ops_native") != null else 0
+	if bt.get("ops_posture") != null:
+		bt.ops_posture = 0
+		bt.ops_native = 0
+	var ph: String = bt.phase
+	var st := _stage_name()
+	if state in ["stow", "retrieve", "walk_after"] or ph != "foot":
+		_ticks.append([_tick, ph, st, frame_us, posture, native])
+	var key := ph + ":" + st
+	if not chk.has("cost"): chk.cost = {}
+	var row: Dictionary = chk.cost.get(key, {"ticks": 0, "ops_max": 0, "ops_sum": 0})
+	row.ticks += 1
+	row.ops_max = maxi(row.ops_max, posture + native)
+	row.ops_sum += posture + native
+	chk.cost[key] = row
+	chk.total_ops = int(chk.get("total_ops", 0)) + posture + native
+	if posture + native > int(chk.get("worst_tick_ops", 0)):
+		chk.worst_tick_ops = posture + native
+		chk.worst_tick = {"tick": _tick, "phase": ph, "stage": st, "posture": posture, "native": native}
+	if posture + native > 160: chk.ticks_over_160 = int(chk.get("ticks_over_160", 0)) + 1
+
+func _overlaps(shape_owner: CollisionShape3D, mask: int, rid: RID) -> bool:
+	if not shape_owner or shape_owner.disabled: return false
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = shape_owner.shape
+	q.transform = shape_owner.global_transform
+	q.collision_mask = mask
+	q.margin = 0.0
+	for hit: Dictionary in get_world_3d().direct_space_state.intersect_shape(q, 32):
+		if hit.rid == rid: return true
+	return false
+
+func _tool_overlap_report() -> Dictionary:
+	var out := {}
+	if not is_instance_valid(tool) or not is_instance_valid(wako): return out
+	var capsule: CollisionShape3D
+	for child: Node in wako.get_children():
+		if child is CollisionShape3D and not child.disabled: capsule = child; break
+	out.capsule_overlap = _overlaps(capsule, 0x7fffffff, tool.get_rid()) if wako.collision_layer != 0 else false
+	out.exception_with_worker = wako in tool.get_collision_exceptions()
+	var rag_overlap := false
+	if wako.ragdoll and wako.ragdoll.active:
+		for body in wako.ragdoll.rig.bodies:
+			for child in body.rb.get_children():
+				if child is CollisionShape3D and _overlaps(child, 0x7fffffff, tool.get_rid()): rag_overlap = true
+	out.ragdoll_active = wako.ragdoll.active if wako.ragdoll else false
+	out.ragdoll_overlap = rag_overlap
+	return out
+
+func _watch(delta: float, bt: RefCounted) -> void:
+	var g := Vector3.DOWN * 9.8
+	if is_instance_valid(tool):
+		var p := tool.global_position
+		var v := tool.linear_velocity
+		var local: Transform3D = bt._root.affine_inverse() * tool.global_transform
+		_hist.append({"tick": _tick, "pos": p, "vel": v, "carried": is_instance_valid(tool.carrier), "phase": str(bt.phase), "local": local})
+		if _hist.size() > 6: _hist.pop_front()
+		if int(bt.catches) > _catches_seen:
+			_catches_seen = int(bt.catches)
+			_post_catch = 0
+			var left := 0
+			var right := 0
+			for point: Vector3 in bt.last_contact_points:
+				var lx: float = (bt._body_frame.affine_inverse() * point).x
+				if lx < 0.0: left += 1
+				else: right += 1
+			_catch_rec = {"contact_points_left": left, "contact_points_right": right}
+			var sm: Dictionary = bt.stunt_metrics() if bt.has_method("stunt_metrics") else {}
+			for k: String in ["catch_trays", "catch_first_tray_depth", "catch_tau"]:
+				if sm.has(k): _catch_rec[k] = sm[k]
+			_catch_rec.max_world_step_after = 0.0
+			_catch_rec.max_local_step_after = 0.0
+			_catch_rec.launch_momentum = [bt.launch_before_momentum, bt.launch_after_momentum]
+			_catch_rec.catch_momentum = [bt.catch_before_momentum, bt.catch_after_momentum]
+			_catch_rec.contact_both_ticks = 0
+			_catch_rec.contact_missing_ticks = 0
+		elif _post_catch >= 0 and _post_catch < 45:
+			_post_catch += 1
+			if _hist.size() >= 2:
+				var a: Dictionary = _hist[-2]
+				var b: Dictionary = _hist[-1]
+				_catch_rec.max_world_step_after = maxf(float(_catch_rec.max_world_step_after), (b.pos as Vector3).distance_to(a.pos))
+				_catch_rec.max_local_step_after = maxf(float(_catch_rec.max_local_step_after), (b.local as Transform3D).origin.distance_to((a.local as Transform3D).origin))
+			# Settle stays in contact with BOTH trays (the BackTool's own query).
+			if bt.has_method("tray_contacts") and tool.carrier == bt.back_anchor:
+				var trays: Array = bt.tray_contacts()
+				if trays.size() == 2 and trays[0] and trays[1]: _catch_rec.contact_both_ticks += 1
+				else: _catch_rec.contact_missing_ticks += 1
+			if _post_catch == 45: chk.catch = _catch_rec
+		# Drop detection (equipped -> loose).
+		var equipped: bool = is_instance_valid(wako.equipped_tool) and wako.equipped_tool == tool
+		if _equipped_prev and not equipped and _drop_watch < 0:
+			_drop_watch = 0
+			_drop_rec = _tool_overlap_report()
+			_drop_rec.phase_before = _prev_phase_tick
+			_drop_rec.max_dv_anomaly = 0.0
+			_drop_rec.start_speed = v.length()
+			_drop_rec.worker_dv_max = 0.0
+			_drop_rec.worker_dv_vertical_max = 0.0
+			_drop_rec.tick = _tick
+		elif _drop_watch >= 0 and _drop_watch < 120:
+			_drop_watch += 1
+			if _tool_prev_p.is_finite():
+				var dv := (v - _tool_prev_v - g * delta).length()
+				if p.y - _ground_y > .35: _drop_rec.max_dv_anomaly = maxf(float(_drop_rec.max_dv_anomaly), dv)
+			var wv: Vector3 = wako.linear_velocity
+			_drop_rec.worker_dv_max = maxf(float(_drop_rec.worker_dv_max), (wv - _wv_prev).slide(Vector3.UP).length())
+			_drop_rec.worker_dv_vertical_max = maxf(float(_drop_rec.worker_dv_vertical_max), absf(wv.y - _wv_prev.y))
+			if _drop_watch == 2: _drop_rec.overlap_after_2 = _tool_overlap_report()
+			if _drop_watch == 120:
+				_drop_rec.final_pos = p
+				_drop_rec.final_speed = v.length()
+				_drop_rec.exception_after_1s = wako in tool.get_collision_exceptions()
+				_drop_rec.overlap_after_1s = _tool_overlap_report()
+				chk.drop = _drop_rec
+		_equipped_prev = equipped
+		if _restore_watch >= 0 and _restore_watch < 120:
+			if _restore_watch == 0:
+				_restore_rec = _tool_overlap_report()
+				_restore_rec.max_dv_anomaly = 0.0
+				_restore_rec.worker_dv_max = 0.0
+				_restore_rec.worker_dv_vertical_max = 0.0
+			elif _tool_prev_p.is_finite():
+				var dv2 := (v - _tool_prev_v - g * delta).length()
+				if p.y - _ground_y > .35: _restore_rec.max_dv_anomaly = maxf(float(_restore_rec.max_dv_anomaly), dv2)
+				_restore_rec.worker_dv_max = maxf(float(_restore_rec.worker_dv_max), (wako.linear_velocity - _wv_prev).slide(Vector3.UP).length())
+				_restore_rec.worker_dv_vertical_max = maxf(float(_restore_rec.worker_dv_vertical_max), absf(wako.linear_velocity.y - _wv_prev.y))
+			_restore_watch += 1
+			if _restore_watch == 120: chk.restore = _restore_rec
+		_tool_prev_v = v
+		_tool_prev_p = p
+	# Leg vs seated tool/holder clearance.
+	if bt.phase == "back" and is_instance_valid(tool) and tool.carrier == bt.back_anchor:
+		var c := _leg_clearance(bt)
+		var bucket := "walk" if state == "walk_after" else "stand"
+		if c < float(chk.get("leg_tool_clearance_min_" + bucket, INF)):
+			chk["leg_tool_clearance_min_" + bucket] = c
+			chk["leg_tool_clearance_at_" + bucket] = {"state": state, "tick": _tick, "speed": wako.linear_velocity.length()}
+		if state == "walk_after": chk.walk_peak_speed = maxf(float(chk.get("walk_peak_speed", 0.0)), (wako.linear_velocity - wako.ground_velocity).slide(Vector3.UP).length())
+	_wv_prev = wako.linear_velocity
+
+var _pen := 0.0
+func _segment_obb_distance(a: Vector3, b: Vector3, xf: Transform3D, box: AABB) -> float:
+	var best := INF
+	var inv := xf.affine_inverse()
+	for i in 25:
+		var q0: Vector3 = inv * a.lerp(b, float(i) / 24.0)
+		var q := q0.clamp(box.position, box.end)
+		var d := q0.distance_to(q)
+		if d <= 0.0:
+			var depth := minf(minf(minf(q0.x - box.position.x, box.end.x - q0.x), minf(q0.y - box.position.y, box.end.y - q0.y)), minf(q0.z - box.position.z, box.end.z - q0.z))
+			_pen = maxf(_pen, depth)
+		best = minf(best, d)
+	return best
+
+func _leg_clearance(bt: RefCounted) -> float:
+	# Leg centre lines (hip-knee, knee-ankle) vs the seated tool's measured
+	# keepout slices and the holder hardware. Leg radius is about 6 cm.
+	var best := INF
+	var boxes: Array = tool.get_meta(&"worker_tool_keepouts", [])
+	var detail: Dictionary = chk.get("leg_detail", {})
+	for side_index in 2:
+		var pts := _leg_points(side_index)
+		var segs := {"thigh": [pts[0], pts[1]], "shin": [pts[1], pts[2]]}
+		for seg_name: String in segs:
+			var a: Vector3 = segs[seg_name][0]
+			var b: Vector3 = segs[seg_name][1]
+			var tb := INF
+			_pen = 0.0
+			for box: AABB in boxes: tb = minf(tb, _segment_obb_distance(a, b, tool.global_transform, box))
+			if tb < .06: chk.leg_tool_ticks_within_r = int(chk.get("leg_tool_ticks_within_r", 0)) + 1
+			if tb <= 0.0:
+				chk.leg_tool_ticks_inside = int(chk.get("leg_tool_ticks_inside", 0)) + 1
+				chk.leg_tool_max_centerline_depth = maxf(float(chk.get("leg_tool_max_centerline_depth", 0.0)), _pen)
+			var key := "tool_%s_%d" % [seg_name, side_index]
+			if tb < float(detail.get(key, {}).get("d", INF)):
+				detail[key] = {"d": tb, "state": state, "speed": snappedf(wako.linear_velocity.length(), .01), "tick": _tick}
+			best = minf(best, tb)
+			for child: Node in bt.holder.get_children():
+				if child is MeshInstance3D and child.name != "RootSeat":
+					var mi := child as MeshInstance3D
+					var hb := _segment_obb_distance(a, b, mi.global_transform, mi.get_aabb())
+					var hkey := "holder_%s_%s_%d" % [str(child.name), seg_name, side_index]
+					if hb < float(detail.get(hkey, {}).get("d", INF)):
+						detail[hkey] = {"d": hb, "state": state, "speed": snappedf(wako.linear_velocity.length(), .01), "tick": _tick}
+					if hb < float(chk.get("leg_holder_clearance_min", INF)): chk.leg_holder_clearance_min = hb
+	chk.leg_detail = detail
+	return best
+
 func _finish(why: String) -> void:
 	if _done: return
 	_done = true
 	var bt := _bt()
+	if not chk.has("catch") and not _catch_rec.is_empty(): chk.catch = _catch_rec
+	if not chk.has("drop") and not _drop_rec.is_empty(): chk.drop = _drop_rec
+	if not chk.has("restore") and not _restore_rec.is_empty(): chk.restore = _restore_rec
+	m.chk = chk
 	m.result = why
 	m.identity_same = _identity_ok
 	m.mass_conserved = _mass_ok
@@ -427,6 +870,8 @@ func _finish(why: String) -> void:
 	if is_instance_valid(tool) and is_instance_valid(tool.carrier):
 		m.final_carrier = "back" if tool.carrier == bt.back_anchor else ("foot" if tool.carrier == wako.tool_anchor else str(tool.carrier.name))
 	m.final_equipped = is_instance_valid(wako) and wako.equipped_tool == tool and is_instance_valid(tool)
+	m.final_busy = bt.busy() if bt else false
+	m.final_blocks_navigation = bt.blocks_navigation() if bt else false
 	if _t.has("dropped") and is_instance_valid(tool): m.dropped_tool_rest = tool.global_position
 	m.tosses = bt.tosses
 	m.catches = bt.catches
@@ -437,17 +882,78 @@ func _finish(why: String) -> void:
 		m.interrupt_outcome = {"phase_after": bt.phase, "carrier": m.final_carrier, "equipped": m.final_equipped,
 			"same_instance": is_instance_valid(tool) and tool.get_instance_id() == _id, "dropped": _t.has("dropped"),
 			"max_tool_step_after": m.get("interrupt_max_tool_step", 0.0)}
+	var path := _arg("ticks_out", "")
+	if not path.is_empty():
+		var f := FileAccess.open(path, FileAccess.WRITE)
+		if f:
+			f.store_string(JSON.stringify(_ticks))
+			f.close()
 	print("BACK_STUNT_METRICS ", JSON.stringify(m))
+	if args.has("assert"): _assertions()
 	if args.has("quit"):
 		await get_tree().create_timer(.2).timeout
 		get_tree().quit()
 
-var cam_lift := 0.0
+## ---- packaged regression assertions (--assert) ------------------------------
+## One PASS/FAIL line per scenario for harness/run_back_checks.sh: custody and
+## identity, both-tray catch and in-contact settle, retrieval, worker dv and
+## overlap/exception after any loose release, leg clearance while walking,
+## no soft-lock (never busy at the end), honest save restores, tick cost.
+func _assertions() -> void:
+	var fails := 0
+	var count := 0
+	var checks: Array = []
+	var knock := args.has("knock")
+	var plain := not args.has("interrupt") and not args.has("save") and not args.has("ceiling") and not knock
+	checks.append(["same native tool and mass throughout", bool(m.get("identity_same", false)) and bool(m.get("mass_conserved", false))])
+	checks.append(["never left busy (no soft-lock)", not bool(m.get("final_busy", true))])
+	var drop: Dictionary = chk.get("drop", {})
+	if not drop.is_empty():
+		var after: Dictionary = drop.get("overlap_after_1s", {})
+		checks.append(["loose release: no capsule/ragdoll overlap or exception 1 s later", not bool(after.get("capsule_overlap", false)) and not bool(after.get("ragdoll_overlap", false)) and not bool(drop.get("exception_after_1s", false))])
+		if not knock: checks.append(["loose release: worker horizontal dv < .1 m/s", float(drop.get("worker_dv_max", 0.0)) < .1])
+	if plain or (args.has("interrupt") and str(_arg("interrupt", "")) in ["rising", "apex", "falling", "late", "settle", "reach", "contact"]):
+		var catch: Dictionary = chk.get("catch", {})
+		checks.append(["caught on BOTH trays and settled in contact", catch.get("catch_trays", []) == [true, true] and int(catch.get("contact_missing_ticks", 1)) == 0])
+		checks.append(["complete stow and retrieval onto the foot", str(m.get("result", "")) == "complete" and str(m.get("final_carrier", "")) == "foot"])
+		checks.append(["catch orientation error < 8 deg", float(m.get("catch_orientation_error_deg", 99.0)) < 8.0])
+	if plain and not args.has("walk") and not args.has("depart"):
+		checks.append(["retrieval under 2 s from a standstill", float(m.get("retrieval_time", 99.0)) < 2.0])
+		checks.append(["per-tick query cost <= 170 ops", int(chk.get("worst_tick_ops", 9999)) <= 170])
+	if args.has("walk") or args.has("depart"):
+		checks.append(["legs keep >= 5 cm from the seated tool and holder while walking", float(chk.get("leg_tool_clearance_min_walk", 0.0)) >= .05 and float(chk.get("leg_holder_clearance_min", 0.0)) >= .05])
+	if m.get("save") is Dictionary:
+		checks.append(["save restore never fabricates a catch", not bool((m.save as Dictionary).get("catch_fabricated", true))])
+	for item: Array in checks:
+		count += 1
+		if not bool(item[1]): fails += 1
+		print("BACK_STUNT_CHECK %s %s" % ["ok" if bool(item[1]) else "FAIL", item[0]])
+	print("BACK_STUNT %s %d checks" % ["PASS" if fails == 0 else "FAIL (%d)" % fails, count])
+
+var _fixed_set := false
+var _fixed_cam := Vector3.ZERO
+var _fixed_tgt := Vector3.ZERO
 
 func _process(delta: float) -> void:
 	super(delta)
-	# Frame the whole throw (apex ~2.1 m) as well as the feet.
-	if cam_lift != 0.0: camera.look_at(cam_target + Vector3(0, cam_lift, 0), Vector3.UP)
+	if args.has("fixed") and frame > 40:
+		if not _fixed_set:
+			_fixed_set = true
+			_fixed_cam = camera.global_position
+			_fixed_tgt = cam_target
+		camera.global_position = _fixed_cam
+		camera.look_at(_fixed_tgt + Vector3(0, cam_lift, 0), Vector3.UP)
+	elif cam_lift != 0.0: camera.look_at(cam_target + Vector3(0, cam_lift, 0), Vector3.UP)
+	if args.has("fov"): camera.fov = float(_arg("fov", "50"))
+	if args.has("noshadow") and frame == 3:
+		for n: Node in get_children():
+			if n is DirectionalLight3D: (n as DirectionalLight3D).shadow_enabled = false
+	if args.has("win"):
+		var on := false
+		for w: String in _arg("win", "").split(";"):
+			var ab := w.split("-")
+			if clock >= float(ab[0]) and clock <= float(ab[1]): on = true
+		get_viewport().disable_3d = not on
 	if not _done and args.has("quit") and clock > 40.0: _finish("wall_timeout")
 
 ## ---- Holder geometry (plate vs skin, seated tool vs plate) --------------------
@@ -465,6 +971,19 @@ func _holder_metrics(bt: RefCounted) -> Dictionary:
 	out.mass = bt.holder_mass()
 	out.body_fitted = HolderVisual._body_fitted
 	out.visible = bt.holder.visible
+	# Lowest holder hardware point (body frame) vs the cube's bottom edge.
+	var lowest := INF
+	var widest := 0.0
+	for child: Node in bt.holder.get_children():
+		if child is MeshInstance3D and child.name != "RootSeat":
+			var mi := child as MeshInstance3D
+			for c in 8:
+				var q: Vector3 = mi.transform * mi.get_aabb().get_endpoint(c)
+				lowest = minf(lowest, q.y)
+				widest = maxf(widest, absf(q.x))
+	out.hardware_lowest_y = lowest
+	out.hardware_above_cube_bottom = lowest - (-.2625)
+	out.hardware_max_abs_x = widest
 	var skin_z := _skin_back_grid()
 	if seat and not skin_z.is_empty():
 		var inner := _plate_inner_grid(seat)
@@ -483,10 +1002,19 @@ func _holder_metrics(bt: RefCounted) -> Dictionary:
 		if is_instance_valid(tool) and tool.carrier == bt.back_anchor:
 			var inv: Transform3D = bt.holder.global_transform.affine_inverse() * tool.global_transform
 			var front := INF
+			var top := -INF
+			var bottom := INF
 			for box: AABB in tool.get_meta(&"worker_tool_keepouts", []):
-				for c in 8: front = minf(front, (inv * box.get_endpoint(c)).z)
+				for c in 8:
+					var q: Vector3 = inv * box.get_endpoint(c)
+					front = minf(front, q.z)
+					top = maxf(top, q.y)
+					bottom = minf(bottom, q.y)
 			out.tool_front_z = front
 			out.tool_plate_gap = front - outer_max
+			out.tool_top_y = top
+			out.tool_top_above_roof = top - .3376
+			out.tool_bottom_y = bottom
 			var native_front := INF
 			for shape: Node in tool.find_children("*", "CollisionShape3D", true, false):
 				var cs := shape as CollisionShape3D
@@ -496,6 +1024,8 @@ func _holder_metrics(bt: RefCounted) -> Dictionary:
 				for c in 8: native_front = minf(native_front, (local * (AABB(-half, half * 2.0).get_endpoint(c))).z)
 			out.tool_native_front_z = native_front
 			out.seat_local = bt.holder.global_transform.affine_inverse() * tool.global_position
+			var grip: Vector3 = inv * Vector3(0, -.035 - float(tool.definition.size.y) * .45, 0)
+			out.grip_local = grip
 	return out
 
 func _skin_back_grid() -> Dictionary:
