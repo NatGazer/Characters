@@ -2,12 +2,16 @@ extends "res://harness/scripts/stage.gd"
 ## Head-first pickup lab. Drives the real head_leap (begin_group / contact_ready
 ## / attach_group) and wako_pickup controllers directly with real contraption
 ## parts, standing in for the coordinator/yard calls, and prints metrics.
-## User args: --case=solo|large|crew|obstacle|interrupt|hit|save|toss
+## User args: --case=solo|medium|large|crew|obstacle|interrupt|hit|save|toss|...
+## Build the workdir with harness/scripts/leap_build.sh: the plain build.sh
+## keeps a fixed 0.3 m StockBounds stub (crew refused, large fails); the lab
+## warns (LEAP_LAB_WARNING) and records outcome.stock_bounds_stub when it is.
 ##            --view=side|34|front  --out=<json path>  --slowmo=<time scale>
 const Part := preload("res://Components/Contraptions/contraption_part.gd")
 const HeadLeap := preload("res://LogicObjects/Wako/wako_head_leap.gd")
 const Probe := preload("res://harness/scripts/head_leap_probe.gd")
 const Catalogue := preload("res://Components/Contraptions/part_catalog.gd")
+const StockBounds := preload("res://Components/Contraptions/depot_stock_layout.gd")
 
 var case_name := "solo"
 var view := "side"
@@ -64,6 +68,10 @@ func setup() -> void:
 		"solo", "interrupt", "hit", "save", "push", "late_block":
 			part = _part("bracket", Vector3(0, .15, -(gap+.15)))
 			crew = [spawn_wako(Vector3(0, 1.0, 0), "leap_solo")]
+		"medium":
+			# 9 kg powered hinge: a solo flip part above the toe-toss limits.
+			part = _part("hinge", Vector3(0, .15, -(gap+.15)))
+			crew = [spawn_wako(Vector3(0, 1.0, 0), "leap_medium")]
 		"large":
 			# 48 kg flux generator: outside the small-stock limits (> 35 kg).
 			part = _part("generator", Vector3(0, .325, -(gap+.475)))
@@ -111,6 +119,12 @@ func setup() -> void:
 			_ensure_visual(part)
 			crew = [spawn_wako(Vector3(0, 1.0, 0), "leap_toss")]
 			focus = Vector3(0, .9, -.2)
+	if StockBounds.bounds(part).size.is_equal_approx(Vector3(.3,.3,.3)) and not Catalogue.bounds_of(part.definition).size.is_equal_approx(Vector3(.3,.3,.3)):
+		# Reproducibility guard: the plain harness build keeps a fixed 0.3 m
+		# StockBounds stub instead of the catalogue bounds.
+		push_warning("LEAP_LAB_WARNING the fixed 0.3 m StockBounds stub is installed; build with harness/scripts/leap_build.sh")
+		print("LEAP_LAB_WARNING the fixed 0.3 m StockBounds stub is installed; build with harness/scripts/leap_build.sh")
+		outcome.stock_bounds_stub = true
 	if heading != 0.0:
 		# Same layout turned about the launch place (direction-invariance check).
 		for node: Node3D in crew + [part]:

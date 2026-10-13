@@ -264,6 +264,7 @@ func _row(index: int, w: RigidBody3D, leap: RefCounted, state: String, v: Vector
 		"low":lowest,"toes":toes,"gap":gap if is_finite(gap) else null,"ground":w.on_ground,
 		"hipmid":[(pose.evaluated_hips[0]+pose.evaluated_hips[1]).x*.5,(pose.evaluated_hips[0]+pose.evaluated_hips[1]).y*.5,(pose.evaluated_hips[0]+pose.evaluated_hips[1]).z*.5],
 		"squash":leap.get("_squash") if "_squash" in leap else 0.0,
+		"crown":[(cube*leap._head_touch_local).x,(cube*leap._head_touch_local).y,(cube*leap._head_touch_local).z],
 		"part":[part.global_position.x,part.global_position.y,part.global_position.z] if is_instance_valid(part) else null,
 		"gaze":[gaze.x,gaze.y,gaze.z] if gaze is Vector3 else null}
 

@@ -281,10 +281,20 @@ static func _gates(rows: Array, prepare: Array, outbound: Array, contact: Array,
 			var dv := _vec(chain[index].v).distance_to(_vec(chain[index - 1].v))
 			stop_dv = maxf(stop_dv, dv)
 			if -_vec(chain[index].v).y > .1 and -_vec(chain[index - 1].v).y > .1: stop_ticks += 1
+		# Squash is reported as root travel toward the crown (the cube itself
+		# shortens twice that): its peak, how long it is held (>= 80 % of the
+		# peak), and the stretch at the head push.
 		var squash := 0.0
-		for row: Dictionary in contact + back.slice(0, mini(back.size(), 30)): squash = maxf(squash, float(row.get("squash", 0.0)))
+		var stretch := 0.0
+		for row: Dictionary in contact + back.slice(0, mini(back.size(), 60)):
+			squash = maxf(squash, float(row.get("squash", 0.0)))
+			stretch = minf(stretch, float(row.get("squash", 0.0)))
+		var held := 0.0
+		for row: Dictionary in contact + back.slice(0, mini(back.size(), 60)):
+			if squash > 0.0 and float(row.get("squash", 0.0)) >= .8*squash: held += 1.0/120.0
 		g.arrival = {"seconds_with_assist_over_15": assisted, "gap_after_last_assist_m": last_assisted_gap, "flight_peak_assist": peak_assist,
-			"impact_speed": approach, "impact_max_speed_change_per_tick": stop_dv, "squash_peak_m": squash}
+			"impact_speed": approach, "impact_max_speed_change_per_tick": stop_dv, "squash_peak_m": squash,
+			"cube_compression_m": 2.0*squash, "squash_held_s": held, "cube_stretch_m": -2.0*stretch}
 	# The inverted and slow windows from the impact through the return push.
 	var inverted := 0.0
 	var slow := 0.0
@@ -294,6 +304,37 @@ static func _gates(rows: Array, prepare: Array, outbound: Array, contact: Array,
 		if float(window[index].pitch) > 170.0: inverted += dt
 		if _vec(window[index].v).length() < .3: slow += dt
 	g.window = {"inverted_over_170_s": inverted, "speed_under_03_s": slow}
+	# Leg spread seen from any camera: toe-to-toe separation on every flight
+	# tick, and how fast the knees fold into the outbound tuck.
+	var sep_max := 0.0
+	var sep_over := 0.0
+	var sep_at := ""
+	for row: Dictionary in outbound + contact + back:
+		var toes: Array = row.get("toes", [])
+		if toes.size() != 2: continue
+		var sep := _vec(toes[0]).distance_to(_vec(toes[1]))
+		if sep > sep_max:
+			sep_max = sep
+			sep_at = "%s %.3f" % [row.st, float(row.el)]
+		if sep > .75: sep_over += 1.0/120.0
+	# Tuck-in: the knee fold from 30 % to 90 % of the way from its lowest
+	# early-flight value to its tuck maximum, scaled to the whole fold.
+	var bend_from := INF
+	var tucked_at := INF
+	var knee_top := 0.0
+	var knee_low := INF
+	for row: Dictionary in outbound: knee_top = maxf(knee_top, maxf(float(row.knee[0]), float(row.knee[1])))
+	for row: Dictionary in outbound:
+		var knee := maxf(float(row.knee[0]), float(row.knee[1]))
+		if knee >= knee_top - 1.0: break
+		knee_low = minf(knee_low, knee)
+	for row: Dictionary in outbound:
+		var knee := maxf(float(row.knee[0]), float(row.knee[1]))
+		if not is_finite(knee_low): break
+		if not is_finite(bend_from) and knee >= knee_low + .3*(knee_top - knee_low) and float(row.el) > .02: bend_from = row.t
+		if is_finite(bend_from) and not is_finite(tucked_at) and knee >= knee_low + .9*(knee_top - knee_low): tucked_at = row.t
+	g.legs = {"toe_separation_max_m": sep_max, "toe_separation_max_at": sep_at, "toe_separation_over_075_s": sep_over,
+		"tuck_in_s": (tucked_at - bend_from)/.6 if is_finite(tucked_at) and is_finite(bend_from) else null, "outbound_knee_max_deg": knee_top}
 	# Return push-off and flight.
 	if back.size() > 20:
 		var takeoff_speed := 0.0
@@ -319,7 +360,41 @@ static func _gates(rows: Array, prepare: Array, outbound: Array, contact: Array,
 			h_assist = maxf(h_assist, Vector2(a.x, a.z).length())
 			v_assist = maxf(v_assist, absf(a.y + G))
 		var launch := _vec(back[mini(top_index + 1, back.size() - 1)].v)
+		# Mean vertical acceleration of the flight after the push (ballistic
+		# reads as ~-g; a floaty assisted flight reads well above it).
+		var takeoff_row: Dictionary = back[mini(top_index + 1, back.size() - 1)]
+		var last_row: Dictionary = back[back.size() - 1]
+		var flight_s := float(last_row.t) - float(takeoff_row.t)
+		var mean_ay := (_vec(last_row.v).y - _vec(takeoff_row.v).y)/maxf(flight_s, .001)
+		var slow_vertical := 0.0
+		for index in range(top_index + 1, back.size()):
+			if absf(_vec(back[index].v).y) < .6: slow_vertical += 1.0/120.0
 		g.return_launch = {"speed": launch.length(), "elevation_deg": rad_to_deg(atan2(launch.y, Vector2(launch.x, launch.z).length())),
 			"max_speed_change_per_tick": worst_dv, "push_ticks": push_ticks, "knee_at_takeoff_speed_deg": knee_at_speed,
-			"flight_peak_horizontal_accel": h_assist, "flight_peak_vertical_assist": v_assist}
+			"flight_peak_horizontal_accel": h_assist, "flight_peak_vertical_assist": v_assist,
+			"flight_s": flight_s, "flight_mean_vertical_accel": mean_ay, "flight_vertical_speed_under_06_s": slow_vertical}
+	# Hand-off from the landing to the ordinary carry ('done'): the visual
+	# root's rise speed and its per-tick change, and the cargo's step relative
+	# to the crown, from 0.15 s before 'done' (after the absorb has bottomed
+	# out) to 0.6 s after.
+	var finish_rows: Array = rows.filter(func(row: Dictionary) -> bool: return row.st in ["done","failed"])
+	if not finish_rows.is_empty() and not landing.is_empty():
+		var done_t := float(finish_rows[0].t)
+		var span: Array = rows.filter(func(row: Dictionary) -> bool: return row.st in ["landing","done","failed"] and float(row.t) >= done_t - .15 and float(row.t) <= done_t + .6)
+		var top_speed := 0.0
+		var top_step := 0.0
+		var cargo_step := 0.0
+		var previous_speed := INF
+		for index in range(1, span.size()):
+			var a: Dictionary = span[index - 1]
+			var b: Dictionary = span[index]
+			var speed := (_vec(b.root).y - _vec(a.root).y)/maxf(float(b.t) - float(a.t), .0001)
+			top_speed = maxf(top_speed, absf(speed))
+			if is_finite(previous_speed): top_step = maxf(top_step, absf(speed - previous_speed))
+			previous_speed = speed
+			if a.get("part") != null and b.get("part") != null:
+				var rel_a := _vec(a.part) - _vec(a.get("crown", a.root))
+				var rel_b := _vec(b.part) - _vec(b.get("crown", b.root))
+				cargo_step = maxf(cargo_step, rel_a.distance_to(rel_b))
+		g.handoff = {"root_speed_max": top_speed, "root_speed_step_max": top_step, "cargo_vs_crown_step_mm": cargo_step*1000.0}
 	return g
