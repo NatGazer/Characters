@@ -28,8 +28,15 @@ const ANGULAR_BUDGET := .85
 # release, set from the launch elevation so the leg pushes along the flight.
 const PREP := {"crouch":.36,"drive":.14,"bottom_speed":.4,"bottom_accel":8.0,"bottom_pitch":deg_to_rad(14.0),"bottom_spin":1.2,
 	"release_pitch":deg_to_rad(25.0),"release_spin":2.2,"drive_length":.18,"beta_lead":deg_to_rad(8.0),"beta_min":deg_to_rad(10.0),"beta_max":deg_to_rad(28.0)}
-const CREW_PREP := {"crouch":.55,"drive":.15,"bottom_speed":.35,"bottom_accel":8.0,"bottom_pitch":deg_to_rad(12.0),"bottom_spin":1.0,
-	"release_pitch":deg_to_rad(22.0),"release_spin":2.2,"drive_length":.18,"beta_lead":deg_to_rad(8.0),"beta_min":deg_to_rad(10.0),"beta_max":deg_to_rad(26.0),"nod":.08}
+# A crew counts in together: a nod (the follower answers a few frames later),
+# a crouch (a planted 21 cm crouch cannot drop faster than ~0.4 s without
+# leaving its support), a shared 0.1 s hold at the bottom, then the drive.
+const CREW_PREP := {"crouch":.60,"drive":.15,"bottom_speed":.35,"bottom_accel":8.0,"bottom_pitch":deg_to_rad(12.0),"bottom_spin":1.0,
+	"release_pitch":deg_to_rad(22.0),"release_spin":2.2,"drive_length":.18,"beta_lead":deg_to_rad(8.0),"beta_min":deg_to_rad(10.0),"beta_max":deg_to_rad(26.0),
+	"nod":.06,"hold":.10}
+const CREW_CROUCH_LAG := .04
+const NOD_ANGLE := deg_to_rad(7.0)
+const NOD_SECONDS := .16
 # A short lunge for cramped launch places (screens close ahead).
 const SHORT_PREP := {"crouch":.32,"drive":.13,"bottom_speed":.3,"bottom_accel":8.0,"bottom_pitch":deg_to_rad(10.0),"bottom_spin":1.0,
 	"release_pitch":deg_to_rad(18.0),"release_spin":2.4,"drive_length":.15,"beta_lead":deg_to_rad(12.0),"beta_min":deg_to_rad(4.0),"beta_max":deg_to_rad(12.0)}
@@ -48,12 +55,11 @@ const HEEL_PEEL := deg_to_rad(30.0)
 # the release COM (m), head impact speed (m/s)], tried in order; the long tier
 # keeps the shape with higher apexes (screens), the original quintic timings
 # stay as the last-resort legacy tier.
-# Impact speeds stay under Jolt's 1 m/s restitution threshold: a faster touch
-# is stopped (and bounced) where the speculative contact first appears, ~2 cm
-# early; at or below it the native contact lands the roof exactly.
-const SOLO_OUTBOUND := [[.47,1.5],[.44,1.5],[.50,1.5],[.41,1.5],[.53,1.45],[.38,1.5],[.34,1.5],[.31,1.5]]
-const CREW_OUTBOUND := [[.60,1.45],[.55,1.45],[.65,1.4],[.50,1.45],[.70,1.4],[.45,1.45]]
-const LONG_OUTBOUND := [[.6,1.4],[.75,1.4],[.95,1.35],[1.2,1.35],[1.45,1.3]]
+# Round 4: the head arrives at 1.8-1.9 m/s (Jolt still stops a cube cleanly
+# below ~2 m/s), which keeps the assisted arrival brake short.
+const SOLO_OUTBOUND := [[.45,1.85],[.42,1.85],[.48,1.85],[.39,1.85],[.51,1.8],[.36,1.85],[.33,1.85],[.30,1.85]]
+const CREW_OUTBOUND := [[.60,1.8],[.55,1.8],[.65,1.75],[.50,1.8],[.70,1.75],[.45,1.8]]
+const LONG_OUTBOUND := [[.6,1.7],[.75,1.7],[.95,1.65],[1.2,1.6],[1.45,1.55]]
 const LEGACY_OUTBOUND := [[1.6,.70],[2.0,.70],[2.0,1.0],[2.4,1.0],[2.4,1.35],[2.8,1.35],[3.0,1.35],[3.4,1.35]]
 const FLARE_PLATEAU := 16.4
 const FLARE_RAMP := .04
@@ -81,10 +87,15 @@ const MINIMUM_SPIN := 2.2
 # Lift the stock's collision exception this long before the planned touch.
 const IMPACT_ARM := 2.5/120.0
 const IMPACT_WINDOW := 3.0/120.0
-const SQUASH_ZETA := .55
-const SQUASH_RATE := 26.0
-const STRAIN_SQUASH := .035
-const STRAIN_SECONDS := .15
+# The cube squashes about its crown on the head impact (root travel; the cube
+# itself shortens twice this), holds it through the dwell, then releases into a
+# stretch at the peak of the head push (a headspring's kip).
+const IMPACT_SQUASH := .028
+const PUSH_STRETCH := .018
+# Heavy loads: a held strain beat on the head before the loaded kick (the cube
+# visibly compresses, the knees tremble), released by the push.
+const STRAIN_SQUASH := .028
+const STRAIN_SECONDS := .27
 # Contact hold gains (same 2 g / 24 rad/s² caps): a stopped head settles its
 # sub-millimetre error within a few ticks of the impact.
 const HOLD_GAINS := [6400.0,160.0,6400.0,160.0]
@@ -95,25 +106,28 @@ const FLIGHT_GAINS := [36.0,12.0,60.0,12.0]
 const CONTACT_PRESS := 2.0/120.0
 # --- Return ------------------------------------------------------------------
 # The legs snap RETURN_LEAD before the head push; the supported push spreads
-# the return impulse over RETURN_PUSH (paired with the stock's support). The
-# flight is then near-ballistic: candidates [flight seconds after the push,
-# apex above the landing COM]; horizontal travel bleeds at most the drift
-# decel, vertical assist at most the lift cap. The landing is planned short of
-# the launch place so the touchdown drift rolls the body home.
-const SOLO_RETURN := [[.78,.46],[.80,.48],[.76,.44],[.82,.50],[.74,.42],[.72,.40],[.70,.37],[.66,.34]]
-const HEAVY_RETURN := [[1.0,.30],[.95,.30],[1.05,.32],[.9,.28],[1.1,.34],[.85,.26]]
-const LONG_RETURN := [[.8,.55],[.9,.65],[1.0,.75],[1.1,.85]]
+# the return impulse over the leg kick (paired with the stock's support; a
+# stylised spread of the push-off impulse, reported in flight_stats). The
+# flight is then BALLISTIC (round 4): candidates [apex above the touchdown COM,
+# vertical lift]; the flight time follows from that apex under g - lift (>=
+# 0.9 g brisk, >= 0.8 g on the high fallback arcs), horizontal travel bleeds at
+# most the drift brake, and the landing is planned short of the launch place
+# by the distance the touchdown drift rolls out over the planted feet.
+const SOLO_RETURN := [[.30,.6],[.27,.6],[.33,.6],[.24,.6],[.36,.8],[.21,.6]]
+const HEAVY_RETURN := [[.30,.8],[.27,.8],[.33,.8],[.25,.8],[.36,1.0],[.22,.8]]
+const LONG_RETURN := [[.45,1.2],[.6,1.5],[.75,1.8],[.9,2.0]]
 const LEGACY_RETURN := [[1.6,.70],[2.0,.90],[2.4,1.1],[2.55,1.1],[2.7,1.35],[2.85,1.35]]
 const LEGACY_TOUCHDOWN := -1.15
 const RETURN_LEAD := 2.0/120.0
 const RETURN_PUSH := .10
+const HEAVY_PUSH := .12
 const PUSH_RAMP := .025
-const SOLO_DRIFT_DECEL := 2.2
-const HEAVY_DRIFT_DECEL := 2.0
-const SOLO_LIFT := 1.5
-const HEAVY_LIFT := 6.0
-const LONG_LIFT := 6.5
-const LAND_BRAKE := 2.5
+const DRIFT_DECEL := 1.5
+# A loaded solo return never arcs above the empty outbound's height class.
+const SOLO_APEX_ABOVE_HOME := .40
+# Planted-feet roll-out of the touchdown drift (friction-limited, ~0.45 g).
+const LAND_BRAKE := 4.5
+const LAND_SHORT := .20
 const RETURN_SPIN := 4.5
 const CREW_RETURN_SPIN := 3.5
 const LANDING_SPIN := .8
@@ -121,45 +135,70 @@ const LANDING_SPIN := .8
 # flexion, knee adduction toward the midline (negative splays outward), foot
 # point] in radians.
 const LEG_TRAIL := [deg_to_rad(2.0),deg_to_rad(8.0),0.0,deg_to_rad(45.0)]
-# Frog tuck: the thighs splay so the folded shins pass outside the padded
-# cube; the fit picks the smallest splay that clears (LEG_SPLAYS).
-const LEG_TUCK := [deg_to_rad(64.0),deg_to_rad(142.0),0.0,deg_to_rad(46.0)]
-const LEG_SPLAYS := [0.0,deg_to_rad(36.0),deg_to_rad(42.0),deg_to_rad(48.0)]
-# A crew partner stands 0.98 m away: its tuck is a pike under the seat (no
-# splay toward the partner).
-const LEG_PIKE := [deg_to_rad(50.0),deg_to_rad(138.0),0.0,deg_to_rad(46.0)]
+# Pike tuck (round 4): the knees fold under the seat with NO thigh splay, so
+# the feet stay hip-width apart from every camera. Only when the own padded
+# cube, holder or tool refuses it does the fit add a small splay (<= 18 deg),
+# and that splay follows the knee fold (the knees lead in and out).
+const LEG_TUCK := [deg_to_rad(44.0),deg_to_rad(132.0),0.0,deg_to_rad(46.0)]
+const LEG_SPLAYS := [0.0,deg_to_rad(10.0),deg_to_rad(15.0),deg_to_rad(18.0)]
+# A crew partner stands 0.98 m away: the same pike.
+const LEG_PIKE := [deg_to_rad(44.0),deg_to_rad(132.0),0.0,deg_to_rad(46.0)]
+# Moving hold: the tuck keeps deepening through the apex (knee, hip, toes),
+# then releases into the opening; never a frozen shape while the body
+# travels. Its deepest shape (hip 50, knee 139) keeps the shins 85 mm under
+# the padded cube: a deeper pike only fits by splaying the thighs.
+const TUCK_HOLD := [deg_to_rad(6.0),deg_to_rad(7.0),0.0,deg_to_rad(6.0)]
+const SPLAY_KNEE_FROM := deg_to_rad(30.0)
+const SPLAY_KNEE_TO := deg_to_rad(110.0)
 # The back holder hangs below the seat: the fit blends the shin fold down from
 # the full tuck toward this mild one until every link is clear.
 const LEG_TUCK_LOW := [deg_to_rad(40.0),deg_to_rad(70.0),deg_to_rad(8.0),deg_to_rad(45.0)]
 const LEG_TADA := [deg_to_rad(6.0),deg_to_rad(20.0),0.0,deg_to_rad(52.0)]
 const LEG_RELOAD := [deg_to_rad(30.0),deg_to_rad(96.0),deg_to_rad(6.0),deg_to_rad(40.0)]
 const LEG_STRAIN := [deg_to_rad(36.0),deg_to_rad(110.0),deg_to_rad(6.0),deg_to_rad(36.0)]
-const LEG_KICK := [deg_to_rad(6.0),deg_to_rad(14.0),0.0,deg_to_rad(50.0)]
+# The kick swings the straight legs 25 deg past the vertical toward home, toes
+# pointed, while the head pushes (the kip of a headspring).
+const LEG_KICK := [deg_to_rad(25.0),deg_to_rad(4.0),0.0,deg_to_rad(60.0)]
 const LEG_LAND := [deg_to_rad(16.0),deg_to_rad(32.0),0.0,0.0]
 # The legs keep their momentum through the head impact: they whip past the
 # vertical (toward the travel side), then recoil into the reload.
 const LEG_WHIP := deg_to_rad(18.0)
 const WHIP_SECONDS := .05
 const RECOIL_SECONDS := .07
-const TUCK_IN_SECONDS := .16
-const OPEN_SECONDS := .14
+const TUCK_IN_SECONDS := .10
+# The legs open with the arrival brake: from the first assisted tick (a little
+# before), spread over OPEN_SECONDS, reaching up into the plant before impact.
+const OPEN_SECONDS := .28
+const OPEN_ANTICIPATION := .05
+const PLANT_HOLD := .03
 const MAXIMUM_PIN_POINT := deg_to_rad(62.0)
 const TRAIL_SECONDS := .05
 const TOE_CURL := deg_to_rad(22.0)
 const FOOT_FLATTEN_SECONDS := .12
-# Crew members are two creatures: their cosmetic leg curves differ by a few
-# ticks and degrees (the shared load, timing and plan stay exact).
-const TWIN_DELAY := 1.5/120.0
-const TWIN_ANGLE := deg_to_rad(5.0)
+# Crew members are two creatures: the follower's leg curves run ~4 frames
+# behind (catching up before each impact/touchdown) and its tuck is 8 deg
+# apart; the shared load, flight timing and plan stay exact.
+const TWIN_DELAY := .06
+const TWIN_ANGLE := deg_to_rad(8.0)
 # Touchdown absorb (P0-6): one monotonic deceleration of the visual root from
 # the measured impact speed to the bottom, a short hold, a slower recovery.
-const ABSORB := {"hold":.03,"recover":.30}
-const CREW_ABSORB := {"hold":.07,"recover":.55}
+# The rise out of the absorb is one ease-in-out curve (root <= ~0.5 m/s); the
+# leap hands back LANDING_TAIL before it ends and the curve completes after the
+# hand-off, so the carry stance is reached with continuous root velocity.
+const ABSORB := {"hold":.03,"recover":.45,"depth":.16}
+const CREW_ABSORB := {"hold":.08,"recover":.65,"depth":.18}
+const LANDING_TAIL := .2
+# The rise is stretched so the visual root never climbs faster than this
+# (the native body keeps rising under its spring meanwhile).
+const RISE_SPEED := .47
 const ABSORB_ROCK := deg_to_rad(3.0)
 const DRIFT_ROCK := deg_to_rad(2.5)
 const BRISK_ROOT_SPEED := 3.0
 # A knocked stock: unassisted flight while retrying a bare recovery this long.
 const BARE_WAIT_SECONDS := .2
+# An interrupted ballistic fall: translational correction stays this small (the
+# COM keeps its own arc); the assist only turns the body feet-down.
+const FALL_ASSIST := 3.0
 
 var worker: RigidBody3D
 var part: RigidBody3D
@@ -200,6 +239,11 @@ static var _contact_face_probe_rows: Dictionary={}
 var _cargo_refusal_state_rows: Dictionary = {}
 var _cargo_local := Transform3D.IDENTITY
 var _release_watch: RigidBody3D
+# A bare push-off rides its stock through the exception until the head is
+# this far clear (no second, real contact push on top of the paired reaction).
+var _release_margin := 0.0
+# A mid-air cancel keeps the planned load until the touchdown.
+var _release_on_touchdown := false
 var _abort_requested := false
 var _return_started := false
 var _native_settings_saved := false
@@ -212,6 +256,8 @@ var _saved_collision_transform := Transform3D.IDENTITY
 var _needs_collision_restore := false
 var arc_failure := ""
 var _launch_frame := -1
+# The physics frame in which this member's advance last applied its forces.
+var _advanced_frame := -1
 var _head_height := .338
 var _roof_samples: Array[Vector3]=[]
 var _head_touch_local:=Vector3(0,.338,0)
@@ -241,11 +287,15 @@ var _track_spin: Array = []
 # Choreography beats of the admitted plan (seconds into the flight).
 var _beat_brake := 0.5
 var _beat_open := 0.5
+# First assisted arrival tick of the outbound (the legs start opening here).
+var _beat_assist := 0.5
 var _beat_spin_end := 1.0
 var _bare_retry := 0.0
 var _bare_waiting := false
 var _bare_wait_start := 0.0
 var _bare_wait_age := 0.0
+# An interrupted dive whose remainder is no longer clear of the world.
+var _dive_blocked := false
 var _outbound_axis := Vector3.RIGHT
 var _touchdown_velocity := Vector3.ZERO
 var _launch_spin := Vector3.ZERO
@@ -280,6 +330,9 @@ var _rest_ankle: Array[Vector3] = []
 var _impact_root := Vector3.ZERO
 var _impact_drift := Vector3.ZERO
 var _impact_bottom_gather := 0.0
+var _finish_frame := -1
+var _finish_age := -1.0
+var _rise_seconds := -1.0
 var flight_stats: Dictionary = {}
 # Supported departure plan: COM tracks (world) and pitch about _outbound_axis,
 # t = 0 at begin_group; the release state is the flight's launch state.
@@ -304,6 +357,7 @@ var _impact_clock := -1.0
 var _impact_velocity := 0.0
 var _arrival_velocity := Vector3.ZERO
 var _squash_depth := .0
+var _squash_at_attach := .0
 var _squash := .0
 var _splay := .0
 var _twin := 0.0
@@ -311,10 +365,17 @@ var _return_lead := RETURN_LEAD
 # The head push lasts at least RETURN_PUSH; a faster (fallback) return pushes
 # longer so the stock's support can carry it inside its friction cone.
 var _push_seconds := RETURN_PUSH
+# Return flight: the planned horizontal drift brake and vertical lift.
+var _return_drift_brake := 0.0
+var _return_lift := 0.0
 # Outbound: seconds from the first assisted brake/flare tick to the last.
 var _assist_span := 0.0
 var _rechecked := false
 var _restart_angles: Array = []
+# The legs' whip/overshoot angles at the attach (the return starts there).
+var _return_start_angles: Array = []
+# An interrupted leap that reached the stock pushes off it bare (no cargo).
+var _bare_push := false
 var _elevation_guess := deg_to_rad(55.0)
 static var _args: PackedStringArray = []
 static var profile_stats := false
@@ -343,6 +404,29 @@ func gaze_target() -> Variant:
 		return _home.origin-_home.basis.y.normalized()*worker.ride_height
 	return null
 
+## Expression cue for the face system (read-only; the face owner wires it):
+## &"focus" through the gather, &"impact" for 0.15 s after the head lands,
+## &"strain" while a heavy load is held on the head before the kick, &"phew"
+## through a heavy/crew landing's held crouch, else &"".
+func face_cue() -> StringName:
+	match state:
+		"prepare": return &"focus"
+		"contact": return &"impact" if _impact_clock>=0.0 and _impact_clock<.15 else &""
+		"return":
+			if _return_lead>RETURN_LEAD+.001 and elapsed<_return_lead: return &"strain"
+			return &"impact" if _impact_clock>=0.0 and _impact_clock<.15 else &""
+		"landing":
+			if _absorb_profile()==CREW_ABSORB and _impact_age>=0.0 and _impact_age<_absorb_bottom_time()+float(CREW_ABSORB.hold)+.25: return &"phew"
+	return &""
+
+## True while the eyes must stay open (no blink may START): the drive and the
+## dive into the head impact, and the head push-off.
+func blink_hold() -> bool:
+	if state=="prepare": return elapsed>=_prep_crouch-.05
+	if state=="outbound": return true
+	if state=="return": return elapsed<_return_lead+_push_seconds+.05
+	return false
+
 ## Pose root position budget: brisk only for the gather and the touchdown absorb;
 ## every other head-owned blend keeps the original .9 m/s.
 func root_speed_limit() -> float:
@@ -363,14 +447,15 @@ static func begin_group(source: RigidBody3D, members: Array) -> String:
 		return "Wait for the original stock to settle before head pickup"
 	var bounds: AABB = StockBounds.bounds(source)
 	if bounds.size.length_squared() < .0001: return "Physical stock has no complete contact geometry"
-	var world_bounds: AABB=source.global_transform*bounds
-	var axis := 0 if world_bounds.size.x >= world_bounds.size.z else 2
-	if members.size() > 1 and absf(world_bounds.size.x-world_bounds.size.z) < .02:
+	# Contacts are placed along the stock's OWN horizontal axes (round 4): the
+	# same layout turned to any heading gets the same contacts.
+	var axis := 0 if bounds.size.x >= bounds.size.z else 2
+	if members.size() > 1 and absf(bounds.size.x-bounds.size.z) < .02:
 		# A square face has no long axis: share contacts along the crew's own
 		# side-by-side spacing instead of a float tie (which crossed paths).
 		var spread: Vector3 = (members[members.size()-1].global_position-members[0].global_position).slide(Vector3.UP)
-		axis = 0 if absf(spread.x) >= absf(spread.z) else 2
-	if members.size() > 1 and world_bounds.size[axis] < 1.18:
+		axis = 0 if absf(spread.dot(source.global_basis.x.normalized())) >= absf(spread.dot(source.global_basis.z.normalized())) else 2
+	if members.size() > 1 and bounds.size[axis] < 1.18:
 		return "This heavy stock needs a wider supported head contact face"
 	for member: Node in members:
 		# A failed landing can leave the temporary flight torso in use while
@@ -519,21 +604,30 @@ func _prepare(source: RigidBody3D, members: Array, bounds: AABB, axis: int, inde
 	_stunt_clearance_rows = 0
 	_impact_speed = 0.0
 	_absorb_depth = 0.0
+	_finish_frame = -1
+	_finish_age = -1.0
 	_contact_age = -1.0
 	_bare_retry = 0.0
 	_bare_waiting = false
 	_bare_wait_age = 0.0
+	_dive_blocked = false
+	_release_on_touchdown = false
 	_plan_tier = ""
 	_impact_armed = false
 	_impact_clock = -1.0
 	_impact_velocity = 0.0
 	_squash_depth = 0.0
+	_squash_at_attach = 0.0
 	_squash = 0.0
 	_support_from = -1.0
 	_support_to = -1.0
 	_return_lead = RETURN_LEAD
 	_push_seconds = RETURN_PUSH
 	_rechecked = false
+	_return_start_angles.clear()
+	_bare_push = false
+	_preplan = {}
+	_preplanned = {}
 	_twin = float(members.find(worker)) if members.size()>1 else 0.0
 	flight_stats = {"source":source.part_id if "part_id" in source else str(source.name),"crew":members.size()}
 	_stock_bounds = bounds
@@ -555,19 +649,25 @@ func _prepare(source: RigidBody3D, members: Array, bounds: AABB, axis: int, inde
 	_tool_bounds=StockBounds.bounds(worker.equipped_tool) if is_instance_valid(worker.equipped_tool) else AABB()
 	_capture_holder_bounds()
 	contact_normal=Vector3.UP
-	_crew_axis=Vector3.RIGHT if axis==0 else Vector3.BACK
-	var world_bounds: AABB=source.global_transform*bounds
+	var stock_axis: Vector3 = source.global_basis.x if axis==0 else source.global_basis.z
+	_crew_axis=stock_axis.slide(Vector3.UP).normalized() if stock_axis.slide(Vector3.UP).length_squared()>.0001 else (Vector3.RIGHT if axis==0 else Vector3.BACK)
 	var approach := Vector3.ZERO
 	for member: Node in members: approach+=member.global_position
 	approach/=members.size()
-	var point := world_bounds.get_center()
-	point.y=world_bounds.end.y
+	var local_approach: Vector3 = source.global_transform.affine_inverse()*approach
+	var point := bounds.get_center()
+	point.y=bounds.end.y
 	for lateral in [0,2]:
-		var margin: float=minf(.38,world_bounds.size[lateral]*.45)
+		var margin: float=minf(.38,bounds.size[lateral]*.45)
 		if members.size()>1 and lateral==axis: margin=maxf(margin,.49+.03)
-		point[lateral]=clampf(approach[lateral],world_bounds.position[lateral]+margin,world_bounds.end[lateral]-margin)
-	if members.size()>1: point[axis]+=(float(index)-float(members.size()-1)*.5)*.98
-	contact_local=source.global_transform.affine_inverse()*point
+		point[lateral]=clampf(local_approach[lateral],bounds.position[lateral]+margin,bounds.end[lateral]-margin)
+	if members.size()>1:
+		# Member order along the crew's own spacing (leader first), whichever
+		# way the stock's axis points.
+		var spread: Vector3 = members[members.size()-1].global_position-members[0].global_position
+		var sign := 1.0 if spread.dot(stock_axis)>=0.0 else -1.0
+		point[axis]+=sign*(float(index)-float(members.size()-1)*.5)*.98
+	contact_local=point
 
 func _observe_contact_face() -> String:
 	var point: Vector3 = part.global_transform*contact_local
@@ -652,13 +752,14 @@ func _native_com_local() -> Vector3:
 	var native:=PhysicsServer3D.body_get_direct_state(worker.get_rid())
 	return native.center_of_mass_local if native else worker.center_of_mass
 
-func _loaded_com_local(source: RigidBody3D, share: float) -> Vector3:
+func _loaded_com_local(source: RigidBody3D, share: float, frame: Variant = null) -> Vector3:
 	# Predict the native COM after the same source's share joins this body
 	# (the helper's attached-payload rule), so the return is planned before
 	# custody changes. _follow still tracks the actual COM it then measures.
 	var com := _native_com_local()
 	if share<=0.0 or not is_instance_valid(source): return com
-	var cargo: Vector3=worker.global_transform.affine_inverse()*LoadGeometry.world_centre(source)
+	var body: Transform3D = frame if frame is Transform3D else worker.global_transform
+	var cargo: Vector3=body.affine_inverse()*LoadGeometry.world_centre(source)
 	return (com*worker.mass+cargo*share)/(worker.mass+share)
 
 func _plan_outbound() -> String:
@@ -757,7 +858,7 @@ func _plan_outbound_at_contact() -> String:
 					if _args.has("--head-leap-debug"): print("HEAD_LEAP_ARC_REFUSED ",tier[1]," ",candidate," ",profile.release_pitch," ",arc_failure)
 				# A shorter or upright departure only helps a lunge or an early
 				# (near-launch) obstruction; later failures do not depend on it.
-				if not (arc_failure.begins_with("push-off lunge") or leader._failure_time()<.3): break
+				if not (arc_failure.begins_with("push-off") or leader._failure_time()<.3): break
 			if tier[1]=="brisk" and _world_blocked(arc_failure): blocked += 1
 		if _args.has("--head-leap-debug"): print("HEAD_LEAP_TIER_REFUSED ",tier[1]," ",arc_failure)
 	return "No clear whole-body/head-first arc; "+arc_failure
@@ -971,18 +1072,35 @@ func _plan_prepare(profile: Dictionary) -> bool:
 	var drive_direction := velocity.normalized()
 	var bottom_velocity := drive_direction*float(profile.bottom_speed)
 	var bottom_acceleration := drive_direction*float(profile.bottom_accel)
+	# A crew first stands still through its nod (the follower a few frames
+	# longer), descends, and holds the bottom together before the drive.
+	var still := snappedf(float(profile.get("nod",0.0))+(CREW_CROUCH_LAG*_twin if crew.size()>1 else 0.0),tick)
+	var hold := snappedf(float(profile.get("hold",0.0)),tick)
+	var descent := crouch-still-hold
+	if descent<.15:
+		arc_failure="push-off crouch too short"
+		return false
+	var hold_speed := .12
+	var pre_bottom := bottom-drive_direction*(hold*(hold_speed+float(profile.bottom_speed))*.5)
 	var tracks: Array = [[],[],[]]
 	for axis in 3:
 		var end_acceleration := -GRAVITY if axis==1 else 0.0
-		tracks[axis].append(_segment(0.0,crouch,_quintic(start[axis],0.0,0.0,bottom[axis],bottom_velocity[axis],bottom_acceleration[axis],crouch)))
+		if still>0.0: tracks[axis].append(_segment(0.0,still,PackedFloat64Array([start[axis]])))
+		if hold>0.0:
+			tracks[axis].append(_segment(still,still+descent,_quintic(start[axis],0.0,0.0,pre_bottom[axis],drive_direction[axis]*hold_speed,0.0,descent)))
+			tracks[axis].append(_segment(still+descent,crouch,_quintic(pre_bottom[axis],drive_direction[axis]*hold_speed,0.0,bottom[axis],bottom_velocity[axis],bottom_acceleration[axis],hold)))
+		else:
+			tracks[axis].append(_segment(still,crouch,_quintic(start[axis],0.0,0.0,bottom[axis],bottom_velocity[axis],bottom_acceleration[axis],descent)))
 		tracks[axis].append(_segment(crouch,crouch+drive,_quintic(bottom[axis],bottom_velocity[axis],bottom_acceleration[axis],release[axis],velocity[axis],end_acceleration,drive)))
 	_prep_x=tracks[0]
 	_prep_y=tracks[1]
 	_prep_z=tracks[2]
 	var pitch := float(profile.release_pitch)
 	var spin := _launch_spin.dot(_outbound_axis)
-	_prep_spin=[_segment(0.0,crouch,_quintic(0.0,0.0,0.0,float(profile.bottom_pitch),float(profile.bottom_spin),0.0,crouch)),
-		_segment(crouch,crouch+drive,_quintic(float(profile.bottom_pitch),float(profile.bottom_spin),0.0,pitch,spin,_spin_angle(0.0,2),drive))]
+	_prep_spin=[]
+	if still>0.0: _prep_spin.append(_segment(0.0,still,PackedFloat64Array([0.0])))
+	_prep_spin.append(_segment(still,crouch,_quintic(0.0,0.0,0.0,float(profile.bottom_pitch),float(profile.bottom_spin),0.0,crouch-still)))
+	_prep_spin.append(_segment(crouch,crouch+drive,_quintic(float(profile.bottom_pitch),float(profile.bottom_spin),0.0,pitch,spin,_spin_angle(0.0,2),drive)))
 	_prep_seconds=crouch+drive
 	_prep_crouch=crouch
 	# Plausibility of the planted push: per-tick speed change, the friction-cone
@@ -1182,7 +1300,7 @@ func _plan_outbound_flight(apex: float, impact: float, tier: String, seconds := 
 		if span<best_span-.004:
 			best_span = span
 			best = {"_flight_seconds":_flight_seconds,"_track_x":_track_x,"_track_y":_track_y,"_track_z":_track_z,"_launch_velocity":_launch_velocity,
-				"_touchdown_velocity":_touchdown_velocity,"_beat_brake":_beat_brake,"_assist_span":_assist_span}
+				"_touchdown_velocity":_touchdown_velocity,"_beat_brake":_beat_brake,"_assist_span":_assist_span,"_beat_assist":_beat_assist}
 	if best.is_empty():
 		arc_failure = failure
 		return false
@@ -1245,6 +1363,7 @@ func _plan_outbound_flare(apex: float, impact: float, seconds: float, plateau: f
 	var brake_begin: float = total if horizontal.size()==1 else horizontal[0][1]
 	var brake_end: float = total if horizontal.size()==1 else finish
 	_assist_span = maxf(float(vertical.flare_end),brake_end)-minf(float(vertical.flare),brake_begin)
+	_beat_assist = minf(float(vertical.flare),brake_begin)
 	return true
 
 func _impact_spin() -> float:
@@ -1266,7 +1385,21 @@ func _spin_track(total: float, release: float, peak: float, open: float) -> Arra
 func _plan_outbound_spin(total: float, release: float, tier := "brisk") -> bool:
 	# P0-3 (round 3): the push-off's spin, faster in the tuck, slower once the
 	# legs open; the half-turn completes exactly at the head impact.
-	var opening := func(peak: float) -> float: return minf(total-OPEN_LEAD,total-(maxf(peak-_impact_spin(),0.0)/SPIN_BRAKE+SPIN_RAMP)-.02)
+	# Round 4: the spin brakes as the legs open with the arrival brake, the
+	# opened shape then turns slower into the impact. A short flight (tall
+	# stock) that cannot finish its half-turn that way brakes the spin later.
+	var leg_open := clampf(_beat_assist-OPEN_ANTICIPATION,TRAIL_SECONDS+.05+TUCK_IN_SECONDS,total-PLANT_HOLD-.12)
+	var failure := ""
+	for policy in 2:
+		var lead := leg_open if policy==0 else total-OPEN_LEAD
+		if policy==1 and lead<=leg_open+.01: break
+		if _plan_outbound_spin_at(total,release,tier,lead): return true
+		failure = arc_failure
+	arc_failure = failure
+	return false
+
+func _plan_outbound_spin_at(total: float, release: float, tier: String, lead: float) -> bool:
+	var opening := func(peak: float) -> float: return clampf(lead,TUCK_SPIN_START+TUCK_SPIN_SECONDS,total-(maxf(peak-_impact_spin(),0.0)/SPIN_BRAKE+SPIN_RAMP)-.02)
 	var fastest := _spin_track(total,release,MAXIMUM_SPIN,opening.call(MAXIMUM_SPIN))
 	if fastest.is_empty() or _track_at(fastest,total,0)<_rotation_angle:
 		arc_failure="half-turn needs more than %.1frad/s in %.2fs" % [MAXIMUM_SPIN,total]
@@ -1313,7 +1446,7 @@ func _kick_seconds() -> float:
 func _fit_push(velocity: Vector3) -> float:
 	# Shortest push (>= RETURN_PUSH) whose peak feed the support can carry with
 	# at most 80% of the force budget left as assist.
-	for push: float in [RETURN_PUSH,.12,.14,.16,.18,.20,.22]:
+	for push: float in [RETURN_PUSH,.12,.13,.14,.16,.18,.20,.22]:
 		var feed := velocity/(push-PUSH_RAMP)+contact_normal*GRAVITY
 		if (feed-_support_reaction(feed,contact_normal)).length()<=MAXIMUM_ACCELERATION*FORCE_BUDGET*.8: return push
 	return .22
@@ -1330,42 +1463,45 @@ func _push_tracks(start: Vector3, velocity: Vector3) -> Array:
 		tracks.append(track)
 	return tracks
 
-func _plan_return_flight(seconds: float, apex: float, tier: String) -> bool:
-	# P0-2/P0-6 (round 3): the head push-off is a supported reaction spread over
-	# the leg kick; the flight is then near-ballistic with a bounded lift and
-	# drift brake, landing short of home by its rolled-out drift.
+func _return_heavy() -> bool:
+	# A shared or large load (not an empty bare push) takes the heavy timing.
+	return not _bare_push and (crew.size()>1 or not _small_stock_timing())
+
+func _plan_return_flight(apex: float, lift: float, tier: String) -> bool:
+	# Round 4: the head push-off is a supported reaction spread over the leg
+	# kick; the flight is then ballistic under g - lift with a bounded drift
+	# brake, landing short of home by its rolled-out drift.
 	arc_failure = ""
 	_plan_tier = tier
-	_plan_candidate = [seconds,apex]
-	var heavy := not _small_stock_timing()
+	_plan_candidate = [apex,lift]
+	var heavy := _return_heavy()
 	_return_lead = RETURN_LEAD+(STRAIN_SECONDS if heavy else 0.0)
-	_push_seconds = RETURN_PUSH
-	var decel := HEAVY_DRIFT_DECEL if heavy else SOLO_DRIFT_DECEL
-	var lift_cap := LONG_LIFT if tier=="long" else (HEAVY_LIFT if heavy else SOLO_LIFT)
+	_push_seconds = HEAVY_PUSH if heavy else RETURN_PUSH
 	var start: Vector3 = _flight_start*_com_local
 	var short := .06
 	var velocity := Vector3.ZERO
-	var gravity := GRAVITY
+	var gravity := GRAVITY-lift
+	var seconds := .7
 	var drift := 0.0
-	var brake := decel
+	var brake := DRIFT_DECEL
 	var direction := Vector3.ZERO
 	var end := Vector3.ZERO
 	for iteration in 5:
 		_destination = _landing_destination(short)
 		end = _destination*_com_local
-		var guess := velocity.normalized() if velocity.length()>.1 else ((end-start).slide(Vector3.UP).normalized()*cos(deg_to_rad(55.0))+Vector3.UP*sin(deg_to_rad(55.0)))
+		var guess := velocity.normalized() if velocity.length()>.1 else ((end-start).slide(Vector3.UP).normalized()*cos(deg_to_rad(60.0))+Vector3.UP*sin(deg_to_rad(60.0)))
 		var push_end := start+guess*(velocity.length()*_push_seconds*.5)
 		var rise := end.y+apex-push_end.y
 		if rise<=.05:
 			arc_failure="return apex below the push-off"
 			return false
-		gravity = pow((sqrt(2.0*rise)+sqrt(2.0*apex))/seconds,2.0)
 		var vertical := sqrt(2.0*gravity*rise)
+		seconds = (vertical+sqrt(2.0*gravity*apex))/gravity
 		var across := (end-push_end).slide(Vector3.UP)
 		var distance := across.length()
 		direction = across/distance if distance>.000001 else Vector3.ZERO
-		brake = decel
-		var horizontal := (distance+.5*brake*seconds*seconds)/seconds
+		brake = DRIFT_DECEL
+		var horizontal := distance/seconds+.5*brake*seconds
 		drift = horizontal-brake*seconds
 		if drift<.1:
 			# Short travel: bleed less, keep a small drift.
@@ -1373,12 +1509,14 @@ func _plan_return_flight(seconds: float, apex: float, tier: String) -> bool:
 			horizontal = 2.0*distance/seconds-drift
 			brake = (horizontal-drift)/seconds
 		velocity = direction*horizontal+Vector3.UP*vertical
-		short = clampf(drift*drift/(2.0*LAND_BRAKE),0.0,.16)
-		_push_seconds = _fit_push(velocity)
-	var lift := GRAVITY-gravity
-	if lift>lift_cap or lift<-1.0:
-		arc_failure="return needs %.1fm/s² of lift (cap %.1f)" % [lift,lift_cap]
-		return false
+		short = clampf(drift*drift/(2.0*LAND_BRAKE),0.0,LAND_SHORT)
+		_push_seconds = maxf(_fit_push(velocity),HEAVY_PUSH if heavy else RETURN_PUSH)
+	if tier=="brisk" and not heavy and not _bare_push:
+		# The loaded solo arc stays in the empty outbound's height class.
+		var home_com: Vector3 = _home*_native_com_local()
+		if end.y+apex-home_com.y>SOLO_APEX_ABOVE_HOME+.001:
+			arc_failure="loaded return apex %.2fm above the home COM (cap %.2f)" % [end.y+apex-home_com.y,SOLO_APEX_ABOVE_HOME]
+			return false
 	if velocity.length()>MAXIMUM_SPEED:
 		arc_failure="return push-off %.2fm/s exceeds %.1fm/s" % [velocity.length(),MAXIMUM_SPEED]
 		return false
@@ -1390,6 +1528,8 @@ func _plan_return_flight(seconds: float, apex: float, tier: String) -> bool:
 	var takeoff := _return_lead+_push_seconds
 	var push_end := Vector3(_track_at(tracks[0],takeoff,0),_track_at(tracks[1],takeoff,0),_track_at(tracks[2],takeoff,0))
 	var decel_vector := -direction*brake+Vector3.UP*(-gravity)
+	_return_drift_brake = brake
+	_return_lift = lift
 	for axis in 3:
 		tracks[axis].append(_segment(takeoff,takeoff+seconds,PackedFloat64Array([push_end[axis],velocity[axis],.5*decel_vector[axis]])))
 	_track_x = tracks[0]
@@ -1400,7 +1540,7 @@ func _plan_return_flight(seconds: float, apex: float, tier: String) -> bool:
 	_support_to = takeoff
 	_launch_velocity = velocity
 	_touchdown_velocity = direction*drift+Vector3.DOWN*sqrt(2.0*gravity*apex)
-	if _args.has("--head-leap-debug"): print("HEAD_LEAP_RETURN_PLAN T=%.2f apex=%.2f v0=%s lift=%.2f drift=%.2f brake=%.2f short=%.3f" % [seconds,apex,velocity,lift,drift,brake,short])
+	if _args.has("--head-leap-debug"): print("HEAD_LEAP_RETURN_PLAN T=%.2f apex=%.2f v0=%s lift=%.2f drift=%.2f brake=%.2f short=%.3f push=%.3f" % [seconds,apex,velocity,lift,drift,brake,short,_push_seconds])
 	# Rewind about the outbound axis: the push and kick start the turn, the
 	# flight carries it round to a gentle landing spin.
 	var crew_timing := heavy
@@ -1537,6 +1677,7 @@ func _plan_flight(seconds: float, apex: float, returning: bool, tier: String, st
 		return false
 	_beat_brake = seconds*.62
 	_beat_open = spin_seconds*.6+delay
+	_beat_assist = _beat_open
 	_beat_spin_end = spin_seconds+delay
 	return true
 
@@ -1595,6 +1736,7 @@ func advance(delta: float) -> void:
 	# One leader-owned release puts every cooperative body on the same tick.
 	# A later helper callback in that tick must not advance only one arc.
 	if state in ["outbound","return"] and _launch_frame==Engine.get_physics_frames(): return
+	_advanced_frame = Engine.get_physics_frames()
 	if not worker.is_available():
 		abort("Head pickup interrupted by a native fall")
 		_finish(false)
@@ -1624,8 +1766,15 @@ func advance(delta: float) -> void:
 			# only the shape queries run); a blocked arc stands back up.
 			_rechecked = true
 			var started := Time.get_ticks_usec()
+			# Same leg path as the admission: the launch legs are only known at
+			# the release (the current crouch is not the extended push-off).
+			var captured: Array = []
+			for member: Node in crew:
+				captured.append(member.head_leap._launch_leg_pose)
+				member.head_leap._launch_leg_pose = []
 			var clear: bool = not _stock_moved() and crew.all(func(member: Node) -> bool: return member.head_leap._prep_clear() and member.head_leap._arc_quick()) \
 				and crew.all(func(member: Node) -> bool: return member.head_leap._arc_clear(false,0.0,false,true))
+			for index in crew.size(): crew[index].head_leap._launch_leg_pose = captured[index]
 			flight_stats.gather_recheck_ms = (Time.get_ticks_usec()-started)/1000.0
 			if not clear:
 				var blocker := arc_failure
@@ -1644,38 +1793,40 @@ func advance(delta: float) -> void:
 	worker.gait_speed = 0.0
 	worker.turn_rate = 0.0
 	if _abort_requested and state in ["outbound","contact"] and not _return_started:
-		# Interrupted: recover bare. While no clear recovery exists during the
-		# outbound (e.g. falling onto the stock), keep the admitted dive (custody
-		# is impossible once aborted) and retry, then recover from the head pose.
-		# A dive is only kept while the stock is still exactly where the arc was
-		# admitted AND the rest of that arc is clear of the current world; a
-		# moved stock is re-checked every tick, never only at the next retry.
+		# Interrupted (round 4): never a mid-air reversal. While the stock is
+		# where the arc was admitted and the rest of the dive is clear of the
+		# CURRENT world, the dive continues to a real head landing on the stock
+		# and the body pushes off it bare (a real head push, ballistic flight).
+		# A knocked stock or a blocked dive continues ballistically instead:
+		# attitude-only assist turns the body feet-down to land past/beside the
+		# stock, or the fall (ragdoll) takes over.
 		if crew[0]==worker:
 			var moved := _stock_moved()
-			if moved:
-				# The stock is loose and moving: real contact physics owns any touch
-				# from now on, the head exception would let it pass through the body.
-				for member: Node in crew:
-					if is_instance_valid(member) and is_instance_valid(part): part.remove_collision_exception_with(member)
-			# A head that has just landed on the stock first stops on it (the hold
-			# below); the bare recovery is then planned from rest.
-			var settling := state=="contact" and not moved and _contact_age<.4 and (_contact_age<.05 or _velocity(worker).length()>.05 or worker.angular_velocity.length()>.1)
-			if not settling and (state=="contact" or elapsed>=_bare_retry or moved):
-				if _begin_bare_group_return(state=="outbound" and elapsed<_flight_seconds and not moved,moved): return
-				_bare_retry = elapsed+(1.0/60.0 if _bare_waiting else .1)
+			if moved: _release_moved_stock()
+			if state=="outbound" and not moved and not _dive_blocked and elapsed>=_bare_retry:
+				_bare_retry = elapsed+.1
+				if not crew.all(func(member: Node) -> bool: return member.head_leap._arc_clear(false,member.head_leap.elapsed)):
+					_dive_blocked = true
+			if state=="outbound" and (moved or _dive_blocked) and (elapsed>=_bare_retry or not _bare_waiting):
+				if _begin_fall_recovery(): return
+				_bare_retry = elapsed+1.0/60.0
+			elif state=="contact":
+				# The head has landed on the stock: once the impact has stopped it
+				# (the legs' whip), push off bare like the loaded return.
+				var landed := _contact_age>=.4 or (_impact_clock>=WHIP_SECONDS+CONTACT_PRESS and _velocity(worker).length()<.3 and worker.angular_velocity.length()<.8) \
+					or (not _impact_armed and _contact_age>=.06 and _velocity(worker).length()<.3)
+				if landed and _begin_bare_group_return(moved): return
 		if _bare_waiting:
 			# Unassisted free flight while a knocked stock clears the way: no
 			# force or torque at all until a clear recovery exists (or the fall).
-			return
-		if state=="contact":
-			_contact_age = elapsed
-			_follow(_contact_destination(HOLD_GAP),Vector3.ZERO,Vector3.ZERO,Vector3.ZERO,Vector3.ZERO,HOLD_GAINS)
 			return
 	if state == "outbound":
 		if not _abort_requested and _stock_moved():
 			abort("The actual stock moved; head contact was not made")
 			return
 		_follow_plan(minf(elapsed,_flight_seconds))
+		if crew[0]==worker and not _abort_requested and elapsed>=_flight_seconds-PREPLAN_LEAD and elapsed<_flight_seconds-.02:
+			_preplan_step()
 		# The fastest approach into the roof just before the touch (the native
 		# contact may already have stopped the head on this last outbound tick).
 		var falling := _velocity(worker)
@@ -1724,11 +1875,15 @@ func advance(delta: float) -> void:
 			worker._animation.play("wk_idle",.2)
 	elif state == "landing":
 		worker._update_ground(delta)
+		if _release_on_touchdown and (worker.on_ground or elapsed>.3) and crew[0]==worker:
+			_release_on_touchdown = false
+			abort(reason)
 		if _impact_age < .0 and worker.on_ground:
 			_impact_age = .0
+			_rise_seconds = -1.0
 			# The touchdown is a real impact: its measured speed scales the absorb.
 			_impact_speed = maxf(0.0,-(_velocity(worker)-worker.ground_velocity).y)
-			_absorb_depth = clampf(.035+.045*_impact_speed+(.03 if _absorb_profile()==CREW_ABSORB else 0.0),.08,.16)
+			_absorb_depth = clampf(.035+.045*_impact_speed+(.03 if _absorb_profile()==CREW_ABSORB else 0.0),.08,float(_absorb_profile().depth))
 			# The absorb continues the visual root from where (and how fast) it
 			# actually arrives: the last published root, rebased to this tick.
 			_impact_root = _actual_root().origin
@@ -1750,7 +1905,7 @@ func advance(delta: float) -> void:
 		_settled = _settled+delta if settled else 0.0
 		# Hand back once the absorb has bottomed out and is visibly recovering.
 		var absorb: Dictionary = _absorb_profile()
-		var absorbed := _absorb_bottom_time()+float(absorb.hold)+.5*float(absorb.recover)
+		var absorbed := _absorb_bottom_time()+float(absorb.hold)+_rise_duration()-LANDING_TAIL
 		if _settled >= .18 and (_impact_age < .0 or _impact_age >= absorbed): _finish(not _abort_requested)
 		elif elapsed > 3.0:
 			abort("Return landing needs clear supported ground")
@@ -1776,7 +1931,7 @@ func _release() -> void:
 	# The drive's last planted tick IS the launch: the body already carries the
 	# planned push-off velocity and spin (no impulse is added).
 	elapsed = maxf(elapsed-_prep_seconds,0.0)
-	_launch_frame = Engine.get_physics_frames()
+	_mark_launch_frame()
 	var velocity := _velocity(worker)
 	flight_stats.launch_outbound = {"speed":velocity.length(),"planned":_launch_velocity.length(),"error":velocity.distance_to(_launch_velocity),
 		"spin":worker.angular_velocity.dot(_rotation_axis),"planned_spin":_launch_spin.length(),"pitch_deg":rad_to_deg(acos(clampf(worker.global_basis.y.normalized().dot(Vector3.UP),-1.0,1.0)))}
@@ -1797,7 +1952,7 @@ func _stand_down() -> void:
 func _register_impact(speed: float) -> void:
 	_impact_clock = 0.0
 	_impact_velocity = maxf(speed,0.0)
-	_squash_depth = clampf(.012+.01*_impact_velocity,0.0,.03) if speed>.3 else 0.0
+	_squash_depth = clampf(.018+.006*_impact_velocity,0.0,IMPACT_SQUASH) if speed>.3 else 0.0
 	if _args.has("--head-leap-debug"): print("HEAD_LEAP_IMPACT speed=",speed," armed=",_impact_armed," arrival=",_arrival_velocity," now=",_velocity(worker)," age=",_contact_age)
 	flight_stats.head_impact = {"speed":_impact_velocity,"squash":_squash_depth,"contact_age":_contact_age,"velocity_after":_velocity(worker).length(),"spin_after":worker.angular_velocity.length()}
 	if _impact_velocity>.6: worker._play_sound(worker.FOOTSTEP,.5+.05*minf(_impact_velocity,2.0))
@@ -1905,14 +2060,38 @@ static func attach_group(source: RigidBody3D, members: Array) -> bool:
 		controller._flight_start = member.global_transform
 		controller._destination = controller._home
 		controller._com_local = controller._loaded_com_local(source,share)
-	var heavy: bool = members.size()>1 or not leader.head_leap._small_stock_timing()
+		controller._capture_return_start()
+	var heavy: bool = leader.head_leap._return_heavy()
 	var planned := false
 	var failures: Array[String]=[]
+	# Round 4: the return was normally planned (and its whole arc cleared, in
+	# chunks) during the last ticks of the dive, from the planned contact pose.
+	# Adopt it when the actual contact matches that pose; the cheap first pass
+	# re-checks it against the current world on this contact tick.
+	if members.all(func(member: Node) -> bool: return member.head_leap._preplan_matches(source)):
+		for member: Node in members:
+			var controller: RefCounted = member.head_leap
+			controller._restore_plan(controller._preplanned.plan)
+			controller._planning_return = true
+		planned = members.all(func(member: Node) -> bool: return member.head_leap._arc_quick())
+		for member: Node in members:
+			member.head_leap.flight_stats.return_preplanned = planned
+			# The visual squash continues from the actual impact clock.
+			member.head_leap._squash_at_attach = member.head_leap._contact_squash(member.head_leap._impact_clock) if member.head_leap._impact_clock>=0.0 else 0.0
+		if not planned:
+			for member: Node in members:
+				var controller: RefCounted = member.head_leap
+				controller._cargo_local = local
+				controller._flight_start = member.global_transform
+				controller._destination = controller._home
+				controller._com_local = controller._loaded_com_local(source,share)
+				controller._capture_return_start()
 	# Rewind about the outbound axis first: the head pushes off the stock and
 	# the feet lead back toward the launch place. The opposite continuous
 	# branch (load-upward-first) and the original long timings stay fallbacks.
 	# All cooperative bodies select the same world axis branch.
 	for tier: Array in [[HEAVY_RETURN if heavy else SOLO_RETURN,"brisk"],[LONG_RETURN,"long"],[LEGACY_RETURN,"legacy"]]:
+		if planned: break
 		for direction: float in [-1.0,1.0]:
 			var blocked := 0
 			for candidate: Array in tier[0]:
@@ -1961,6 +2140,7 @@ static func attach_group(source: RigidBody3D, members: Array) -> bool:
 		member.head_leap.source_before_contact = before
 		member.head_leap.source_after_contact = source.global_transform
 		member.head_leap.flight_stats.contact_dwell = member.head_leap._contact_age
+		member.head_leap._preplanned = {}
 		member.head_leap._record_plan("return")
 	for member: Node in members:
 		var controller: RefCounted = member.head_leap
@@ -1973,14 +2153,126 @@ static func attach_group(source: RigidBody3D, members: Array) -> bool:
 		if controller._support_body is RigidBody3D: controller._support_body.sleeping=false
 		controller.state="return"
 		controller.elapsed=0.0
-		controller._launch_frame=Engine.get_physics_frames()
+		# No free tick on the attach: a member that has not advanced yet this
+		# tick follows its return plan this same tick.
+		controller._mark_launch_frame()
 	return true
+
+# --- Return pre-plan (round 4): no planning hitch on the contact tick ---------
+# During the last PREPLAN_LEAD of a brisk/long dive the leader plans the whole
+# crew's loaded return from the PLANNED contact pose and clears its arc in
+# chunks over several ticks (the outbound plan is restored after each step).
+const PREPLAN_LEAD := .22
+const PREPLAN_CHUNKS := 5
+const PREPLAN_ATTACH_AGE := .07
+var _preplan: Dictionary = {}
+var _preplanned: Dictionary = {}
+
+func _preplan_candidates() -> Array:
+	var heavy := _return_heavy()
+	var rows: Array = []
+	for tier: Array in [[HEAVY_RETURN if heavy else SOLO_RETURN,"brisk"],[LONG_RETURN,"long"],[LEGACY_RETURN,"legacy"]]:
+		for direction: float in [-1.0,1.0]:
+			for candidate: Array in tier[0]: rows.append([candidate,str(tier[1]),direction])
+	return rows
+
+func _preplan_step() -> void:
+	# Leader only: one bounded step per tick.
+	if _preplan.get("finished",false) or not is_instance_valid(part): return
+	var started := Time.get_ticks_usec()
+	if _preplan.is_empty(): _preplan = {"index":0,"chunk":-1,"plans":[],"finished":false,"part":part.global_transform}
+	var outbound: Array = []
+	for member: Node in crew:
+		outbound.append(member.head_leap._plan_snapshot())
+		member.head_leap._preplan_saved_pose = member.head_leap._launch_leg_pose
+	var rows := _preplan_candidates()
+	if int(_preplan.chunk)<0:
+		# Find the next candidate whose plan math and cheap pass succeed (a
+		# few per tick at most).
+		var tries := 0
+		while int(_preplan.index)<rows.size() and tries<4:
+			var row: Array = rows[int(_preplan.index)]
+			tries += 1
+			if _preplan_setup() and crew.all(func(member: Node) -> bool: return member.head_leap._plan_return(row[0],row[1],row[2])) \
+				and crew.all(func(member: Node) -> bool: return member.head_leap._arc_quick()):
+				var plans: Array = []
+				for member: Node in crew: plans.append(member.head_leap._plan_snapshot())
+				_preplan.plans = plans
+				_preplan.chunk = 0
+				break
+			_preplan.index = int(_preplan.index)+1
+		if int(_preplan.index)>=rows.size(): _preplan.finished = true
+	else:
+		# Clear one time window of the whole complete pass for every member.
+		var plans: Array = _preplan.plans
+		for index in crew.size():
+			var controller: RefCounted = crew[index].head_leap
+			controller._restore_plan(plans[index])
+			controller._planning_return = true
+		var span := float(crew[0].head_leap._flight_seconds)/PREPLAN_CHUNKS
+		var low := span*int(_preplan.chunk)
+		var high := span*(int(_preplan.chunk)+1)+.0001
+		var clear := crew.all(func(member: Node) -> bool: return member.head_leap._arc_clear(true,low,false,true,high))
+		if not clear:
+			_preplan.index = int(_preplan.index)+1
+			_preplan.chunk = -1
+		else:
+			_preplan.chunk = int(_preplan.chunk)+1
+			if int(_preplan.chunk)>=PREPLAN_CHUNKS:
+				_preplan.finished = true
+				for index in crew.size(): crew[index].head_leap._preplanned = {"plan":plans[index],"part":_preplan.part}
+	for index in crew.size():
+		var controller: RefCounted = crew[index].head_leap
+		controller._planning_return = false
+		controller._restore_plan(outbound[index])
+		controller._launch_leg_pose = controller._preplan_saved_pose
+	flight_stats.preplan_ms = float(flight_stats.get("preplan_ms",0.0))+(Time.get_ticks_usec()-started)/1000.0
+	flight_stats.preplan_peak_tick_ms = maxf(float(flight_stats.get("preplan_peak_tick_ms",0.0)),(Time.get_ticks_usec()-started)/1000.0)
+
+var _preplan_saved_pose: Array = []
+
+func _preplan_setup() -> bool:
+	# Every member at its PLANNED contact pose, the same stock at its current
+	# pose, the loaded COM and the leg/whip state of a typical attach.
+	var share: float = part.mass/crew.size()
+	var roots: Array[Transform3D] = []
+	var poses: Array[Transform3D] = []
+	for member: Node in crew:
+		var controller: RefCounted = member.head_leap
+		var pose: Transform3D = controller._contact_destination(HOLD_GAP)
+		poses.append(pose)
+		roots.append(pose*controller._root_local)
+	var frame: Transform3D
+	if crew.size()>1: frame = _shared_head_frame(roots)
+	else: frame = Transform3D(roots[0].basis.orthonormalized(),roots[0]*_head_touch_local)
+	var local: Transform3D = frame.affine_inverse()*part.global_transform
+	for index in crew.size():
+		var controller: RefCounted = crew[index].head_leap
+		controller._cargo_local = local
+		controller._planning_return = true
+		controller._bare_push = false
+		controller._flight_start = poses[index]
+		controller._destination = controller._home
+		controller._com_local = controller._loaded_com_local(part,share,poses[index])
+		controller._return_start_angles = controller._contact_angles(maxf(PREPLAN_ATTACH_AGE-TWIN_DELAY*.5*controller._twin,0.0))
+	return true
+
+func _preplan_matches(source: RigidBody3D) -> bool:
+	# The actual contact is the planned one (sub-mm/sub-degree), on the same
+	# unmoved stock.
+	if _preplanned.is_empty() or not is_instance_valid(source): return false
+	var plan: Dictionary = _preplanned.plan
+	var start: Transform3D = plan._flight_start
+	var stock: Transform3D = _preplanned.part
+	if worker.global_transform.origin.distance_to(start.origin)>.004: return false
+	if worker.global_basis.orthonormalized().get_rotation_quaternion().angle_to(start.basis.orthonormalized().get_rotation_quaternion())>.02: return false
+	return source.global_transform.origin.distance_to(stock.origin)<.001 and source.global_basis.orthonormalized().get_rotation_quaternion().angle_to(stock.basis.orthonormalized().get_rotation_quaternion())<.002
 
 func _plan_return(candidate: Array, tier: String, direction: float) -> bool:
 	_configure_rotation(_outbound_axis*direction)
 	if tier!="legacy": return _plan_return_flight(float(candidate[0]),float(candidate[1]),tier)
 	# Legacy quintic timing, entered through the same supported head push.
-	var heavy := not _small_stock_timing()
+	var heavy := _return_heavy()
 	_return_lead = RETURN_LEAD+(STRAIN_SECONDS if heavy else 0.0)
 	_destination = _home
 	_push_seconds = RETURN_PUSH
@@ -2000,8 +2292,9 @@ func _plan_return(candidate: Array, tier: String, direction: float) -> bool:
 	return true
 
 const PLAN_FIELDS := ["_flight_start","_destination","_launch_velocity","_flight_seconds","_com_local","_track_x","_track_y","_track_z","_track_spin",
-	"_beat_brake","_beat_open","_beat_spin_end","_rotation_axis","_rotation_angle","_touchdown_velocity","_launch_spin","_plan_tier","_plan_candidate",
-	"_support_from","_support_to","_return_lead","_push_seconds"]
+	"_beat_brake","_beat_open","_beat_assist","_beat_spin_end","_rotation_axis","_rotation_angle","_touchdown_velocity","_launch_spin","_plan_tier","_plan_candidate",
+	"_support_from","_support_to","_return_lead","_push_seconds","_return_drift_brake","_return_lift","_cargo_local","_return_start_angles","_bare_push",
+	"_com_local"]
 
 func _plan_snapshot() -> Dictionary:
 	var snapshot := {}
@@ -2011,39 +2304,125 @@ func _plan_snapshot() -> Dictionary:
 func _restore_plan(snapshot: Dictionary) -> void:
 	for field: String in snapshot: set(field,snapshot[field])
 
-func _begin_bare_group_return(may_defer := false, may_wait := false) -> bool:
-	# Capture every actual interrupted source before any cooperative recovery
-	# query. No impulse or velocity reset is needed while already airborne.
-	# Returns false only when deferred: the admitted outbound plan is restored.
+func _capture_restart_legs() -> void:
+	# Restart from the last ACTUAL final published limbs. The same finite
+	# interpolation feeds both preflight and posing, before any recovery force.
+	var published: SkeletonModifier3D = worker._pose
+	var inverse: Transform3D = published.evaluated_worker.affine_inverse()
+	_restart_leg_points.clear()
+	_restart_ankles.clear()
+	for side in 2:
+		_restart_leg_points.append(inverse*published.evaluated_hips[side])
+		_restart_leg_points.append(inverse*published.evaluated_knees[side])
+		_restart_leg_points.append(inverse*(published.evaluated_soles[side]-published.evaluated_ankles[side]*Vector3(0,published._ankle_height[side],0)))
+		_restart_ankles.append(published.evaluated_worker.basis.inverse()*published.evaluated_ankles[side])
+	# The same limbs as joint angles: the recovery's tuck path starts here.
+	var cube_inverse: Transform3D = published.evaluated_root.affine_inverse()
+	_restart_angles = _angles_of(0,[cube_inverse*published.evaluated_knees[0],
+		cube_inverse*(published.evaluated_soles[0]-published.evaluated_ankles[0]*Vector3(0,published._ankle_height[0],0)),Basis.IDENTITY,float(LEG_TUCK[3])])
+
+func _clear_restart_legs() -> void:
+	_restart_leg_points.clear()
+	_restart_angles.clear()
+	_restart_ankles.clear()
+
+func _mark_launch_frame() -> void:
+	# A member whose advance already ran this tick must not follow twice; one
+	# that has not run yet follows its new plan this same tick (no free tick).
+	_launch_frame = Engine.get_physics_frames() if _advanced_frame==Engine.get_physics_frames() else -1
+
+func _release_moved_stock() -> void:
+	# A knocked stock is loose: real contact physics owns any touch from now
+	# on. Lift the head exception at once when the bodies are apart; when they
+	# already overlap, let them separate first (no violent depenetration).
+	if not is_instance_valid(part): return
+	for member: Node in crew:
+		if not is_instance_valid(member): continue
+		var leap: RefCounted = member.head_leap
+		if leap._release_watch==part or not part.get_collision_exceptions().has(member): continue
+		var bounds: AABB = part.global_transform*_stock_bounds
+		var cube: AABB = leap._actual_root()*AABB(Vector3(-.38,-_head_height,-.38),Vector3(.76,_head_height*2.0,.76))
+		if bounds.grow(.005).intersects(cube): leap._release_watch = part
+		else: part.remove_collision_exception_with(member)
+
+func _begin_bare_group_return(moved := false) -> bool:
+	# The interrupted head has landed on the stock (round 4): every member
+	# pushes off it bare with the loaded return's supported head push and
+	# ballistic flight (the stock's own support carries the reaction). The
+	# original slow recovery from rest is the fallback, then the fall.
 	var snapshots: Array[Dictionary]=[]
 	for member: Node in crew:
 		var controller: RefCounted=member.head_leap
 		snapshots.append(controller._plan_snapshot())
 		controller._planning_return=true
-		# Restart from the last ACTUAL final published limbs. The same finite
-		# interpolation feeds both preflight and posing, before any return force.
-		var published: SkeletonModifier3D = member._pose
-		var inverse: Transform3D = published.evaluated_worker.affine_inverse()
-		controller._restart_leg_points.clear()
-		controller._restart_ankles.clear()
-		for side in 2:
-			controller._restart_leg_points.append(inverse*published.evaluated_hips[side])
-			controller._restart_leg_points.append(inverse*published.evaluated_knees[side])
-			controller._restart_leg_points.append(inverse*(published.evaluated_soles[side]-published.evaluated_ankles[side]*Vector3(0,published._ankle_height[side],0)))
-			controller._restart_ankles.append(published.evaluated_worker.basis.inverse()*published.evaluated_ankles[side])
-		# The same limbs as joint angles: the recovery's tuck path starts here.
-		var cube_inverse: Transform3D = published.evaluated_root.affine_inverse()
-		controller._restart_angles = controller._angles_of(0,[cube_inverse*published.evaluated_knees[0],
-			cube_inverse*(published.evaluated_soles[0]-published.evaluated_ankles[0]*Vector3(0,published._ankle_height[0],0)),Basis.IDENTITY,float(LEG_TUCK[3])])
+		controller._bare_push=true
+		controller._clear_restart_legs()
+		controller._flight_start=member.global_transform
+		controller._destination=controller._home
+		controller._com_local=controller._native_com_local()
+		controller._capture_return_start()
+	var planned := false
+	var failures: Array[String]=[]
+	if not moved:
+		for tier: Array in [[SOLO_RETURN,"brisk"],[LONG_RETURN,"long"],[LEGACY_RETURN,"legacy"]]:
+			for direction: float in [-1.0,1.0]:
+				for candidate: Array in tier[0]:
+					var shaped := true
+					for member: Node in crew:
+						if not member.head_leap._plan_return(candidate,str(tier[1]),direction):
+							shaped=false
+							failures.append("%s %s %s" % [tier[1],str(candidate),member.head_leap.arc_failure])
+							break
+					if not shaped: continue
+					if crew.all(func(member: Node) -> bool: return member.head_leap._arc_quick()) and crew.all(func(member: Node) -> bool: return member.head_leap._arc_clear(false,0.0,false,true)):
+						planned=true
+						break
+					for member: Node in crew:
+						if not member.head_leap.arc_failure.is_empty(): failures.append("%s %s %s" % [tier[1],str(candidate),member.head_leap.arc_failure])
+				if planned: break
+			if planned: break
+	if planned:
+		# The head pushes off the stock it landed on, exactly like the loaded
+		# return: the stock transmits the paired reaction to whatever it rests
+		# on (the head rides it through the exception, lifted once apart).
+		var support: Dictionary = _stock_support()
+		for member: Node in crew:
+			var controller: RefCounted=member.head_leap
+			controller._planning_return=false
+			controller._bare_waiting=false
+			controller._return_started=true
+			controller._support_body=support.get("collider",part) as Object
+			controller._support_point=support.get("position",controller._head_point())
+			controller._support_normal=controller.contact_normal
+			if controller._support_body is RigidBody3D: controller._support_body.sleeping=false
+			if is_instance_valid(part) and member.is_inside_tree():
+				part.add_collision_exception_with(member)
+				controller._release_watch=part
+				controller._release_margin=.03
+			controller._record_plan("bare_return")
+			controller.state="return"
+			controller.elapsed=0.0
+			controller._mark_launch_frame()
+		return true
+	if _args.has("--head-leap-debug"): print("HEAD_BARE_PUSH_REASONS ",failures.slice(0,8))
+	for index in crew.size():
+		crew[index].head_leap._restore_plan(snapshots[index])
+		crew[index].head_leap._bare_push=false
+	return _begin_slow_bare_return()
+
+func _begin_slow_bare_return() -> bool:
+	# Fallback from rest on the stock (no mid-air reversal): the original
+	# quintic recovery; no impulse, the assisted body only brakes and turns
+	# back to the supported home pose. Without one, the fall takes over.
+	for member: Node in crew:
+		var controller: RefCounted=member.head_leap
+		controller._planning_return=true
+		controller._capture_restart_legs()
 		controller._flight_start=member.global_transform
 		controller._destination=controller._home
 		controller._com_local=controller._native_com_local()
 	var planned := false
-	# The current native COM velocity and spin continue (no impulse); the
-	# assisted recovery only brakes and turns back to the supported home pose.
 	var failures: Array[String]=[]
-	# Either continuous branch back to upright: the shortest rewind, or carrying
-	# the existing spin on round. A crew keeps one shared world axis.
 	for branch: float in [1.0,-1.0]:
 		for seconds: float in [.9,1.1,1.25,1.4,1.6,1.8,2.4,3.0]:
 			var shaped := true
@@ -2060,49 +2439,146 @@ func _begin_bare_group_return(may_defer := false, may_wait := false) -> bool:
 			for member: Node in crew:
 				if shaped and not member.head_leap.arc_failure.is_empty(): failures.append("%.2fs/%d %s" % [seconds,int(branch),member.head_leap.arc_failure])
 		if planned: break
-	if not planned and may_defer:
+	if not planned: print("HEAD_BARE_RETURN_REASONS ",failures.slice(0,10))
+	_end_recovery_planning(planned,"bare_return")
+	return true
+
+func _end_recovery_planning(planned: bool, label: String) -> void:
+	for member: Node in crew:
+		var controller: RefCounted=member.head_leap
+		controller._planning_return=false
+		controller._bare_waiting=false
+		controller._return_started=true
+		if planned:
+			controller._record_plan(label)
+			controller.state="return"
+			controller.elapsed=0.0
+			controller._mark_launch_frame()
+		else:
+			controller._finish(false)
+			if member.ragdoll and not member.ragdoll.is_down(): member.ragdoll.knock_down()
+
+func _begin_fall_recovery() -> bool:
+	# An interrupted dive with no stock to land on (knocked away, or the rest
+	# of the dive blocked): the COM continues its ballistic arc (no reversal,
+	# at most FALL_ASSIST of translational correction); the assist only turns
+	# the body feet-down while the legs tuck and open to land past or beside
+	# the stock. Without a clear landing, fly on unassisted for a moment while
+	# a knocked stock clears the way, then the fall (ragdoll) takes over.
+	# Returns false only while waiting (the admitted outbound plan is kept).
+	var snapshots: Array[Dictionary]=[]
+	for member: Node in crew:
+		var controller: RefCounted=member.head_leap
+		snapshots.append(controller._plan_snapshot())
+		controller._planning_return=true
+		controller._capture_restart_legs()
+	var planned := false
+	var failures: Array[String]=[]
+	for branch: float in [1.0,-1.0]:
+		var shaped := true
+		for member: Node in crew:
+			if not member.head_leap._plan_fall_recovery(branch):
+				shaped=false
+				failures.append("%d %s" % [int(branch),member.head_leap.arc_failure])
+				break
+		if shaped and crew.all(func(member: Node) -> bool:return member.head_leap._arc_quick()) and crew.all(func(member: Node) -> bool:return member.head_leap._arc_clear(false,0.0,false,true)):
+			planned=true
+			break
+		for member: Node in crew:
+			if shaped and not member.head_leap.arc_failure.is_empty(): failures.append("%d %s" % [int(branch),member.head_leap.arc_failure])
+	if planned:
+		for member: Node in crew:
+			var controller: RefCounted=member.head_leap
+			# The landing place is where the ballistic arc meets the ground.
+			controller._home = controller._destination
+		_end_recovery_planning(true,"fall_recovery")
+		return true
+	if _bare_wait_age<BARE_WAIT_SECONDS:
 		for index in crew.size():
 			var controller: RefCounted=crew[index].head_leap
 			controller._planning_return=false
-			controller._restart_leg_points.clear()
-			controller._restart_angles.clear()
-			controller._restart_ankles.clear()
-			controller._restore_plan(snapshots[index])
-		# Keep diving only along an admitted remainder that is still clear of the
-		# CURRENT world and stock; otherwise this is a real fall, not a dive.
-		if crew.all(func(member: Node) -> bool: return member.head_leap._arc_clear(false,member.head_leap.elapsed)): return false
-		failures.append("remaining dive: "+arc_failure)
-		for member: Node in crew: failures.append(member.head_leap.arc_failure)
-		for member: Node in crew: member.head_leap._planning_return=true
-	if not planned and may_wait and _bare_wait_age<BARE_WAIT_SECONDS:
-		# A knocked stock is usually clearing the way: fly on unassisted and
-		# retry each frame for a short while before accepting the fall.
-		for index in crew.size():
-			var controller: RefCounted=crew[index].head_leap
-			controller._planning_return=false
-			controller._restart_leg_points.clear()
-			controller._restart_angles.clear()
-			controller._restart_ankles.clear()
+			controller._clear_restart_legs()
 			controller._restore_plan(snapshots[index])
 			if not controller._bare_waiting: controller._bare_wait_start=controller.elapsed
 			controller._bare_waiting=true
 			controller._bare_wait_age=controller.elapsed-controller._bare_wait_start
 		return false
-	if not planned: print("HEAD_BARE_RETURN_REASONS ",failures.slice(0,10))
-	for member: Node in crew:
-		var controller: RefCounted=member.head_leap
-		controller._planning_return=false
-		controller._bare_waiting=false
-		if planned:
-			controller._return_started=true
-			controller._record_plan("bare_return")
-			controller.state="return"
-			controller.elapsed=0.0
-			controller._launch_frame=Engine.get_physics_frames()
-		else:
-			controller._return_started=true
-			controller._finish(false)
-			if member.ragdoll and not member.ragdoll.is_down(): member.ragdoll.knock_down()
+	print("HEAD_FALL_RECOVERY_REASONS ",failures.slice(0,6))
+	_end_recovery_planning(false,"fall_recovery")
+	return true
+
+func _plan_fall_recovery(branch: float) -> bool:
+	# Ballistic continuation: the COM keeps its actual velocity under gravity
+	# until it reaches the standing COM height above the ground it falls onto;
+	# the body turns from its current attitude to upright (either branch).
+	arc_failure = ""
+	_plan_tier = "fall"
+	_plan_candidate = [branch]
+	_support_from = -1.0
+	_support_to = -1.0
+	_bare_push = false
+	_flight_start = worker.global_transform
+	_com_local = _native_com_local()
+	var start: Vector3 = _flight_start*_com_local
+	var velocity := _velocity(worker)
+	# Standing COM height above the sole plane (slightly bent at touchdown).
+	var stand: float = (_home*_com_local).y-(_home.origin.y-worker.ride_height)-.03
+	var space := worker.get_world_3d().direct_space_state
+	var exclusions: Array[RID] = worker.query_exclusions()
+	for member: Node in crew: exclusions.append(member.get_rid())
+	var seconds := .5
+	var ground: float = _home.origin.y-worker.ride_height
+	for iteration in 4:
+		var at := start+velocity*seconds+Vector3.DOWN*(.5*GRAVITY*seconds*seconds)
+		var query := PhysicsRayQueryParameters3D.create(Vector3(at.x,maxf(start.y,at.y)+.3,at.z),Vector3(at.x,at.y-2.0,at.z),1)
+		query.exclude = exclusions
+		var hit := space.intersect_ray(query)
+		if hit.is_empty():
+			arc_failure = "no ground under the ballistic landing"
+			return false
+		if hit.collider==part:
+			arc_failure = "the ballistic fall lands on the stock"
+			return false
+		if hit.normal.y<.8:
+			arc_failure = "the ballistic fall lands on a slope"
+			return false
+		ground = hit.position.y
+		var discriminant: float = velocity.y*velocity.y+2.0*GRAVITY*(start.y-(ground+stand))
+		if discriminant<0.0:
+			arc_failure = "the ballistic arc stays below the standing height"
+			return false
+		seconds = (velocity.y+sqrt(discriminant))/GRAVITY
+	if seconds<.3:
+		arc_failure = "%.2fs of fall is too short to land feet-down" % maxf(seconds,0.0)
+		return false
+	var land := start+velocity*seconds+Vector3.DOWN*(.5*GRAVITY*seconds*seconds)
+	var basis := _home.basis.orthonormalized()
+	_destination = Transform3D(basis,land-basis*_com_local)
+	_configure_rotation(Vector3.ZERO,branch)
+	_flight_seconds = seconds
+	_track_x = [_segment(0.0,seconds,PackedFloat64Array([start.x,velocity.x]))]
+	_track_y = [_segment(0.0,seconds,PackedFloat64Array([start.y,velocity.y,-.5*GRAVITY]))]
+	_track_z = [_segment(0.0,seconds,PackedFloat64Array([start.z,velocity.z]))]
+	_launch_velocity = velocity
+	_touchdown_velocity = velocity+Vector3.DOWN*GRAVITY*seconds
+	# Attitude: from the actual spin about this axis to upright, finishing a
+	# little before the touchdown; the off-axis spin is damped by the same cap.
+	var spin_seconds := seconds*.85
+	var omega0 := clampf(worker.angular_velocity.dot(_rotation_axis),-MAXIMUM_SPIN,MAXIMUM_SPIN)
+	var off_axis: float = (worker.angular_velocity-_rotation_axis*worker.angular_velocity.dot(_rotation_axis)).length()
+	var spin := _quintic(0.0,omega0,0.0,_rotation_angle,0.0,0.0,spin_seconds)
+	_track_spin = [_segment(0.0,spin_seconds,spin)]
+	_launch_spin = _rotation_axis*omega0
+	var peak_alpha := .0
+	for step in 33: peak_alpha = maxf(peak_alpha,absf(_quintic_at(spin,spin_seconds*float(step)/32.0,2)))
+	peak_alpha += off_axis/maxf(spin_seconds*.5,.05)
+	if peak_alpha>MAXIMUM_ANGULAR_ACCELERATION*.95:
+		arc_failure = "turning feet-down needs %.1frad/s² in %.2fs" % [peak_alpha,spin_seconds]
+		return false
+	_beat_brake = seconds
+	_beat_open = spin_seconds*.6
+	_beat_assist = _beat_open
+	_beat_spin_end = spin_seconds
 	return true
 
 func _configure_rotation(preferred_axis := Vector3.ZERO, branch := 1.0) -> void:
@@ -2138,7 +2614,7 @@ var _samples_key: Array = []
 func _refresh_samples() -> void:
 	var key: Array = [_flight_seconds,_rotation_angle,_rotation_axis,_launch_velocity,_launch_spin,_com_local,_flight_start,_destination,_root_local,
 		_plan_tier,_plan_candidate,_return_lead,_push_seconds,_stunt_capacity,_splay,_planning_return,_return_started,_restart_leg_points.size(),_restart_angles,
-		_beat_brake,_beat_open,_beat_spin_end,_support_from,_track_x.size(),_track_y.size(),_track_spin.size(),_twin,_cargo_local,_launch_leg_pose]
+		_beat_brake,_beat_open,_beat_assist,_beat_spin_end,_support_from,_track_x.size(),_track_y.size(),_track_spin.size(),_twin,_cargo_local,_launch_leg_pose,_return_start_angles,_bare_push]
 	if key!=_samples_key:
 		_samples.clear()
 		_samples_key = key
@@ -2225,7 +2701,8 @@ func _follow(goal: Transform3D, com_velocity: Vector3, com_acceleration := Vecto
 	# remain the finite assist.
 	var reaction := _support_reaction(feed,_support_normal) if supported else Vector3.ZERO
 	var command := feed-reaction+position_error*float(gains[0])+(wanted_velocity-_velocity(worker))*float(gains[1])
-	var acceleration := command.limit_length(MAXIMUM_ACCELERATION)
+	var cap := FALL_ASSIST if state=="return" and _plan_tier=="fall" else MAXIMUM_ACCELERATION
+	var acceleration := command.limit_length(cap)
 	worker.apply_central_force((acceleration+reaction)*worker.mass)
 	if supported: _apply_support(-reaction*worker.mass,Vector3.ZERO)
 	var error := (goal.basis.orthonormalized().get_rotation_quaternion()*worker.global_basis.orthonormalized().get_rotation_quaternion().inverse()).normalized()
@@ -2256,6 +2733,17 @@ func _follow(goal: Transform3D, com_velocity: Vector3, com_acceleration := Vecto
 		if supported:
 			flight_stats[key+"peak_support_g"] = maxf(float(flight_stats.get(key+"peak_support_g",0.0)),reaction.length()/GRAVITY)
 			flight_stats[key+"peak_support_torque"] = maxf(float(flight_stats.get(key+"peak_support_torque",0.0)),support_torque.length())
+			if state=="return" and is_instance_valid(part):
+				# Stylised spread push (documented): the head push's paired
+				# support reaction is spread over the kick while the rigid cube
+				# already lifts its stock (or itself) off that support. Report
+				# the delta-v it supplies while still resting and once lifted.
+				var lift := INF
+				if contacted and is_instance_valid(part.carrier): lift = (part.global_transform*_stock_bounds).position.y-_support_point.y
+				else: lift = _support_normal.dot(_head_point()-(part.global_transform*contact_local))
+				var dv := reaction.length()/float(Engine.physics_ticks_per_second)
+				var slot := "support_dv_resting" if lift<=.001 else "support_dv_lifted"
+				flight_stats[slot] = float(flight_stats.get(slot,0.0))+dv
 		if command.length()>MAXIMUM_ACCELERATION+.001: flight_stats[key+"force_saturated_ticks"] = int(flight_stats.get(key+"force_saturated_ticks",0))+1
 		flight_stats.inertia_per_mass = (inertia.x.x+inertia.y.y+inertia.z.z)/(3.0*worker.mass)
 
@@ -2273,7 +2761,7 @@ func _arc_quick(from_time := 0.0) -> bool:
 	# it for every member before any member's complete pass.
 	return _arc_clear(false,from_time,true)
 
-func _arc_clear(with_cargo: bool, from_time := 0.0, quick_only := false, quick_done := false) -> bool:
+func _arc_clear(with_cargo: bool, from_time := 0.0, quick_only := false, quick_done := false, to_time := INF) -> bool:
 	arc_failure=""
 	var query := PhysicsShapeQueryParameters3D.new()
 	query.collision_mask = 1
@@ -2343,6 +2831,7 @@ func _arc_clear(with_cargo: bool, from_time := 0.0, quick_only := false, quick_d
 	for step in range(1,steps+1):
 		var time := _flight_seconds*float(step)/steps
 		if time<from_time-.000001: continue
+		if time>to_time: break
 		# The same frames the first pass admitted (force budget, head box).
 		var sample: Array = _sample(time)
 		var body: Transform3D=sample[0]
@@ -2367,7 +2856,10 @@ func _arc_clear(with_cargo: bool, from_time := 0.0, quick_only := false, quick_d
 			query.transform=body*_root_local
 			if not space.intersect_shape(query,1).is_empty(): arc_failure="flight torso obstruction at %.3fs" % time; return false
 			query.transform=body*root
-		if not with_cargo:
+		# A bare push-off starts with the head ON the stock: its own touch is
+		# the support until the push has lifted the head clear.
+		var check_source := not with_cargo and not (_bare_push and _return_phase() and time<=_support_to+.04)
+		if check_source:
 			source_query.shape=torso
 			source_query.transform=query.transform
 			if not space.intersect_shape(source_query,1).is_empty(): arc_failure="original stock intersects head/body before contact at %.3fs" % time; return false
@@ -2383,7 +2875,7 @@ func _arc_clear(with_cargo: bool, from_time := 0.0, quick_only := false, quick_d
 			query.shape = tool_shape
 			query.transform = body*_tool_local*Transform3D(Basis.IDENTITY,_tool_bounds.get_center())
 			if not space.intersect_shape(query,1).is_empty(): arc_failure="tool obstruction at %.3fs" % time; return false
-			if not with_cargo:
+			if check_source:
 				source_query.shape=tool_shape
 				source_query.transform=query.transform
 				if not space.intersect_shape(source_query,1).is_empty(): arc_failure="original stock intersects retained tool before contact at %.3fs" % time; return false
@@ -2391,7 +2883,7 @@ func _arc_clear(with_cargo: bool, from_time := 0.0, quick_only := false, quick_d
 			query.shape=holder_shape
 			query.transform=body*_holder_frame(time)*Transform3D(Basis.IDENTITY,_holder_bounds.get_center())
 			if not space.intersect_shape(query,1).is_empty(): arc_failure="original back holder obstruction at %.3fs" % time; return false
-			if not with_cargo:
+			if check_source:
 				source_query.shape=holder_shape
 				source_query.transform=query.transform
 				if not space.intersect_shape(source_query,1).is_empty(): arc_failure="original stock intersects permanent back holder before head contact at %.3fs" % time; return false
@@ -2847,6 +3339,9 @@ func _absorb_profile() -> Dictionary:
 	# Heavy shared loads absorb deeper and recover more slowly.
 	return CREW_ABSORB if crew.size()>1 or not _small_stock_timing() else ABSORB
 
+func _rise_duration() -> float:
+	return _rise_seconds if _rise_seconds>0.0 else float(_absorb_profile().recover)
+
 func _absorb_bottom_time() -> float:
 	# One constant deceleration from the measured impact speed to the bottom.
 	return clampf(2.0*_absorb_depth/maxf(_impact_speed,.1),.09,.16)
@@ -2863,21 +3358,34 @@ func grounded_stunt_root(pose: SkeletonModifier3D, sk: Skeleton3D, authored: Tra
 	var gather := .0
 	var lean := .0
 	var axis := -_outbound_axis
-	if state=="landing" and _impact_age>=.0:
+	var age := _impact_age
+	if state in ["done","failed"] and _finish_frame>=0 and _finish_age>=0.0 and _finish_age<9.0:
+		# The rise curve continues through the hand-off to the ordinary carry.
+		age = _finish_age+float(Engine.get_physics_frames()-_finish_frame)/float(Engine.physics_ticks_per_second)
+		var absorb_tail: Dictionary = _absorb_profile()
+		if age>_absorb_bottom_time()+float(absorb_tail.hold)+_rise_duration(): _finish_frame = -1
+	if (state=="landing" and _impact_age>=.0) or (state in ["done","failed"] and _finish_frame>=0):
 		# Velocity-continuous absorb: the visual root keeps the measured impact
 		# speed and decelerates once, monotonically, to the bottom (whatever the
 		# native spring does underneath), holds, then recovers more slowly.
 		var absorb: Dictionary = _absorb_profile()
 		var hold_end := _absorb_bottom_time()+float(absorb.hold)
 		var normal: Vector3 = worker.ground_normal
-		var envelope := _absorb_drop(_impact_age)/maxf(_absorb_depth,.001)
-		if _impact_age<=hold_end:
-			var authored_height: float = normal.dot(sk.global_transform*authored.origin)
-			gather = maxf(authored_height-(normal.dot(_impact_root)-_absorb_drop(_impact_age)),0.0)
-			_impact_bottom_gather = gather
+		var envelope := _absorb_drop(age)/maxf(_absorb_depth,.001)
+		var authored_height: float = normal.dot(sk.global_transform*authored.origin)
+		if age<=hold_end:
+			gather = maxf(authored_height-(normal.dot(_impact_root)-_absorb_drop(age)),0.0)
 		else:
-			envelope = 1.0-smoothstep(hold_end,hold_end+float(absorb.recover),_impact_age)
-			gather = _impact_bottom_gather*envelope
+			# Rise from the absorb's WORLD bottom to the moving authored stance:
+			# zero velocity at both ends, whatever the native spring does.
+			var span := maxf(authored_height-(normal.dot(_impact_root)-_absorb_depth),0.0)
+			if _rise_seconds<0.0:
+				# Sized for the whole climb back to the standing cube height
+				# (the native body is still rising under its spring).
+				var stand_span: float = normal.dot(_home*_rest_root_local.origin)-(normal.dot(_impact_root)-_absorb_depth)
+				_rise_seconds = clampf(1.5*maxf(span,stand_span)/RISE_SPEED,float(absorb.recover),.9)
+			envelope = 1.0-smoothstep(hold_end,hold_end+_rise_duration(),age)
+			gather = span*envelope
 		# The touchdown drift rocks the cube back (toward home) over its heels.
 		var drift := _impact_drift.length()
 		lean = (ABSORB_ROCK+DRIFT_ROCK*clampf(drift,0.0,1.2))*envelope
@@ -2978,78 +3486,131 @@ static func _angles_lerp(from: Array, to: Array, weight: float) -> Array:
 	for index in 4: result.append(lerpf(float(from[index]),float(to[index]),weight))
 	return result
 
-func _tuck_angles() -> Array:
+func _tuck_angles(hold := 0.0) -> Array:
 	var angles := _angles_lerp(LEG_TUCK_LOW,LEG_PIKE if crew.size()>1 else LEG_TUCK,_stunt_capacity)
+	# The moving hold deepens the fitted tuck (hold 0..1).
+	for index in 4: angles[index] = float(angles[index])+float(TUCK_HOLD[index])*hold*_stunt_capacity
 	angles[2] = float(angles[2])-_splay
 	# A crew partner tucks a few degrees shallower (fitted with it).
 	angles[0] = float(angles[0])-TWIN_ANGLE*_twin
 	return angles
 
 const LEG_WHIP_POSE := [deg_to_rad(-12.0),deg_to_rad(70.0),0.0,deg_to_rad(50.0)]
+# The whip-over overshoots past the pike and settles back (a moving hold on
+# the head, never identical frames before the kick).
+const WHIP_OVERSHOOT := [deg_to_rad(-5.0),deg_to_rad(6.0),0.0,0.0]
 
-func _into_tuck(from: Array, weight: float) -> Array:
-	# The thighs splay out first, then the knees fold past the cube's sides.
-	var tuck := _tuck_angles()
-	var result := _angles_lerp(from,tuck,weight)
-	result[2] = lerpf(float(from[2]),float(tuck[2]),smoothstep(0.0,.45,weight))
-	result[1] = lerpf(float(from[1]),float(tuck[1]),smoothstep(.2,1.0,weight))
+func _splay_follow(knee: float, splay_add: float, other_add: float, other_knee: float) -> float:
+	# Thigh abduction tied to the knee fold: closed (other_add) while the knee
+	# is open, the fitted splay only once the knee has folded past 110 deg.
+	var low := smoothstep(SPLAY_KNEE_FROM,SPLAY_KNEE_TO,other_knee)
+	var span := 1.0-low
+	var weight := clampf((smoothstep(SPLAY_KNEE_FROM,SPLAY_KNEE_TO,knee)-low)/span,0.0,1.0) if span>.0001 else 1.0
+	return lerpf(other_add,splay_add,weight)
+
+func _into_tuck(from: Array, weight: float, hold := 0.0) -> Array:
+	# The knees lead: they fold first, the hips follow; any fitted splay opens
+	# only with the knee fold (never straight legs held apart).
+	var tuck := _tuck_angles(hold)
+	var result := _angles_lerp(from,tuck,smoothstep(.1,1.0,weight))
+	result[1] = lerpf(float(from[1]),float(tuck[1]),smoothstep(0.0,.75,weight))
+	result[2] = _splay_follow(float(result[1]),float(tuck[2]),float(from[2]),float(from[1]))
 	return result
 
-func _out_of_tuck(to: Array, weight: float) -> Array:
-	# Opening reverses it: the knees unfold first, the thighs close last.
-	var tuck := _tuck_angles()
-	var result := _angles_lerp(tuck,to,weight)
-	result[2] = lerpf(float(tuck[2]),float(to[2]),smoothstep(.55,1.0,weight))
-	result[1] = lerpf(float(tuck[1]),float(to[1]),smoothstep(0.0,1.0,weight))
+func _out_of_tuck(to: Array, weight: float, hold := 1.0) -> Array:
+	# Opening: the knees unfold first, the hips follow; a fitted splay closes
+	# as the knee unfolds below 110 deg.
+	var tuck := _tuck_angles(hold)
+	var result := _angles_lerp(tuck,to,smoothstep(.15,1.0,weight))
+	result[1] = lerpf(float(tuck[1]),float(to[1]),smoothstep(0.0,.8,weight))
+	result[2] = _splay_follow(float(result[1]),float(tuck[2]),float(to[2]),float(to[1]))
 	return result
+
+func _open_window() -> Vector2:
+	# Outbound leg opening [start, end]: it begins with the first assisted
+	# arrival tick (a little before) and spreads over OPEN_SECONDS, ending a
+	# short plant hold before the impact.
+	var tucked := TRAIL_SECONDS+.01+TUCK_IN_SECONDS
+	var end := maxf(_flight_seconds-PLANT_HOLD,tucked+.08)
+	var start := clampf(_beat_assist-OPEN_ANTICIPATION,tucked+.04,end-.12)
+	return Vector2(start,minf(start+OPEN_SECONDS,end))
 
 func _outbound_angles(time: float) -> Array:
-	# Trail off the toes, tuck (frog), hold the tuck, ONE monotonic open into
-	# the legs-up headstand pose before the impact.
+	# Trail off the toes, knees-first pike tuck, a moving hold that deepens
+	# through the apex, then ONE open with the arrival brake into the legs-up
+	# plant before the impact.
 	var launch: Array = _launch_leg_pose if _launch_leg_pose.size()==4 else LEG_TRAIL
 	var angles := _angles_lerp(launch,LEG_TRAIL,smoothstep(.0,TRAIL_SECONDS,time))
 	var tuck_start := TRAIL_SECONDS+.01
-	var open_start := maxf(_beat_open,tuck_start+TUCK_IN_SECONDS)
-	if time<open_start: return _into_tuck(angles,smoothstep(tuck_start,tuck_start+TUCK_IN_SECONDS,time))
-	return _out_of_tuck(LEG_TADA,smoothstep(open_start,minf(open_start+OPEN_SECONDS,maxf(_flight_seconds-.01,open_start+.04)),time))
+	var tucked := tuck_start+TUCK_IN_SECONDS
+	var window := _open_window()
+	var hold := smoothstep(tucked,window.x,time)
+	if time<window.x: return _into_tuck(angles,smoothstep(tuck_start,tucked,time),hold)
+	return _out_of_tuck(LEG_TADA,smoothstep(window.x,window.y,time))
 
 func _bare_angles(time: float) -> Array:
-	# An interrupted recovery folds from wherever the legs were (splay first)
-	# into the tuck, then opens to land.
+	# An interrupted fall recovery folds from wherever the legs were (knees
+	# first) into the tuck, then opens to land.
 	var start: Array = _restart_angles if _restart_angles.size()==4 else _tuck_angles()
 	var land_start := maxf(.2,_flight_seconds*.6)
-	var angles := _into_tuck(start,smoothstep(0.0,.2,time)) if time<land_start else _out_of_tuck(LEG_LAND,smoothstep(land_start,maxf(_flight_seconds*.92,land_start+.1),time))
+	var tucked := minf(.12,land_start*.6)
+	var angles := _into_tuck(start,smoothstep(0.0,tucked,time),smoothstep(tucked,land_start,time)) if time<land_start else _out_of_tuck(LEG_LAND,smoothstep(land_start,maxf(_flight_seconds*.92,land_start+.1),time))
 	angles[3] = float(angles[3])*smoothstep(.0,FOOT_FLATTEN_SECONDS,_flight_seconds-time)
 	return angles
 
 func _return_angles(time: float) -> Array:
-	# From the impact whip (heavy loads first strain), the kick snaps straight
-	# while the supported head push accelerates the body; tuck; open to land.
-	if _plan_tier=="bare": return _bare_angles(time)
+	# From the impact whip (heavy loads first strain), the legs kick over past
+	# the vertical toward home (toes pointed) while the supported head push
+	# accelerates the body; knees-first tuck with a moving hold; open to land.
+	if _plan_tier in ["bare","fall"]: return _bare_angles(time)
 	var kick_start := maxf(_return_lead-RETURN_LEAD,0.0)
-	var angles: Array = LEG_WHIP_POSE
-	if kick_start>0.0: angles = _angles_lerp(LEG_WHIP_POSE,LEG_STRAIN,smoothstep(0.0,kick_start*.8,time))
+	var start: Array = _return_start_angles if _return_start_angles.size()==4 else LEG_WHIP_POSE
+	var angles: Array = start
+	if kick_start>0.0:
+		angles = _angles_lerp(start,LEG_STRAIN,smoothstep(0.0,minf(kick_start*.6,.14),time))
+		# The strain trembles a little under the load (a moving hold).
+		var tremble := sin(TAU*7.0*maxf(time-.06,0.0))*smoothstep(.06,.14,time)*(1.0-smoothstep(kick_start*.85,kick_start,time))
+		angles[1] = float(angles[1])+deg_to_rad(2.5)*tremble
 	angles = _angles_lerp(angles,LEG_KICK,smoothstep(kick_start,kick_start+_kick_seconds(),time))
 	var tuck_start := kick_start+_kick_seconds()+.01
-	var tucked := tuck_start+.17
-	var land_start := maxf(tucked+.04,_flight_seconds*.6)
-	if time<land_start: angles = _into_tuck(angles,smoothstep(tuck_start,tucked,time))
+	var tucked := tuck_start+TUCK_IN_SECONDS+.04
+	var land_start := maxf(tucked+.06,_flight_seconds*.62)
+	if time<land_start: angles = _into_tuck(angles,smoothstep(tuck_start,tucked,time),smoothstep(tucked,land_start,time))
 	else: angles = _out_of_tuck(LEG_LAND,smoothstep(land_start,maxf(_flight_seconds*.92,land_start+.1),time))
 	# Pointed in the air, flat soles for the last FOOT_FLATTEN_SECONDS.
 	angles[3] = float(angles[3])*smoothstep(.0,FOOT_FLATTEN_SECONDS,_flight_seconds-time)
 	return angles
 
+func _capture_return_start() -> void:
+	# The return's legs start from the whip/overshoot pose they are showing now.
+	var age := _impact_clock if _impact_clock>=0.0 else _contact_age
+	_return_start_angles = _contact_angles(maxf(age-TWIN_DELAY*.5*_twin,0.0))
+	_squash_at_attach = _contact_squash(_impact_clock) if _impact_clock>=0.0 else 0.0
+
+func _contact_angles(age: float) -> Array:
+	# Impact: the legs whip past the vertical, overshoot a few degrees and
+	# settle back toward the pike (the return's anticipation).
+	var angles := _angles_lerp(LEG_TADA,LEG_WHIP_POSE,smoothstep(0.0,WHIP_SECONDS,age))
+	var bump := smoothstep(WHIP_SECONDS*.5,WHIP_SECONDS+.02,age)-.6*smoothstep(WHIP_SECONDS+.02,WHIP_SECONDS+.12,age)
+	for index in 4: angles[index] = float(angles[index])+float(WHIP_OVERSHOOT[index])*bump
+	return angles
+
+func _twin_time(time: float) -> float:
+	# The follower's cosmetic legs lag ~4 frames and catch up before the end
+	# of each flight phase (impact, touchdown): the shift is monotonic in time.
+	if _twin<=0.0: return time
+	var lag := TWIN_DELAY*_twin*clampf((_flight_seconds-time-.04)/.12,0.0,1.0)
+	return maxf(time-lag,0.0)
+
 func _leg_angles_at(time: float, posing: bool) -> Array:
-	# A crew partner's cosmetic curve runs a few ticks behind, a few degrees
+	# A crew partner's cosmetic curve runs a few frames behind, a few degrees
 	# apart: two creatures, one shared plan (preflight samples the same curve).
-	var twin := _twin
-	if twin>0.0 and not (posing and state=="contact" and not _planning_return): time = maxf(time-TWIN_DELAY*twin,0.0)
+	var in_contact := posing and state=="contact" and not _planning_return
+	if not in_contact: time = _twin_time(time)
 	var angles: Array
-	if posing and state=="contact" and not _planning_return:
-		# Impact: the legs whip past the vertical and fold (the return's
-		# anticipation); a docked legacy arrival makes the same beat.
+	if in_contact:
 		var age := _impact_clock if _impact_clock>=0.0 else _contact_age
-		angles = _angles_lerp(LEG_TADA,LEG_WHIP_POSE,smoothstep(0.0,WHIP_SECONDS,age))
+		angles = _contact_angles(maxf(age-TWIN_DELAY*.5*_twin,0.0))
 	elif _return_phase(): angles = _return_angles(time)
 	else: angles = _outbound_angles(time)
 	return angles
@@ -3104,7 +3665,7 @@ func _tuck_points(capacity: float) -> Array[Vector3]:
 	_stunt_capacity = capacity
 	var points: Array[Vector3] = []
 	for side in 2:
-		var leg := _leg_from_angles(side,_tuck_angles())
+		var leg := _leg_from_angles(side,_tuck_angles(1.0))
 		points.append(_root_local*_hip_root[side])
 		points.append(_root_local*(leg[0] as Vector3))
 		points.append(_root_local*(leg[1] as Vector3))
@@ -3274,6 +3835,15 @@ func evaluate_airborne(pose: SkeletonModifier3D, sk: Skeleton3D) -> bool:
 	# and drive are the body's own motion, not a root offset.
 	var root_local: Transform3D = _rest_root_local if preparing else _root_at(time)
 	var root_world := worker.global_transform*root_local
+	if preparing and crew.size()>1:
+		# The crew's count-in nod: the cube tips toward the stock and back
+		# about its hip line (the planted legs are untouched).
+		var age := elapsed-CREW_CROUCH_LAG*_twin
+		if age>0.0 and age<NOD_SECONDS:
+			var hips: Vector3 = root_world*((_hip_root[0]+_hip_root[1])*.5)
+			var axis_world: Vector3 = (worker.global_basis*_outbound_axis).normalized()
+			var turn := Basis(axis_world,NOD_ANGLE*sin(PI*age/NOD_SECONDS))
+			root_world = Transform3D(turn*root_world.basis,hips+turn*(root_world.origin-hips))
 	sk.set_bone_global_pose(0,sk.global_transform.affine_inverse()*root_world)
 	var legs: Array = []
 	var pinned := false
@@ -3332,21 +3902,26 @@ func evaluate_airborne(pose: SkeletonModifier3D, sk: Skeleton3D) -> bool:
 
 # --- Visual squash of the cube about its crown -------------------------------
 func _squash_now() -> float:
-	# Head impact: an underdamped compression that starts at the arrival speed
-	# and peaks at _squash_depth (2-3 cm root travel, 6-8 % cube squash), with
-	# a small stretch on the rebound. Heavy loads add a strain beat before the
-	# loaded kick that the push then releases.
-	var amount := .0
-	if _impact_clock>=0.0 and _squash_depth>0.0 and state in ["contact","return"]:
-		var omega := SQUASH_RATE
-		var damped := omega*sqrt(1.0-SQUASH_ZETA*SQUASH_ZETA)
-		var peak := atan(damped/(SQUASH_ZETA*omega))/damped
-		var shape := func(time: float) -> float: return exp(-SQUASH_ZETA*omega*time)*sin(damped*time)
-		amount = _squash_depth*float(shape.call(_impact_clock))/float(shape.call(peak))
-	if state=="return" and _return_lead>RETURN_LEAD+.001:
-		var kick_start := _return_lead-RETURN_LEAD
-		amount += STRAIN_SQUASH*smoothstep(0.0,kick_start*.8,elapsed)*(1.0-smoothstep(_return_lead,_return_lead+_push_seconds*.6,elapsed))
-	return amount
+	# Head impact: a fast compression (a little overshoot) held through the
+	# dwell; the return releases it (heavy loads first strain deeper, with a
+	# tremble) into a stretch at the peak of the head push, then settles.
+	if state=="contact" and _impact_clock>=0.0: return _contact_squash(_impact_clock)
+	if state=="return" and _plan_tier in ["brisk","long","legacy"]: return _return_squash(elapsed)
+	return 0.0
+
+func _contact_squash(age: float) -> float:
+	if _squash_depth<=0.0: return 0.0
+	return _squash_depth*smoothstep(0.0,.03,age)*(1.0-.15*smoothstep(.03,.09,age))
+
+func _return_squash(time: float) -> float:
+	var kick_start := maxf(_return_lead-RETURN_LEAD,0.0)
+	var value := _squash_at_attach
+	if kick_start>0.0:
+		value = lerpf(value,STRAIN_SQUASH,smoothstep(0.0,minf(kick_start*.6,.14),time))
+		value += .002*sin(TAU*7.0*maxf(time-.06,0.0))*smoothstep(.06,.14,time)*(1.0-smoothstep(kick_start*.85,kick_start,time))
+	var peak := _return_lead+_push_seconds*.55
+	value = lerpf(value,-PUSH_STRETCH,smoothstep(maxf(kick_start,_return_lead-.03),peak,time))
+	return lerpf(value,0.0,smoothstep(_return_lead+_push_seconds,_return_lead+_push_seconds+.14,time))
 
 func _apply_squash(sk: Skeleton3D, root_world: Transform3D, amount: float) -> void:
 	# Scale the cube along its up axis about the crown (the roof contact never
@@ -3431,6 +4006,15 @@ func abort(message: String) -> void:
 		if is_instance_valid(crew[0]) and crew[0].head_leap.part==part and crew[0].head_leap.crew==crew:
 			crew[0].head_leap.abort(message)
 		return
+	if state=="return" and contacted and part.carrier==worker.head_anchor \
+		and crew.all(func(member: Node) -> bool: return is_instance_valid(member) and member.is_inside_tree() and member.is_available() and member.head_leap.state=="return"):
+		# Cancelled in mid-air with the load on the head(s): the admitted
+		# flight was planned with that load, so it is carried to the touchdown
+		# and released there (a load let go mid-flight is flung off the
+		# rotating head and comes down on the creature).
+		_release_on_touchdown = true
+		return
+	_release_on_touchdown = false
 	# Preserve precise source visibility through a bare recovery preflight.
 	# The physical masks still ignore this query-only layer.
 	if not is_instance_valid(part.carrier): part.collision_layer=_saved_source_layer|CONTACT_QUERY_BIT
@@ -3485,13 +4069,24 @@ func _watch_release() -> void:
 		_release_watch.remove_collision_exception_with(worker)
 		_release_watch=null
 		return
-	var bounds: AABB = _release_watch.global_transform*StockBounds.bounds(_release_watch)
-	var cube: AABB = _actual_root()*AABB(Vector3(-.4,-.35,-.4),Vector3(.8,.7,.8))
+	var local_bounds: AABB = StockBounds.bounds(_release_watch)
 	var collision: CollisionShape3D=worker.get_node("Collision")
-	var native: AABB=collision.global_transform*collision.shape.get_debug_mesh().get_aabb()
-	if not bounds.grow(.06).intersects(cube.merge(native)):
+	var apart := false
+	if collision.shape is BoxShape3D:
+		# The flight torso is the cube itself: lift the exception as soon as
+		# the two boxes no longer overlap, so a released load resting on the
+		# roof is held by real contact instead of sinking into the body.
+		var stock_box := _release_watch.global_transform*Transform3D(Basis.IDENTITY,local_bounds.get_center())
+		apart = not _boxes_overlap(stock_box.orthonormalized(),local_bounds.size+Vector3.ONE*2.0*_release_margin,collision.global_transform.orthonormalized(),collision.shape.size)
+	else:
+		var bounds: AABB = _release_watch.global_transform*local_bounds
+		var cube: AABB = _actual_root()*AABB(Vector3(-.4,-.35,-.4),Vector3(.8,.7,.8))
+		var native: AABB=collision.global_transform*collision.shape.get_debug_mesh().get_aabb()
+		apart = not bounds.grow(.06).intersects(cube.merge(native))
+	if apart:
 		_release_watch.remove_collision_exception_with(worker)
 		_release_watch = null
+		_release_margin = 0.0
 
 func clear_before_launch() -> void:
 	if state=="prepare":
@@ -3542,6 +4137,12 @@ func _settle_flight_torso() -> void:
 	if collision.shape is BoxShape3D: collision.transform=_rest_root_local
 
 func _finish(success: bool) -> void:
+	if _release_on_touchdown and crew.size()>0 and crew[0]==worker:
+		_release_on_touchdown = false
+		abort(reason)
+	# The absorb's rise keeps its own curve through the hand-off.
+	_finish_age = _impact_age if state=="landing" and _impact_age>=0.0 and _impact_age<9.0 else -1.0
+	_finish_frame = Engine.get_physics_frames() if _finish_age>=0.0 else -1
 	if _native_settings_saved:
 		worker.linear_damp=_saved_damping
 		worker.linear_damp_mode=_saved_damping_mode
@@ -3593,8 +4194,10 @@ static func _velocity(body: RigidBody3D) -> Vector3:
 	return direct.linear_velocity if direct else body.linear_velocity
 
 func saved_physical_body() -> Dictionary:
-	# A supported departure (still on its feet) saves as the ordinary body.
+	# A supported departure or an upright supported landing (on its feet)
+	# saves as the ordinary body.
 	if not _native_settings_saved or not active() or state=="prepare" or not worker.ragdoll: return {}
+	if state=="landing" and worker.on_ground and worker.global_basis.y.normalized().dot(Vector3.UP)>.95: return {}
 	var visual: RefCounted=worker.ragdoll.visual
 	if visual._remembered.size()!=worker._skeleton.get_bone_count(): return {}
 	# Saving interrupts the assisted jump into existing native fall/recovery.
