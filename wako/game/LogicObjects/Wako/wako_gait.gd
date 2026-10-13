@@ -1079,10 +1079,9 @@ func _planted_output(side: int, delta: float) -> void:
 		_plant_hit_age[side] = 0
 	var same: bool = not hit.is_empty() and (support[side] == null or (body != null and hit.collider == body and hit.rid == support_rid[side]))
 	if not same or absf(hit.normal.dot(point - hit.position)) > .03:
-		# The plant's support vanished/changed under the sole: recover.
-		out_sole[side] = point
+		# The plant's support vanished/changed under the sole: recover from
+		# where the (possibly rolled) sole really is.
 		_lift_off(side, SETTLE, 1.0 / T_RECOVER, .04)
-		start_world[side] = point
 		support[side] = null
 		_swing_output(side, 0.0)
 		return
