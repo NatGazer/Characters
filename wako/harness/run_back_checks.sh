@@ -42,6 +42,10 @@ SCENARIOS=(
   "hit_release_mallet_R --tool=assembly_tool --side=1 --hit_kick_rel=10 --hit_speed=3.0"
   "hit_release_pickaxe_L --tool=salvage_tool --side=0 --hit_kick_rel=10 --hit_speed=3.0"
   "hit_release_mallet_L --tool=assembly_tool --side=0 --hit_kick_rel=11 --hit_speed=3.0"
+  "hit_kick_pickaxe_R --tool=salvage_tool --side=1 --hit_kick_rel=6 --hit_speed=3.0"
+  "slope_up_mallet_R --tool=assembly_tool --side=1 --slope=8"
+  "slope_down_pickaxe_R --tool=salvage_tool --side=1 --slope=-8"
+  "knock_draw_pickaxe --tool=salvage_tool --side=0 --knock=draw"
 )
 run_one() {
   local label="$1"; shift

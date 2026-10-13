@@ -1542,7 +1542,7 @@ func _request_toss() -> void:
 	_previous_worker = worker.global_transform
 	_capture_toe_binding()
 	_home_toe_in_ankle=_toe_in_ankle
-	if plan_debug: print("CONTRAPTION_BACK_TOOL toss_request t=",Engine.get_physics_frames()," legacy_pending=",_legacy_pending," keepouts=",tool.get_meta(&"worker_tool_keepouts",[]))
+	if plan_debug: print("CONTRAPTION_BACK_TOOL toss_request t=",Engine.get_physics_frames()," legacy_pending=",_legacy_pending," toe_body=",_home_toe_body.origin," toe_y=",_home_toe_body.basis.y," settled=",_home_toe_settled.origin," hip_body=",_body_frame.affine_inverse()*worker.evaluated_hip(_foot_side))
 	_lift_off.clear()
 	if not _frame_clear(_toe,_root,true) and _only_observed_support_contact():
 		# The ordinary carry can rest a wide stock box's empty corner on the
@@ -2423,6 +2423,17 @@ func _gather_routes(target: Transform3D,long := true) -> Array:
 		for pair: Vector2 in [Vector2(.12,deg_to_rad(35.0)),Vector2(.18,deg_to_rad(55.0))]:
 			var raised := Transform3D((Basis(raise_axis,pair.y)*_toe.basis).orthonormalized(),_toe.origin+_body_frame.basis.y*pair.x)
 			routes.append([raised,target])
+	# A shaft held forward (e.g. raised toward the work after a startle) first
+	# swings outboard about the vertical, its head passing well outside the
+	# body, then rises into the ready pose.
+	var up_axis: Vector3 = _body_frame.basis.y.normalized()
+	var level := shaft.slide(up_axis)
+	var forward_axis: Vector3 = -_body_frame.basis.z.normalized()
+	if level.length_squared() > .04 and level.normalized().dot(forward_axis) > .3:
+		var outward_axis: Vector3 = _body_frame.basis.x.normalized()*s
+		var swung := Transform3D((Basis(Quaternion(level.normalized(),outward_axis))*_toe.basis).orthonormalized(),_toe.origin+up_axis*.08)
+		routes.append([swung,target])
+		routes.append([swung,Transform3D(swung.basis,_body_frame*aside),target])
 	if not long: return _route_arrays(routes)
 	routes.append([Transform3D(_toe.basis,_body_frame*aside),Transform3D(upright,_body_frame*aside_up),target])
 	if wide: routes.append([Transform3D(_toe.basis,_body_frame*aside),Transform3D(sagittal,_body_frame*aside_up),Transform3D(sagittal,_body_frame*Vector3(target_local.origin.x,target_local.origin.y,target_local.origin.z-.12)),target])

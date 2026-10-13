@@ -169,7 +169,7 @@ func scenario(delta: float) -> void:
 				_go("hold")
 		"hold":
 			caption("%s on the %s toe" % [tool_kind, "left" if side == 0 else "right"])
-			if t_state > 1.2:
+			if t_state > float(_arg("hold_s", "1.2")):
 				_t.request = clock
 				bt._sync_root()
 				var toe_body: Transform3D = bt._body_frame.affine_inverse() * bt._toe_for(tool.global_transform)
@@ -662,11 +662,12 @@ func _feet_after_launch(bt: RefCounted) -> void:
 var _retr_last_toe := Vector3.INF
 var _still := 0.0
 func _retrieval_watch(delta: float, bt: RefCounted) -> void:
-	if args.has("trace_from") and clock > float(_arg("trace_from", "0")) and clock < float(_arg("trace_from", "0")) + 1.5 and is_instance_valid(tool):
+	if args.has("trace_from") and clock > float(_arg("trace_from", "0")) and clock < float(_arg("trace_from", "0")) + float(_arg("trace_len", "1.5")) and is_instance_valid(tool):
 		_dense_tool()
 		var low := INF
 		for i in range(0, _dense_pts.size(), 4): low = minf(low, (tool.global_transform * _dense_pts[i]).y)
-		print("TRACE t=%.3f phase=%s stage=%s root_y=%.3f tool_low=%.3f action=%s g=%s" % [clock, bt.phase, bt.stage, bt._root.origin.y - _ground_y, low - _ground_y, str(wako.action), str(wako._pose.evaluated_grounded)])
+		var tb: Transform3D = bt._body_frame.affine_inverse() * bt._toe_for(tool.global_transform)
+		print("TRACE t=%.3f phase=%s stage=%s root_y=%.3f tool_low=%.3f action=%s g=%s toe=%s toe_y=%s carrier=%s" % [clock, bt.phase, bt.stage, bt._root.origin.y - _ground_y, low - _ground_y, str(wako.action), str(wako._pose.evaluated_grounded), str(tb.origin), str(tb.basis.y), str(tool.carrier.name) if is_instance_valid(tool.carrier) else "none"])
 	if args.has("trace_wait") and bt.phase == "back" and clock > float(_arg("trace_wait", "4.0")):
 		print("WAIT t=%.3f stage=%s g=%s sole0=%.3f sole1=%.3f vel=%s gait=%.3f" % [clock, str(bt.stage), str(wako._pose.evaluated_grounded), Vector3(_leg_points(0)[3]).y - _ground_y, Vector3(_leg_points(1)[3]).y - _ground_y, str(wako.linear_velocity), wako.gait_speed])
 	if not _t.has("retrieve_request") or _t.has("action_begin_seen"): return
