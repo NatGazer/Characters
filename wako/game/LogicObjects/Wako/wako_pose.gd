@@ -422,6 +422,8 @@ func _process_modification_with_delta(delta: float) -> void:
 	_update_stopped_turn(sk,delta)
 	_weight_transfer(sk, walking, speed, delta)
 	_load_brace(sk)
+	# PICKUP-CATCH HOOK: toe-toss ready crouch and head-catch dip (wako_pickup.gd).
+	if worker.pickup: worker.pickup.catch_root(sk)
 	if _head_ground_continuation and evaluated_valid:
 		_continue_head_root(sk,delta)
 	elif _head_work_continuation and evaluated_valid:

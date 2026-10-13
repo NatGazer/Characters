@@ -38,6 +38,7 @@ var gap := 1.35
 var trace_path := ""
 var push_kind := "toward"
 var push_at := .5
+var crate: RigidBody3D
 
 func setup() -> void:
 	# The lab reads the controller's per-tick force/torque statistics.
@@ -68,11 +69,33 @@ func setup() -> void:
 			part = _part("generator", Vector3(0, .325, -(gap+.475)))
 			crew = [spawn_wako(Vector3(0, 1.0, 0), "leap_large")]
 			focus = Vector3(0, .8, -1.0)
-		"crew", "crew_save", "crew_interrupt":
+		"crew", "crew_save", "crew_interrupt", "crew_obstacle":
 			# 32 kg cut armour plate (1.2 m face): one shared two-Wako job.
 			part = _part("armor", Vector3(0, .075, -(crew_gap+.6)))
 			crew = [spawn_wako(Vector3(-.49, 1.0, 0), "leap_crew_a"), spawn_wako(Vector3(.49, 1.0, 0), "leap_crew_b")]
 			focus = Vector3(0, .8, -.85)
+			if case_name == "crew_obstacle":
+				# A 1.05 m screen across both launch places (crew fallback tiers).
+				add_box(Vector3(0, .525, -.8), Vector3(2.6, 1.05, .08), Color(.55, .42, .32))
+		"stack":
+			# The stock rests on a loose 25 kg crate: the push-off reactions act
+			# on a movable, possibly sleeping support.
+			crate = RigidBody3D.new()
+			crate.mass = 25.0
+			var crate_shape := CollisionShape3D.new()
+			var crate_box := BoxShape3D.new()
+			crate_box.size = Vector3(.7, .3, .7)
+			crate_shape.shape = crate_box
+			crate.add_child(crate_shape)
+			var crate_mesh := MeshInstance3D.new()
+			var crate_visual := BoxMesh.new()
+			crate_visual.size = crate_box.size
+			crate_mesh.mesh = crate_visual
+			crate.add_child(crate_mesh)
+			crate.position = Vector3(0, .15, -(gap+.15))
+			add_child(crate)
+			part = _part("bracket", Vector3(0, .45, -(gap+.15)))
+			crew = [spawn_wako(Vector3(0, 1.0, 0), "leap_stack")]
 		"obstacle":
 			# A 1.05 m screen between launch place and stock rejects the brisk
 			# short arcs; clearance must fall back to the long original plans.
@@ -196,8 +219,12 @@ func scenario(delta: float) -> void:
 			if leap.state == "contact" and "--trace-contact" in OS.get_cmdline_user_args():
 				var root: Transform3D = leap._actual_root()
 				var point: Vector3 = part.global_transform*leap.contact_local+leap.contact_normal*leap.CONTACT_GAP
-				print("CONTACT_TRACE t=%.3f err=%.2fmm tilt=%.3fdeg v=%.3f w=%.3f ready=%s head=%s point=%s" % [leap.elapsed,(root*leap._head_touch_local).distance_to(point)*1000.0,
-					rad_to_deg(acos(clampf(root.basis.y.normalized().dot(-leap.contact_normal),-1.0,1.0))),leader.linear_velocity.length(),leader.angular_velocity.length(),leap.contact_ready(),root*leap._head_touch_local,point])
+				for w in crew:
+					var L: RefCounted = w.head_leap
+					var r: Transform3D = L._actual_root()
+					var goal: Basis = L._contact_destination(L.HOLD_GAP).basis
+					print("CONTACT_TRACE %s t=%.3f err=%.2fmm tilt=%.3fdeg goal_err=%.3fdeg v=%.3f w=%.3f ready=%s gap=%.3fmm head=%s" % [w.worker_id,L.elapsed,(r*L._head_touch_local).distance_to(part.global_transform*L.contact_local+L.contact_normal*L.CONTACT_GAP)*1000.0,
+						rad_to_deg(acos(clampf(r.basis.y.normalized().dot(-L.contact_normal),-1.0,1.0))),rad_to_deg(goal.get_rotation_quaternion().angle_to(w.global_basis.get_rotation_quaternion())),w.linear_velocity.length(),w.angular_velocity.length(),L.contact_ready(),L.contact_surface_gap*1000.0,r*L._head_touch_local])
 			if not _attached and leap.state == "contact" and crew.all(func(w) -> bool: return is_instance_valid(w) and w.head_leap.contact_ready()):
 				var info := {"contact_error_mm":leap.contact_error*1000.0,"surface_gap_mm":leap.contact_surface_gap*1000.0,
 					"penetration_mm":leap.contact_surface_penetration*1000.0,
@@ -240,7 +267,39 @@ func scenario(delta: float) -> void:
 				outcome.restored_upright_s = stage_clock
 			if stage_clock > 12.0 or (outcome.has("restored_upright_s") and stage_clock > outcome.restored_upright_s + .5): _finish("restored")
 
+func _watch_crate() -> void:
+	if not is_instance_valid(crate): return
+	var speed := crate.linear_velocity.length()
+	if speed > float(outcome.get("crate_peak_speed", 0.0)): outcome.crate_peak_speed = speed
+	outcome.crate_displacement_m = crate.global_position.distance_to(Vector3(0, .15, -(gap+.15)))
+	if not crew.is_empty() and is_instance_valid(crew[0]) and crew[0].head_leap.state == "contact" and not outcome.has("crate_sleeping_at_contact"):
+		outcome.crate_sleeping_at_contact = crate.sleeping
+
+func _watch_crew_load() -> void:
+	# While a shared load is carried: each member's actual roof skin against the
+	# load's facing side (signed: + gap, - penetration), per leap state.
+	if crew.size() < 2 or not is_instance_valid(part) or not is_instance_valid(part.carrier): return
+	var bounds: AABB = Catalogue.bounds_of(part.definition)
+	var inverse: Transform3D = part.global_transform.affine_inverse()
+	var rows: Dictionary = outcome.get("crew_roof_gap_mm", {})
+	for index in crew.size():
+		var w: RigidBody3D = crew[index]
+		if not is_instance_valid(w) or not w.head_leap.contacted: continue
+		var root: Transform3D = w.head_leap._actual_root()
+		var worst := INF
+		for sample: Vector3 in w.head_leap._roof_samples:
+			var local: Vector3 = inverse*(root*sample)
+			worst = minf(worst, local.y - bounds.end.y if local.y > bounds.get_center().y else bounds.position.y - local.y)
+		var key := "%d:%s" % [index, w.head_leap.state]
+		var row: Dictionary = rows.get(key, {"min": INF, "max": -INF})
+		row.min = minf(row.min, worst*1000.0)
+		row.max = maxf(row.max, worst*1000.0)
+		rows[key] = row
+	outcome.crew_roof_gap_mm = rows
+
 func _watch_safety() -> void:
+	_watch_crate()
+	_watch_crew_load()
 	# Ragdolls, and how deep any flight torso ever overlaps the stock while the
 	# stock is not carried (an honest dive must never pass through it).
 	for w: RigidBody3D in crew:

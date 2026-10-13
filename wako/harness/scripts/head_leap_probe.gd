@@ -262,6 +262,8 @@ func _row(index: int, w: RigidBody3D, leap: RefCounted, state: String, v: Vector
 		"body_pitch":rad_to_deg(acos(clampf(w.global_basis.y.normalized().dot(Vector3.UP),-1.0,1.0))),
 		"knee":knees,"hip":hips,"point":points,"reach":reach,"root":[cube.origin.x,cube.origin.y,cube.origin.z],
 		"low":lowest,"toes":toes,"gap":gap if is_finite(gap) else null,"ground":w.on_ground,
+		"hipmid":[(pose.evaluated_hips[0]+pose.evaluated_hips[1]).x*.5,(pose.evaluated_hips[0]+pose.evaluated_hips[1]).y*.5,(pose.evaluated_hips[0]+pose.evaluated_hips[1]).z*.5],
+		"squash":leap.get("_squash") if "_squash" in leap else 0.0,
 		"part":[part.global_position.x,part.global_position.y,part.global_position.z] if is_instance_valid(part) else null,
 		"gaze":[gaze.x,gaze.y,gaze.z] if gaze is Vector3 else null}
 

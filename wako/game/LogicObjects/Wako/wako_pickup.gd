@@ -6,9 +6,8 @@ const Catalogue = preload("res://Components/Contraptions/part_catalog.gd")
 const GRAVITY := 9.8
 const MAXIMUM_IMPULSE := 40.0
 # Lowest clear lob first (apex above the head seat); the original higher lobs
-# remain fallbacks for the same admission. Measured with the eye lamp: the
-# cube keepout admits a .74 m apex, .95 s flight (was .98 m, 1.06 s).
-const APEX_EXTRAS := [.35, .45, .55, .65, .8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
+# remain fallbacks for the same admission.
+const APEX_EXTRAS := [.15, .2, .25, .3, .35, .4, .45, .5, .55, .6, .65, .72, .8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
 # The catch happens only when the part's real collision bottom reaches the
 # actual roof plane within the next tick. The caught body keeps its exact
 # contact pose; only the residual (< one tick of travel vertically, the small
@@ -16,6 +15,13 @@ const APEX_EXTRAS := [.35, .45, .55, .65, .8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
 const SETTLE_SECONDS := .12
 const SEAT_GAP := .0001
 const CONTACT_SLACK := .001
+# Acting around the catch (visual root only, legs re-solve to planted soles):
+# a ready crouch while the part flies, then a weight dip on the catch.
+const READY_CROUCH := .055
+const READY_IN := .14
+const CATCH_DIP := .07
+const CATCH_IN := .09
+const CATCH_RECOVER := .28
 
 var worker: RigidBody3D
 var part: RigidBody3D
@@ -51,10 +57,17 @@ var _contact_points := PackedVector3Array()
 var _idle_head := Transform3D(Basis.IDENTITY, Vector3.INF)
 var _settle_speed := 0.0
 var catch_gap := INF
+static var _debug: bool = "--head-leap-debug" in OS.get_cmdline_user_args()
+var _catch_clock := -1.0
+var _ready := 0.0
+var catch_dip_depth := 0.0
 
 static func eligible(source: Node3D) -> bool:
 	if not is_instance_valid(source) or source.get("definition") == null: return false
 	var bounds: AABB = Catalogue.bounds_of(source.definition)
+	# Full-size physical stock only: a compact depot display would be rescaled
+	# in place by the yard's cargo preparation (the head path refuses it too).
+	if not source.global_basis.get_scale().is_equal_approx(Vector3.ONE): return false
 	return source.mass <= 5.0 and bounds.size[bounds.size.max_axis_index()] <= .4 and source.definition.get("category", "") != "tool" and source.get("assembly") == null
 
 func setup(owner: RigidBody3D) -> void:
@@ -100,7 +113,7 @@ func target() -> Vector3:
 	# its real gripping foot farther out by that extra half-footprint; the same
 	# finite leg solution and contact gate still decide whether it can reach.
 	var extension := clampf((footprint.size.z-bounds.size.z)*.5,0.0,.06)
-	return grip_point + (Vector3.UP*.12-worker._model.global_basis.z*(.28+extension))*lift
+	return grip_point + (Vector3.UP*.18-worker._model.global_basis.z*(.44+extension))*lift
 
 func contact_ready() -> bool:
 	if not manipulating() or not worker.on_ground or not worker.stance_valid or not worker.foot_grip_valid: return false
@@ -126,6 +139,8 @@ func evaluate(grip: Transform3D) -> void:
 
 func advance(delta: float) -> void:
 	_advance_settle(delta)
+	if _catch_clock>=0.0: _catch_clock += delta
+	if _catch_clock>CATCH_IN+CATCH_RECOVER+.05: _catch_clock = -1.0
 	if state.is_empty() or state == "caught" or state == "failed": return
 	if not is_instance_valid(part) or not part.is_inside_tree() or not worker.is_inside_tree():
 		state = "failed"; reason = "Reserved light part unavailable"; return
@@ -143,7 +158,7 @@ func advance(delta: float) -> void:
 	if state != "flight": return
 	_flight_clock += delta
 	if not worker.on_ground:
-		state = "failed"; reason = "Lost footing during catch; recover the loose part"; return
+		_fail_flight("Lost footing during catch; recover the loose part"); return
 	var bounds: AABB = part.global_transform * Catalogue.bounds_of(part.definition)
 	var head_frame := _head_frame()
 	var head: Vector3 = head_frame.origin
@@ -175,9 +190,18 @@ func advance(delta: float) -> void:
 		# then settles its sub-tick residual onto the roof seat.
 		part.set_carried_at_pose(worker.head_anchor)
 		_begin_settle()
+		_catch_clock = 0.0
+		catch_dip_depth = _ready + CATCH_DIP*clampf(.8+part.mass/25.0, .8, 1.0)
 		state = "caught"
 	elif _flight_clock > 2.0 or (_flight_clock > .3 and part.linear_velocity.y < 0.0 and bounds.end.y < head.y - .1):
-		state = "failed"; reason = "Head catch missed; recovering the same loose part"
+		_fail_flight("Head catch missed; recovering the same loose part")
+
+func _fail_flight(message: String) -> void:
+	# The ready crouch recovers on its own (no pop back to standing).
+	state = "failed"
+	reason = message
+	catch_dip_depth = _ready
+	_catch_clock = CATCH_IN
 
 func _begin_settle() -> void:
 	_settle = part
@@ -186,13 +210,12 @@ func _begin_settle() -> void:
 	_settle_anchor = local.origin
 	_settle_basis = local.basis.orthonormalized()
 	# Nearest quarter-turn yaw about the head's up axis; tilt settles level.
-	var forward := _settle_basis.z.slide(Vector3.UP)
-	var yaw := atan2(forward.x, forward.z) if forward.length_squared() > .000001 else 0.0
-	_seat_basis = Basis(Vector3.UP, roundf(yaw / (PI * .5)) * PI * .5)
-	# The seat puts the real collision bottom on the roof (head anchor plane)
-	# and centres the footprint over the head: only the residual moves.
+	# The part keeps where and how it landed (horizontal offset and yaw): only
+	# its sub-tick drop along the roof normal settles its real collision bottom
+	# onto the roof (head anchor plane).
+	_seat_basis = _settle_basis
 	var seated := _footprint(Transform3D(_seat_basis, Vector3.ZERO))
-	_seat_anchor = Vector3(-seated.get_center().x, -seated.position.y + SEAT_GAP, -seated.get_center().z)
+	_seat_anchor = Vector3(_settle_anchor.x, -seated.position.y + SEAT_GAP, _settle_anchor.z)
 	catch_offset = _settle_anchor - _seat_anchor
 	catch_yaw = rad_to_deg(_settle_basis.get_rotation_quaternion().angle_to(_seat_basis.get_rotation_quaternion()))
 
@@ -237,7 +260,8 @@ func _launch() -> void:
 	var velocity := Vector3.ZERO
 	var valid_arc := false
 	var before := _velocity(worker)
-	var contact_height := aim.origin.y - seated.position.y
+	# The catch happens on the ready-crouched roof.
+	var contact_height := aim.origin.y - READY_CROUCH - seated.position.y
 	for extra: float in APEX_EXTRAS:
 		var vertical := sqrt(2.0 * GRAVITY * maxf(destination.y + extra - origin.y, .1))
 		var flight := (vertical + sqrt(maxf(vertical * vertical - 2.0 * GRAVITY * (destination.y-origin.y), 0.0))) / GRAVITY
@@ -251,6 +275,7 @@ func _launch() -> void:
 		velocity = aimed / flight + Vector3.UP * vertical
 		if (velocity-before).length() * part.mass > MAXIMUM_IMPULSE: continue
 		if _arc_clear(origin, velocity, flight): valid_arc = true; break
+		if _debug: print("TOSS_ARC_REFUSED extra=",extra," flight=",flight," blocker=",arc_blocker)
 	if not valid_arc:
 		state = "failed"; reason = "No clear foot toss/head catch arc; clear overhead access"; return
 	launch_point = foot_anchor.global_position
@@ -286,6 +311,7 @@ func _arc_clear(origin: Vector3, velocity: Vector3, seconds: float) -> bool:
 	var inverse := root.affine_inverse()
 	var neutral: Transform3D = worker._skeleton.global_transform * worker._skeleton.get_bone_global_rest(0)
 	var neutral_inverse := neutral.affine_inverse()
+	var ready_inverse := neutral.translated(Vector3.DOWN*READY_CROUCH).affine_inverse()
 	# Leave room for the finite supported body settling/turning during release.
 	# The continuous observed-flight assertion still uses the unchanged cube.
 	var cube := AABB(Vector3(-.415,-.3,-.415),Vector3(.83,.68,.83))
@@ -302,7 +328,12 @@ func _arc_clear(origin: Vector3, velocity: Vector3, seconds: float) -> bool:
 		var time := seconds * step / samples
 		var position := origin + velocity * time - Vector3.UP * (.5 * GRAVITY * time * time)
 		var pose := Transform3D(_orientation, position)
-		if cube.intersects(inverse * pose * bounds) or cube.intersects(neutral_inverse * pose * bounds):
+		# The kicking cube (its evaluated lean) only matters while the kick
+		# lasts; the neutral cube until the ready crouch has lowered it (the
+		# Pose hook keeps it there through the catch).
+		var kicking := time < .2 and cube.intersects(inverse * pose * bounds)
+		var standing := time < READY_IN and cube.intersects(neutral_inverse * pose * bounds)
+		if kicking or standing or cube.intersects(ready_inverse * pose * bounds):
 			arc_blocker = {"kind":"cube","step":step,"bounds":neutral_inverse*pose*bounds}
 			return false
 		query.transform = pose.translated_local(bounds.get_center())
@@ -324,6 +355,25 @@ func clear() -> void:
 func _restore_damping() -> void:
 	part.linear_damp = _saved_damping
 	part.linear_damp_mode = _saved_damping_mode
+
+func _root_dip() -> float:
+	# Ready crouch once the part is away, deepened by the catch's weight dip
+	# (CATCH_IN), then one slower recovery (CATCH_RECOVER).
+	if state == "flight":
+		_ready = READY_CROUCH*smoothstep(0.0, READY_IN, _flight_clock)
+		return _ready
+	if _catch_clock < 0.0: return 0.0
+	if _catch_clock < CATCH_IN: return lerpf(_ready, catch_dip_depth, smoothstep(0.0, CATCH_IN, _catch_clock))
+	return catch_dip_depth*(1.0 - smoothstep(CATCH_IN, CATCH_IN + CATCH_RECOVER, _catch_clock))
+
+func catch_root(sk: Skeleton3D) -> void:
+	# Pose hook: lower the evaluated cube; terrain IK bends the knees to the
+	# planted soles. The head anchor (and the caught part) follow the cube.
+	var depth := _root_dip()
+	if depth < .0005 or not worker.on_ground: return
+	var root := sk.get_bone_global_pose(0)
+	root.origin -= sk.global_basis.inverse()*(Vector3.UP*depth)
+	sk.set_bone_global_pose(0, root)
 
 func _head_point() -> Vector3:
 	if worker._pose.evaluated_valid:
